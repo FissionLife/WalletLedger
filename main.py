@@ -1,10 +1,10 @@
+from app.routes_orders import router as orders_router
+from app.routes_users import router as users_router
+from app.routes_wallet import router as wallet_router
 from fastapi import FastAPI
 
 from app.bot.main import bot_router
 from app.db import init_db
-from app.routes_orders import router as orders_router
-from app.routes_users import router as users_router
-from app.routes_wallet import router as wallet_router
 
 app = FastAPI(title="Payment API", version="1.0.0")
 
