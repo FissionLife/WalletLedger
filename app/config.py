@@ -6,7 +6,7 @@ class Settings(BaseSettings):
     """Application configuration settings."""
     
     # Database configuration
-    database_url: str = "postgresql+psycopg2://postgres:postgres@localhost:5432/appdb"
+    database_url: str = "postgresql+psycopg2://postgres:1234@localhost:5432/appdb"
     
     # Order processing configuration
     enable_strict_idempotency_check: bool = False

@@ -1,6 +1,7 @@
 # Payment API - Technical Documentation
 
 ## Table of Contents
+
 1. [Project Overview](#project-overview)
 2. [Architecture](#architecture)
 3. [Database Schema](#database-schema)
@@ -16,6 +17,7 @@
 The Payment API is a FastAPI-based backend service that provides order management and wallet functionality for payment processing. It's designed as a production-ready system with proper separation of concerns, database persistence, and RESTful API design.
 
 ### Tech Stack
+
 - **Framework**: FastAPI 0.109.0
 - **Database**: PostgreSQL 16
 - **ORM**: SQLAlchemy 2.0.25
@@ -24,6 +26,7 @@ The Payment API is a FastAPI-based backend service that provides order managemen
 - **Python**: 3.11+
 
 ### Key Features
+
 - User management with email validation
 - Order creation with idempotency key support
 - Customer wallet management (credit/debit operations)
@@ -94,47 +97,55 @@ payment-api/
 ### Component Responsibilities
 
 **main.py**
+
 - FastAPI application initialization
 - Router registration
 - Startup event handlers (database initialization)
 - Health check endpoints
 
 **config.py**
+
 - Environment variable management
 - Database connection string configuration
 - Settings using Pydantic BaseSettings
 
 **db.py**
+
 - SQLAlchemy engine creation
 - Session factory
 - Database initialization
 - Session dependency for dependency injection
 
 **models.py**
+
 - SQLAlchemy ORM models (User, Order, Wallet)
 - Database constraints and foreign key relationships
 - Table definitions with relationships
 
 **schemas.py**
+
 - Pydantic models for request validation with constraints
 - Response serialization models
 - Data transfer objects (DTOs)
 - Email validation, pattern matching, field limits
 
 **services.py**
+
 - Business logic implementation
 - User CRUD operations
 - Order and wallet management
 - Transaction management
 - Data validation and processing
 
-**routes_*.py**
+**routes\_\*.py**
+
 - HTTP endpoint definitions
 - Request/response handling
 - Dependency injection
 - Error handling
 
 **auth.py**
+
 - Authentication framework skeleton
 - Extensible for JWT or other auth mechanisms
 - User model definition
@@ -146,39 +157,44 @@ payment-api/
 ### Tables
 
 #### `users`
+
 Stores customer/user information.
 
-| Column       | Type         | Constraints                    | Description                          |
-|--------------|--------------|--------------------------------|--------------------------------------|
-| user_id      | VARCHAR(100) | PRIMARY KEY                    | Unique user identifier (e.g., CUST-001) |
-| email        | VARCHAR(255) | UNIQUE, NOT NULL               | User email address                   |
-| full_name    | VARCHAR(255) | NOT NULL                       | User full name                       |
-| phone        | VARCHAR(20)  | NULLABLE                       | User phone number (optional)         |
-| created_at   | TIMESTAMP    | DEFAULT NOW()                  | Account creation timestamp           |
-| is_active    | VARCHAR(10)  | DEFAULT 'true'                 | Account status (true/false)          |
+| Column     | Type         | Constraints      | Description                             |
+| ---------- | ------------ | ---------------- | --------------------------------------- |
+| user_id    | VARCHAR(100) | PRIMARY KEY      | Unique user identifier (e.g., CUST-001) |
+| email      | VARCHAR(255) | UNIQUE, NOT NULL | User email address                      |
+| full_name  | VARCHAR(255) | NOT NULL         | User full name                          |
+| phone      | VARCHAR(20)  | NULLABLE         | User phone number (optional)            |
+| created_at | TIMESTAMP    | DEFAULT NOW()    | Account creation timestamp              |
+| is_active  | VARCHAR(10)  | DEFAULT 'true'   | Account status (true/false)             |
 
-**Indexes**: 
+**Indexes**:
+
 - Primary key on `user_id`
 - Index on `email`
 - Index on `created_at`
 
 **Constraints**:
+
 - Unique constraint on `email`
 
 #### `orders`
+
 Stores customer orders with idempotency support.
 
-| Column           | Type         | Constraints                    | Description                          |
-|------------------|--------------|--------------------------------|--------------------------------------|
-| id               | UUID         | PRIMARY KEY                    | Unique order identifier              |
-| customer_id      | VARCHAR(100) | NOT NULL, FK → users.user_id   | Customer identifier                  |
-| amount           | NUMERIC(10,2)| NOT NULL, CHECK (amount > 0)   | Order amount                         |
-| currency         | VARCHAR(10)  | NOT NULL                       | Currency code (e.g., INR, USD)       |
-| idempotency_key  | TEXT         | NULLABLE                       | Client-provided idempotency key      |
-| status           | VARCHAR(50)  | NOT NULL, DEFAULT 'created'    | Order status                         |
-| created_at       | TIMESTAMP    | DEFAULT NOW()                  | Order creation timestamp             |
+| Column          | Type          | Constraints                  | Description                     |
+| --------------- | ------------- | ---------------------------- | ------------------------------- |
+| id              | UUID          | PRIMARY KEY                  | Unique order identifier         |
+| customer_id     | VARCHAR(100)  | NOT NULL, FK → users.user_id | Customer identifier             |
+| amount          | NUMERIC(10,2) | NOT NULL, CHECK (amount > 0) | Order amount                    |
+| currency        | VARCHAR(10)   | NOT NULL                     | Currency code (e.g., INR, USD)  |
+| idempotency_key | TEXT          | NULLABLE                     | Client-provided idempotency key |
+| status          | VARCHAR(50)   | NOT NULL, DEFAULT 'created'  | Order status                    |
+| created_at      | TIMESTAMP     | DEFAULT NOW()                | Order creation timestamp        |
 
-**Indexes**: 
+**Indexes**:
+
 - Primary key on `id`
 - Index on `customer_id`
 - Index on `created_at`
@@ -186,23 +202,27 @@ Stores customer orders with idempotency support.
 - Index on `idempotency_key`
 
 **Constraints**:
+
 - `check_order_amount_positive`: Ensures amount > 0
 - Foreign key: `customer_id` → `users.user_id` (CASCADE DELETE)
 
 #### `wallets`
+
 Stores customer wallet balances.
 
-| Column       | Type         | Constraints                        | Description                     |
-|--------------|--------------|------------------------------------|---------------------------------|
-| customer_id  | VARCHAR(100) | PRIMARY KEY, FK → users.user_id    | Customer identifier             |
-| balance      | NUMERIC(10,2)| NOT NULL, DEFAULT 0, CHECK >= 0    | Current wallet balance          |
-| updated_at   | TIMESTAMP    | DEFAULT NOW(), ON UPDATE NOW()     | Last update timestamp           |
+| Column      | Type          | Constraints                     | Description            |
+| ----------- | ------------- | ------------------------------- | ---------------------- |
+| customer_id | VARCHAR(100)  | PRIMARY KEY, FK → users.user_id | Customer identifier    |
+| balance     | NUMERIC(10,2) | NOT NULL, DEFAULT 0, CHECK >= 0 | Current wallet balance |
+| updated_at  | TIMESTAMP     | DEFAULT NOW(), ON UPDATE NOW()  | Last update timestamp  |
 
-**Indexes**: 
+**Indexes**:
+
 - Primary key on `customer_id`
 - Index on `updated_at`
 
 **Constraints**:
+
 - `check_wallet_balance_non_negative`: Ensures balance >= 0
 - Foreign key: `customer_id` → `users.user_id` (CASCADE DELETE)
 
@@ -278,6 +298,7 @@ POST /users
 ```
 
 **Request Example**:
+
 ```json
 POST /users
 {
@@ -289,6 +310,7 @@ POST /users
 ```
 
 **Response Example**:
+
 ```json
 {
   "user_id": "CUST-001",
@@ -344,6 +366,7 @@ POST /orders
 ```
 
 **Request Example**:
+
 ```json
 POST /orders
 {
@@ -355,6 +378,7 @@ POST /orders
 ```
 
 **Response Example**:
+
 ```json
 {
   "order_id": "550e8400-e29b-41d4-a716-446655440000",
@@ -404,6 +428,7 @@ POST /wallet/{customer_id}/credit
 ```
 
 **Request Example**:
+
 ```json
 POST /wallet/CUST-001/credit
 {
@@ -412,10 +437,11 @@ POST /wallet/CUST-001/credit
 ```
 
 **Response Example**:
+
 ```json
 {
   "customer_id": "CUST-001",
-  "balance": 1000.00
+  "balance": 1000.0
 }
 ```
 
@@ -483,6 +509,7 @@ GET /orders?customer_id=CUST-001
 ```
 
 **Response Example**:
+
 ```json
 [
   {
@@ -503,6 +530,7 @@ GET /orders?customer_id=CUST-001
 ### Prerequisites
 
 Ensure you have the following installed:
+
 - **Python 3.11 or higher**
 - **Docker** (for PostgreSQL)
 - **pip** (Python package manager)
@@ -529,26 +557,31 @@ docker run --name app_pg \
 ```
 
 **Verify PostgreSQL is running**:
+
 ```bash
 docker ps | grep app_pg
 ```
 
 **Check PostgreSQL logs** (if needed):
+
 ```bash
 docker logs app_pg
 ```
 
 **Stop PostgreSQL** (when needed):
+
 ```bash
 docker stop app_pg
 ```
 
 **Start PostgreSQL** (after stopping):
+
 ```bash
 docker start app_pg
 ```
 
 **Remove PostgreSQL container** (to start fresh):
+
 ```bash
 docker stop app_pg
 docker rm app_pg
@@ -563,11 +596,13 @@ python3.11 -m venv .venv
 **Activate the virtual environment**:
 
 On macOS/Linux:
+
 ```bash
 source .venv/bin/activate
 ```
 
 On Windows:
+
 ```bash
 .venv\Scripts\activate
 ```
@@ -580,11 +615,13 @@ pip install -r requirements.txt
 ```
 
 **Verify installation**:
+
 ```bash
 pip list
 ```
 
 You should see:
+
 - fastapi
 - uvicorn
 - sqlalchemy
@@ -609,6 +646,7 @@ uvicorn app.main:app --reload --port 8000
 ```
 
 **Expected output**:
+
 ```
 INFO:     Will watch for changes in these directories: ['/path/to/payment-api']
 INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
@@ -621,17 +659,20 @@ INFO:     Application startup complete.
 ### Step 7: Verify Installation
 
 **Check health endpoint**:
+
 ```bash
 curl http://localhost:8000/health
 ```
 
 Expected response:
+
 ```json
-{"status": "healthy"}
+{ "status": "healthy" }
 ```
 
 **Check API documentation**:
 Open your browser and navigate to:
+
 - Swagger UI: http://localhost:8000/docs
 - ReDoc: http://localhost:8000/redoc
 
@@ -642,6 +683,7 @@ python scripts/seed_data.py CUST-001
 ```
 
 This will:
+
 - Create a wallet for CUST-001 with 1000 INR balance
 - Create 3 sample orders
 
@@ -652,6 +694,7 @@ This will:
 ### Manual Testing with cURL
 
 **Create an order**:
+
 ```bash
 curl -X POST http://localhost:8000/orders \
   -H "Content-Type: application/json" \
@@ -664,11 +707,13 @@ curl -X POST http://localhost:8000/orders \
 ```
 
 **List orders**:
+
 ```bash
 curl "http://localhost:8000/orders?customer_id=CUST-001"
 ```
 
 **Credit wallet**:
+
 ```bash
 curl -X POST http://localhost:8000/wallet/CUST-001/credit \
   -H "Content-Type: application/json" \
@@ -676,6 +721,7 @@ curl -X POST http://localhost:8000/wallet/CUST-001/credit \
 ```
 
 **Debit wallet**:
+
 ```bash
 curl -X POST http://localhost:8000/wallet/CUST-001/debit \
   -H "Content-Type: application/json" \
@@ -683,7 +729,7 @@ curl -X POST http://localhost:8000/wallet/CUST-001/debit \
 ```
 
 **Get wallet balance**:
+
 ```bash
 curl http://localhost:8000/wallet/CUST-001
 ```
-

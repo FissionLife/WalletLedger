@@ -1,184 +1,55 @@
-# Payment API
+# FissionLifebot - AI Telegram Financial Assistant
 
-A FastAPI-based payment processing system with user management, order processing, and wallet functionality.
+FissionLifebot is an AI-powered Telegram bot (similar to Fold App) that helps users track their expenses, categorize them, and generate comprehensive statistics. 
 
-## Quick Links
-
-- 📖 [Complete Deployment Guide](DEPLOYMENT.md) - Step-by-step local setup instructions
-- 📚 [Technical Documentation](DOCUMENTATION.md) - Architecture, flows, and development guide
-- 🔗 [API Documentation](http://localhost:8000/docs) - Interactive Swagger UI (after starting server)
+This project is a preparatory round for our hackathon, designed for a 6-person team to collaborate effectively. It uses an AI Gateway (provider-agnostic), LangGraph for conversational flows, and Model Context Protocol (MCP) to interact with our backend database.
 
 ## Prerequisites
-
 - Python 3.11+
-- Docker
-- PostgreSQL (via Docker)
+- [uv](https://github.com/astral-sh/uv) (Extremely fast Python package manager)
+- Docker (for PostgreSQL)
 
-## Quick Start
+## Quick Start (with `uv`)
 
-### 1. Start PostgreSQL
+This project uses `uv` for lightning-fast dependency management and virtual environments.
 
+### 1. Start PostgreSQL Database
 ```bash
 docker run --name app_pg -e POSTGRES_PASSWORD=postgres -e POSTGRES_USER=postgres -e POSTGRES_DB=appdb -p 5432:5432 -d postgres:16
 ```
 
 ### 2. Install Dependencies
-
+Instead of `pip install`, use `uv` to automatically sync the environment:
 ```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
+uv sync
 ```
+*Note: This will automatically create a `.venv` directory and install everything from `pyproject.toml`.*
 
 ### 3. Run the Application
-
 ```bash
-uvicorn app.main:app --reload --port 8000
+uv run uvicorn app.main:app --reload --port 8000
 ```
+The FastAPI (which now includes the Telegram Bot Webhook) will run on `http://localhost:8000`.
 
-The API will be available at `http://localhost:8000`
+## Team Collaboration & Roles
 
-### 4. Seed Sample Data
+The architecture has been split into 6 parallel roles so we can all work without merge conflicts. **Claim a role, create a new branch (`git checkout -b feature/role-1`), and submit a Pull Request!**
 
-```bash
-# Seed multiple users with wallets and orders
-python scripts/seed_data.py --all
+1. **Telegram Bot Core (`app/bot/main.py`)**: Handle webhooks, basic commands, and parsing Telegram updates using `aiogram`.
+2. **LangGraph Agent (`app/bot/agent.py`)**: Build the state machine and conversational "brain" of the bot.
+3. **AI Gateway (`app/services_ai/ai_gateway.py`)**: Implement LiteLLM routing, and fetch user-specific Gemini API keys from the database securely.
+4. **MCP Server (`app/services_ai/mcp_server.py`)**: Expose the backend payment API (get balance, log expense) as tools for LangGraph.
+5. **Transaction Engine (`app/services_ai/transaction_parser.py`)**: Build the logic to extract expenses from chat text and parse PhonePe PDF statements.
+6. **Infrastructure & Deployment**: Manage this `README`, the Docker compose files, CI/CD for our PRs, and database schemas.
 
-# Or seed a single user
-python scripts/seed_data.py CUST-001
-```
+## Working with `uv`
+- To add a new package: `uv add <package_name>`
+- To remove a package: `uv remove <package_name>`
+- To run scripts: `uv run python scripts/seed_data.py`
 
-## API Endpoints
-
-### Users
-
-**Create User**
-```bash
-curl -X POST http://localhost:8000/users \
-  -H "Content-Type: application/json" \
-  -d '{
-    "user_id": "CUST-001",
-    "email": "customer@example.com",
-    "full_name": "John Doe",
-    "phone": "+91-9876543210"
-  }'
-```
-
-**Get User**
-```bash
-curl http://localhost:8000/users/CUST-001
-```
-
-**List Users**
-```bash
-curl http://localhost:8000/users
-```
-
-### Orders
-
-**Create Order**
-```bash
-curl -X POST http://localhost:8000/orders \
-  -H "Content-Type: application/json" \
-  -d '{
-    "customer_id": "CUST-001",
-    "amount": 499.99,
-    "currency": "INR",
-    "idempotency_key": "order-123"
-  }'
-```
-
-**List Orders**
-```bash
-curl "http://localhost:8000/orders?customer_id=CUST-001"
-```
-
-### Wallet
-
-**Credit Wallet**
-```bash
-curl -X POST http://localhost:8000/wallet/CUST-001/credit \
-  -H "Content-Type: application/json" \
-  -d '{"amount": 1000}'
-```
-
-**Debit Wallet**
-```bash
-curl -X POST http://localhost:8000/wallet/CUST-001/debit \
-  -H "Content-Type: application/json" \
-  -d '{"amount": 200}'
-```
-
-**Get Wallet Balance**
-```bash
-curl http://localhost:8000/wallet/CUST-001
-```
-
-## Testing Scenarios
-
-Run various test scenarios to validate the API:
-
-```bash
-# Run all scenarios with seeding
-python scripts/run_scenarios.py --scenario all --seed
-
-# Run specific scenario
-python scripts/run_scenarios.py --scenario orders_retry
-python scripts/run_scenarios.py --scenario wallet_concurrency
-python scripts/run_scenarios.py --scenario false_success
-
-# Repeat scenario multiple times
-python scripts/run_scenarios.py --scenario wallet_concurrency --repeat 5
-```
-
-## Database Management
-
-### Using SQL Files
-
-**Initialize schema:**
-```bash
-docker exec -i app_pg psql -U postgres -d appdb < sql/schema.sql
-```
-
-**Load seed data:**
-```bash
-docker exec -i app_pg psql -U postgres -d appdb < sql/seed_data.sql
-```
-
-**Connect to database:**
-```bash
-docker exec -it app_pg psql -U postgres -d appdb
-```
-
-## Project Structure
-
-```
-payment-api/
-├── app/
-│   ├── __init__.py
-│   ├── main.py           # FastAPI application
-│   ├── config.py         # Configuration
-│   ├── db.py             # Database setup
-│   ├── models.py         # SQLAlchemy models
-│   ├── schemas.py        # Pydantic schemas
-│   ├── services.py       # Business logic
-│   ├── routes_orders.py  # Order endpoints
-│   ├── routes_wallet.py  # Wallet endpoints
-│   └── auth.py           # Authentication utilities
-├── scripts/
-│   ├── run_scenarios.py  # Test scenarios
-│   └── seed_data.py      # Data seeding
-├── requirements.txt
-├── .gitignore
-└── README.md
-```
-
-## Development
-
-The application uses:
-- FastAPI for the web framework
-- SQLAlchemy 2.x for ORM
-- PostgreSQL for the database
-- Pydantic v2 for data validation
-
-Database schema is automatically initialized on application startup.
+## Git Workflow
+1. Pull the latest from `main`: `git pull origin main`
+2. Branch out: `git checkout -b feature/<your-role-name>`
+3. Work on your specific files (e.g. `app/bot/agent.py`).
+4. Commit: `git commit -m "feat: setup langgraph state machine"`
+5. Push & Create PR: `git push origin feature/<your-role-name>`

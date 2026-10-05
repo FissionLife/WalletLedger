@@ -10,12 +10,12 @@ This guide will help you set up and run the Payment API on your local machine in
 
 Before you begin, ensure you have the following installed:
 
-| Software | Version | Check Command | Installation |
-|----------|---------|---------------|--------------|
-| Python | 3.11+ | `python3 --version` | [python.org](https://www.python.org/downloads/) |
-| Docker | Latest | `docker --version` | [docker.com](https://www.docker.com/get-started) |
-| Git | Latest | `git --version` | [git-scm.com](https://git-scm.com/downloads) |
-| pip | Latest | `pip --version` | Included with Python |
+| Software | Version | Check Command       | Installation                                     |
+| -------- | ------- | ------------------- | ------------------------------------------------ |
+| Python   | 3.11+   | `python3 --version` | [python.org](https://www.python.org/downloads/)  |
+| Docker   | Latest  | `docker --version`  | [docker.com](https://www.docker.com/get-started) |
+| Git      | Latest  | `git --version`     | [git-scm.com](https://git-scm.com/downloads)     |
+| pip      | Latest  | `pip --version`     | Included with Python                             |
 
 ---
 
@@ -42,17 +42,20 @@ docker run --name app_pg \
 ```
 
 **Verify PostgreSQL is running:**
+
 ```bash
 docker ps | grep app_pg
 ```
 
 Expected output:
+
 ```
 CONTAINER ID   IMAGE         STATUS         PORTS
 abc123def456   postgres:16   Up 2 seconds   0.0.0.0:5432->5432/tcp
 ```
 
 **Check PostgreSQL logs** (optional):
+
 ```bash
 docker logs app_pg
 ```
@@ -66,16 +69,19 @@ python3.11 -m venv .venv
 **Activate the virtual environment:**
 
 On macOS/Linux:
+
 ```bash
 source .venv/bin/activate
 ```
 
 On Windows (Command Prompt):
+
 ```bash
 .venv\Scripts\activate.bat
 ```
 
 On Windows (PowerShell):
+
 ```bash
 .venv\Scripts\Activate.ps1
 ```
@@ -90,11 +96,13 @@ pip install -r requirements.txt
 ```
 
 **Verify installation:**
+
 ```bash
 pip list
 ```
 
 Expected packages:
+
 - fastapi==0.109.0
 - uvicorn==0.27.0
 - sqlalchemy==2.0.25
@@ -135,6 +143,7 @@ uvicorn app.main:app --reload --port 8000
 ```
 
 **Expected output:**
+
 ```
 INFO:     Will watch for changes in these directories: ['/path/to/payment-api']
 INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
@@ -147,16 +156,19 @@ INFO:     Application startup complete.
 ### Step 7: Verify Installation
 
 **Test health endpoint:**
+
 ```bash
 curl http://localhost:8000/health
 ```
 
 Expected response:
+
 ```json
-{"status":"healthy"}
+{ "status": "healthy" }
 ```
 
 **Access API documentation:**
+
 - Swagger UI: http://localhost:8000/docs
 - ReDoc: http://localhost:8000/redoc
 
@@ -179,6 +191,7 @@ docker exec -i app_pg psql -U postgres -d appdb < sql/seed_data.sql
 ```
 
 **Verify seeded data:**
+
 ```bash
 curl http://localhost:8000/users/CUST-001
 curl http://localhost:8000/wallet/CUST-001
@@ -192,11 +205,13 @@ curl "http://localhost:8000/orders?customer_id=CUST-001"
 ### Connecting to PostgreSQL
 
 **Using psql (inside container):**
+
 ```bash
 docker exec -it app_pg psql -U postgres -d appdb
 ```
 
 **Common psql commands:**
+
 ```sql
 \dt                          -- List all tables
 \d users                     -- Describe users table
@@ -213,6 +228,7 @@ SELECT * FROM orders;        -- View all orders
 ### Database Operations
 
 **View table counts:**
+
 ```sql
 SELECT 'Users' AS table_name, COUNT(*) AS count FROM users
 UNION ALL
@@ -222,6 +238,7 @@ SELECT 'Orders', COUNT(*) FROM orders;
 ```
 
 **Clear all data (keep schema):**
+
 ```sql
 TRUNCATE TABLE orders CASCADE;
 TRUNCATE TABLE wallets CASCADE;
@@ -229,6 +246,7 @@ TRUNCATE TABLE users CASCADE;
 ```
 
 **Drop and recreate database:**
+
 ```bash
 docker exec -it app_pg psql -U postgres -c "DROP DATABASE appdb;"
 docker exec -it app_pg psql -U postgres -c "CREATE DATABASE appdb;"
@@ -238,27 +256,32 @@ docker exec -i app_pg psql -U postgres -d appdb < sql/schema.sql
 ### PostgreSQL Container Management
 
 **Stop PostgreSQL:**
+
 ```bash
 docker stop app_pg
 ```
 
 **Start PostgreSQL:**
+
 ```bash
 docker start app_pg
 ```
 
 **Restart PostgreSQL:**
+
 ```bash
 docker restart app_pg
 ```
 
 **Remove PostgreSQL container:**
+
 ```bash
 docker stop app_pg
 docker rm app_pg
 ```
 
 **View PostgreSQL logs:**
+
 ```bash
 docker logs app_pg
 docker logs -f app_pg  # Follow logs in real-time
