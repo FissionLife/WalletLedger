@@ -1,5 +1,5 @@
 # Role 2: LangGraph Agent Workflow
-# The conversational brain of FissionLifebot
+# The conversational brain of WalletLedger
 
 
 def process_message(chat_id: str, text: str):

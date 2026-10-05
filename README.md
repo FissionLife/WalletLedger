@@ -1,4 +1,4 @@
-# WalletLedger (Payment API & AI Financial Bot)
+# WalletLedger (WalletLedger & AI Financial Bot)
 
 A production-ready FastAPI-based payment processing, wallet ledger, and AI-powered financial assistant system with user management, order processing, wallet transactions, and Telegram Bot integration.
 
@@ -196,7 +196,7 @@ sqlite3 fission.db
 ## Project Structure
 
 ```
-payment-api/
+WalletLedger/
 ├── app/
 │   ├── __init__.py
 │   ├── auth.py                  # Authentication utilities

@@ -1,6 +1,6 @@
-# FissionLifebot - Team Guide & Architecture
+# WalletLedger - Team Guide & Architecture
 
-FissionLifebot is an AI-powered Telegram bot (similar to Fold App) that helps users track their expenses, categorize them, and generate comprehensive statistics.
+WalletLedger is an AI-powered Telegram bot (similar to Fold App) that helps users track their expenses, categorize them, and generate comprehensive statistics.
 
 This project is a preparatory round for our hackathon, designed for a 6-person team to collaborate effectively.
 

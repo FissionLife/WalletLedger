@@ -1,5 +1,5 @@
 [project]
-name = "payment-api"
+name = "WalletLedger"
 version = "0.1.0"
 description = "WalletLedger - Payment API & AI Financial Bot"
 readme = "README.md"

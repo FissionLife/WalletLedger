@@ -1,8 +1,8 @@
-# Payment API - Local Deployment Guide
+# WalletLedger - Local Deployment Guide
 
 ## Quick Start
 
-This guide will help you set up and run the Payment API on your local machine in under 10 minutes.
+This guide will help you set up and run the WalletLedger on your local machine in under 10 minutes.
 
 ---
 
@@ -25,7 +25,7 @@ Before you begin, ensure you have the following installed:
 
 ```bash
 git clone <repository-url>
-cd payment-api
+cd WalletLedger
 ```
 
 ### Step 2: Start PostgreSQL Database
@@ -111,7 +111,7 @@ If you prefer to create the schema manually:
 docker exec -it app_pg psql -U postgres -d appdb
 
 # In psql prompt, run:
-\i /path/to/payment-api/sql/schema.sql
+\i /path/to/WalletLedger/sql/schema.sql
 
 # Or from command line:
 docker exec -i app_pg psql -U postgres -d appdb < sql/schema.sql
@@ -126,7 +126,7 @@ uv run uvicorn main:app --reload --port 8000
 **Expected output:**
 
 ```
-INFO:     Will watch for changes in these directories: ['/path/to/payment-api']
+INFO:     Will watch for changes in these directories: ['/path/to/WalletLedger']
 INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
 INFO:     Started reloader process [12345] using StatReload
 INFO:     Started server process [12346]

@@ -1,4 +1,4 @@
-# Payment API - Technical Documentation
+# WalletLedger - Technical Documentation
 
 ## Table of Contents
 
@@ -14,7 +14,7 @@
 
 ## Project Overview
 
-The Payment API is a FastAPI-based backend service that provides order management and wallet functionality for payment processing. It's designed as a production-ready system with proper separation of concerns, database persistence, and RESTful API design.
+The WalletLedger is a FastAPI-based backend service that provides order management and wallet functionality for payment processing. It's designed as a production-ready system with proper separation of concerns, database persistence, and RESTful API design.
 
 ### Tech Stack
 
@@ -43,7 +43,7 @@ The Payment API is a FastAPI-based backend service that provides order managemen
 ### Project Structure
 
 ```
-payment-api/
+WalletLedger/
 ├── app/
 │   ├── __init__.py
 │   ├── auth.py           # Authentication framework (extensible)
@@ -551,7 +551,7 @@ Ensure you have the following installed:
 
 ```bash
 git clone <repository-url>
-cd payment-api
+cd WalletLedger
 ```
 
 ### Step 2: Set Up PostgreSQL Database
@@ -629,7 +629,7 @@ uv run uvicorn main:app --reload --port 8000
 **Expected output**:
 
 ```
-INFO:     Will watch for changes in these directories: ['/path/to/payment-api']
+INFO:     Will watch for changes in these directories: ['/path/to/WalletLedger']
 INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
 INFO:     Started reloader process [12345] using StatReload
 INFO:     Started server process [12346]
