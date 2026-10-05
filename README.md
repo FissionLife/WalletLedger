@@ -1,51 +1,63 @@
-# Payment API
+# WalletLedger (Payment API & AI Financial Bot)
 
-A FastAPI-based payment processing system with user management, order processing, and wallet functionality.
+A production-ready FastAPI-based payment processing, wallet ledger, and AI-powered financial assistant system with user management, order processing, wallet transactions, and Telegram Bot integration.
 
 ## Quick Links
 
 - 📖 [Complete Deployment Guide](DEPLOYMENT.md) - Step-by-step local setup instructions
 - 📚 [Technical Documentation](DOCUMENTATION.md) - Architecture, flows, and development guide
+- 👥 [Team & Architecture Guide](TEAM_GUIDE.md) - "Tank and Pipes" model, hackathon roles & bot architecture
 - 🔗 [API Documentation](http://localhost:8000/docs) - Interactive Swagger UI (after starting server)
 
 ## Prerequisites
 
 - Python 3.11+
-- Docker
-- PostgreSQL (via Docker)
+- [uv](https://github.com/astral-sh/uv) (Fast Python package and project manager)
+- Docker (for PostgreSQL) or SQLite (for local testing)
 
 ## Quick Start
 
-### 1. Start PostgreSQL
+### 1. Database Setup
 
+**Option A: PostgreSQL via Docker (Default)**
 ```bash
 docker run --name app_pg -e POSTGRES_PASSWORD=postgres -e POSTGRES_USER=postgres -e POSTGRES_DB=appdb -p 5432:5432 -d postgres:16
 ```
 
+**Option B: SQLite (Quick Local Testing)**
+Create a `.env` file in the root directory:
+```env
+DATABASE_URL=sqlite:///./fission.db
+```
+
 ### 2. Install Dependencies
 
+Use `uv` to automatically synchronize the environment and manage `.venv`:
 ```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
+uv sync
 ```
 
 ### 3. Run the Application
 
 ```bash
-uvicorn app.main:app --reload --port 8000
+uv run uvicorn main:app --reload --port 8000
 ```
 
-The API will be available at `http://localhost:8000`
+*Or run directly:*
+```bash
+uv run python main.py
+```
+
+The API will be available at `http://localhost:8000` (Swagger UI at `http://localhost:8000/docs`).
 
 ### 4. Seed Sample Data
 
 ```bash
 # Seed multiple users with wallets and orders
-python scripts/seed_data.py --all
+uv run python scripts/seed_data.py --all
 
 # Or seed a single user
-python scripts/seed_data.py CUST-001
+uv run python scripts/seed_data.py CUST-001
 ```
 
 ## API Endpoints
@@ -114,26 +126,41 @@ curl -X POST http://localhost:8000/wallet/CUST-001/debit \
 curl http://localhost:8000/wallet/CUST-001
 ```
 
+### Telegram Bot Webhook
+
+**Receive Telegram Update**
+```bash
+curl -X POST http://localhost:8000/bot/webhook \
+  -H "Content-Type: application/json" \
+  -d '{
+    "update_id": 10001,
+    "message": {
+      "chat": {"id": 12345},
+      "text": "/start"
+    }
+  }'
+```
+
 ## Testing Scenarios
 
-Run various test scenarios to validate the API:
+Run test scenarios to validate the API and ledger behaviors:
 
 ```bash
 # Run all scenarios with seeding
-python scripts/run_scenarios.py --scenario all --seed
+uv run python scripts/run_scenarios.py --scenario all --seed
 
 # Run specific scenario
-python scripts/run_scenarios.py --scenario orders_retry
-python scripts/run_scenarios.py --scenario wallet_concurrency
-python scripts/run_scenarios.py --scenario false_success
+uv run python scripts/run_scenarios.py --scenario orders_retry
+uv run python scripts/run_scenarios.py --scenario wallet_concurrency
+uv run python scripts/run_scenarios.py --scenario false_success
 
 # Repeat scenario multiple times
-python scripts/run_scenarios.py --scenario wallet_concurrency --repeat 5
+uv run python scripts/run_scenarios.py --scenario wallet_concurrency --repeat 5
 ```
 
 ## Database Management
 
-### Using SQL Files
+### PostgreSQL via Docker
 
 **Initialize schema:**
 ```bash
@@ -150,35 +177,72 @@ docker exec -i app_pg psql -U postgres -d appdb < sql/seed_data.sql
 docker exec -it app_pg psql -U postgres -d appdb
 ```
 
+### SQLite
+
+When using `DATABASE_URL=sqlite:///./fission.db`, tables are automatically initialized on application startup. You can inspect data using standard SQLite tools:
+```bash
+sqlite3 fission.db
+```
+
+## Working with `uv`
+
+- **Sync dependencies**: `uv sync`
+- **Add a dependency**: `uv add <package_name>`
+- **Remove a dependency**: `uv remove <package_name>`
+- **Run scripts**: `uv run python <script.py>`
+- **Run server**: `uv run uvicorn main:app --reload --port 8000`
+- **Prune unneeded packages**: `uv sync --clean`
+
 ## Project Structure
 
 ```
 payment-api/
 ├── app/
 │   ├── __init__.py
-│   ├── main.py           # FastAPI application
-│   ├── config.py         # Configuration
-│   ├── db.py             # Database setup
-│   ├── models.py         # SQLAlchemy models
-│   ├── schemas.py        # Pydantic schemas
-│   ├── services.py       # Business logic
-│   ├── routes_orders.py  # Order endpoints
-│   ├── routes_wallet.py  # Wallet endpoints
-│   └── auth.py           # Authentication utilities
+│   ├── auth.py                  # Authentication utilities
+│   ├── config.py                # Application settings
+│   ├── db.py                    # Database session & engine
+│   ├── models.py                # SQLAlchemy models (User, Wallet, Order)
+│   ├── routes_orders.py         # Order endpoints
+│   ├── routes_users.py          # User management endpoints
+│   ├── routes_wallet.py         # Wallet balance & transactions
+│   ├── schemas.py               # Pydantic validation schemas
+│   ├── services.py              # Core business & ledger logic
+│   ├── bot/                     # Telegram Bot integration
+│   │   ├── __init__.py
+│   │   ├── agent.py             # LangGraph state machine & reasoning
+│   │   └── main.py              # Telegram webhook endpoint
+│   └── services_ai/             # AI service layers
+│       ├── __init__.py
+│       ├── ai_gateway.py        # LiteLLM routing & API keys
+│       ├── mcp_server.py        # Model Context Protocol tools
+│       └── transaction_parser.py # PDF statement & chat parser
 ├── scripts/
-│   ├── run_scenarios.py  # Test scenarios
-│   └── seed_data.py      # Data seeding
-├── requirements.txt
+│   ├── run_scenarios.py         # Concurrency and idempotency test scenarios
+│   └── seed_data.py             # Sample data seeding utility
+├── sql/
+│   ├── schema.sql               # PostgreSQL schema
+│   └── seed_data.sql            # PostgreSQL sample data
+├── main.py                      # FastAPI application entry point
+├── pyproject.toml               # Project metadata & dependencies
+├── uv.lock                      # Locked dependency versions
 ├── .gitignore
+├── .python-version
+├── DEPLOYMENT.md                # Detailed deployment guide
+├── DOCUMENTATION.md             # In-depth architectural & API documentation
+├── TEAM_GUIDE.md                # Hackathon & "Tank and Pipes" architecture guide
 └── README.md
 ```
 
 ## Development
 
 The application uses:
-- FastAPI for the web framework
-- SQLAlchemy 2.x for ORM
-- PostgreSQL for the database
-- Pydantic v2 for data validation
+- **FastAPI** for high-performance REST APIs & ASGI webhook handling
+- **SQLAlchemy 2.x** for ORM persistence
+- **PostgreSQL & SQLite** database backends
+- **Pydantic v2** for request/response validation
+- **uv** for fast package & environment management
+- **aiogram & LangGraph** for AI conversational workflows
+- **LiteLLM** for provider-agnostic LLM routing
 
 Database schema is automatically initialized on application startup.

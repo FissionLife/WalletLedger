@@ -46,25 +46,36 @@ The Payment API is a FastAPI-based backend service that provides order managemen
 payment-api/
 ├── app/
 │   ├── __init__.py
-│   ├── main.py           # Application entry point, router registration
+│   ├── auth.py           # Authentication framework (extensible)
 │   ├── config.py         # Environment configuration
 │   ├── db.py             # Database connection and session management
 │   ├── models.py         # SQLAlchemy ORM models (User, Order, Wallet)
+│   ├── routes_orders.py  # Order endpoints
+│   ├── routes_users.py   # User endpoints
+│   ├── routes_wallet.py  # Wallet endpoints
 │   ├── schemas.py        # Pydantic request/response models with validation
 │   ├── services.py       # Business logic layer
-│   ├── routes_users.py   # User endpoints
-│   ├── routes_orders.py  # Order endpoints
-│   ├── routes_wallet.py  # Wallet endpoints
-│   └── auth.py           # Authentication framework (extensible)
+│   ├── bot/              # Telegram Bot & LangGraph agent modules
+│   │   ├── __init__.py
+│   │   ├── agent.py      # LangGraph state machine & reasoning
+│   │   └── main.py       # Telegram webhook and bot routes
+│   └── services_ai/      # AI services and agent tooling
+│       ├── __init__.py
+│       ├── ai_gateway.py # LLM routing via LiteLLM
+│       ├── mcp_server.py # Model Context Protocol tool integrations
+│       └── transaction_parser.py # PDF statement & text transaction parsing
 ├── scripts/
 │   ├── run_scenarios.py  # API testing scenarios
 │   └── seed_data.py      # Database seeding utility
 ├── sql/
 │   ├── schema.sql        # Database schema definition
 │   └── seed_data.sql     # Sample data for testing
-├── requirements.txt
+├── main.py               # Application entry point, router registration
+├── pyproject.toml        # Project metadata and dependencies (managed by uv)
+├── uv.lock               # Deterministic dependency lockfile
 ├── .gitignore
 ├── README.md
+├── TEAM_GUIDE.md
 ├── DEPLOYMENT.md
 └── DOCUMENTATION.md
 ```
@@ -532,8 +543,8 @@ GET /orders?customer_id=CUST-001
 Ensure you have the following installed:
 
 - **Python 3.11 or higher**
-- **Docker** (for PostgreSQL)
-- **pip** (Python package manager)
+- **uv** (Fast Python package and project manager)
+- **Docker** (for PostgreSQL) or SQLite for local testing
 - **Git** (for cloning the repository)
 
 ### Step 1: Clone the Repository
@@ -587,62 +598,32 @@ docker stop app_pg
 docker rm app_pg
 ```
 
-### Step 3: Create Python Virtual Environment
+### Step 3: Install Dependencies with uv
+
+Install all dependencies and synchronize the environment:
 
 ```bash
-python3.11 -m venv .venv
+uv sync
 ```
 
-**Activate the virtual environment**:
+*This automatically manages the `.venv` directory and installs locked dependencies from `pyproject.toml` and `uv.lock`.*
 
-On macOS/Linux:
+### Step 4: Configure Environment (Optional)
 
-```bash
-source .venv/bin/activate
-```
-
-On Windows:
+The application uses default configuration, but you can override it by creating a `.env` file (e.g. for PostgreSQL or local SQLite):
 
 ```bash
-.venv\Scripts\activate
-```
-
-### Step 4: Install Dependencies
-
-```bash
-pip install --upgrade pip
-pip install -r requirements.txt
-```
-
-**Verify installation**:
-
-```bash
-pip list
-```
-
-You should see:
-
-- fastapi
-- uvicorn
-- sqlalchemy
-- psycopg2-binary
-- pydantic
-- pydantic-settings
-- requests
-
-### Step 5: Configure Environment (Optional)
-
-The application uses default configuration, but you can override it by creating a `.env` file:
-
-```bash
-# .env file (optional)
+# PostgreSQL
 DATABASE_URL=postgresql+psycopg2://postgres:postgres@localhost:5432/appdb
+
+# Or for local SQLite:
+# DATABASE_URL=sqlite:///./fission.db
 ```
 
-### Step 6: Run the Application
+### Step 5: Run the Application
 
 ```bash
-uvicorn app.main:app --reload --port 8000
+uv run uvicorn main:app --reload --port 8000
 ```
 
 **Expected output**:
@@ -656,7 +637,7 @@ INFO:     Waiting for application startup.
 INFO:     Application startup complete.
 ```
 
-### Step 7: Verify Installation
+### Step 6: Verify Installation
 
 **Check health endpoint**:
 
@@ -676,10 +657,10 @@ Open your browser and navigate to:
 - Swagger UI: http://localhost:8000/docs
 - ReDoc: http://localhost:8000/redoc
 
-### Step 8: Seed Initial Data (Optional)
+### Step 7: Seed Initial Data (Optional)
 
 ```bash
-python scripts/seed_data.py CUST-001
+uv run python scripts/seed_data.py CUST-001
 ```
 
 This will:

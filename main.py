@@ -3,12 +3,14 @@ from app.db import init_db
 from app.routes_users import router as users_router
 from app.routes_orders import router as orders_router
 from app.routes_wallet import router as wallet_router
+from app.bot.main import bot_router
 
 app = FastAPI(title="Payment API", version="1.0.0")
 
 app.include_router(users_router)
 app.include_router(orders_router)
 app.include_router(wallet_router)
+app.include_router(bot_router)
 
 
 @app.on_event("startup")

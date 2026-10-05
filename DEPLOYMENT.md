@@ -13,9 +13,9 @@ Before you begin, ensure you have the following installed:
 | Software | Version | Check Command       | Installation                                     |
 | -------- | ------- | ------------------- | ------------------------------------------------ |
 | Python   | 3.11+   | `python3 --version` | [python.org](https://www.python.org/downloads/)  |
+| uv       | Latest  | `uv --version`      | [astral.sh/uv](https://github.com/astral-sh/uv)  |
 | Docker   | Latest  | `docker --version`  | [docker.com](https://www.docker.com/get-started) |
 | Git      | Latest  | `git --version`     | [git-scm.com](https://git-scm.com/downloads)     |
-| pip      | Latest  | `pip --version`     | Included with Python                             |
 
 ---
 
@@ -60,24 +60,24 @@ abc123def456   postgres:16   Up 2 seconds   0.0.0.0:5432->5432/tcp
 docker logs app_pg
 ```
 
-### Step 3: Create Python Virtual Environment
+### Step 3: Install Dependencies with uv
+
+Use `uv` to automatically sync the project environment and install all dependencies:
 
 ```bash
-python3.11 -m venv .venv
+uv sync
 ```
 
-**Activate the virtual environment:**
+*This automatically creates a `.venv` directory and installs the dependencies from `pyproject.toml` and `uv.lock`.*
+
+### Step 4: (Optional) Activate Virtual Environment
+
+With `uv`, commands can be run directly using `uv run <command>` without manual activation. However, if you wish to activate the virtual environment manually:
 
 On macOS/Linux:
 
 ```bash
 source .venv/bin/activate
-```
-
-On Windows (Command Prompt):
-
-```bash
-.venv\Scripts\activate.bat
 ```
 
 On Windows (PowerShell):
@@ -86,37 +86,18 @@ On Windows (PowerShell):
 .venv\Scripts\Activate.ps1
 ```
 
-You should see `(.venv)` prefix in your terminal prompt.
-
-### Step 4: Install Python Dependencies
+On Windows (Command Prompt):
 
 ```bash
-pip install --upgrade pip
-pip install -r requirements.txt
+.venv\Scripts\activate.bat
 ```
-
-**Verify installation:**
-
-```bash
-pip list
-```
-
-Expected packages:
-
-- fastapi==0.109.0
-- uvicorn==0.27.0
-- sqlalchemy==2.0.25
-- psycopg2-binary==2.9.9
-- pydantic==2.5.3
-- pydantic-settings==2.1.0
-- requests==2.31.0
 
 ### Step 5: Initialize Database Schema (Option A - Automatic)
 
 The application automatically creates tables on startup. Just run:
 
 ```bash
-uvicorn app.main:app --reload --port 8000
+uv run uvicorn main:app --reload --port 8000
 ```
 
 The database schema will be created automatically.
@@ -139,7 +120,7 @@ docker exec -i app_pg psql -U postgres -d appdb < sql/schema.sql
 ### Step 6: Run the Application
 
 ```bash
-uvicorn app.main:app --reload --port 8000
+uv run uvicorn main:app --reload --port 8000
 ```
 
 **Expected output:**
@@ -178,10 +159,10 @@ Expected response:
 
 ```bash
 # Seed single user
-python scripts/seed_data.py CUST-001
+uv run python scripts/seed_data.py CUST-001
 
 # Seed multiple users
-python scripts/seed_data.py --all
+uv run python scripts/seed_data.py --all
 ```
 
 **Option B: Using SQL File**
@@ -317,5 +298,5 @@ docker run --name my_pg \
 echo "DATABASE_URL=postgresql+psycopg2://myuser:mypassword@localhost:5433/mydb" > .env
 
 # Run application
-uvicorn app.main:app --reload --port 8000
+uv run uvicorn main:app --reload --port 8000
 ```

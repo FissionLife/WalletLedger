@@ -32,7 +32,7 @@ Use `uv` to automatically sync the environment and create a `.venv`:
 ```bash
 uv sync
 ```
-*(If you need to prune old dependencies, you can run `uv pip sync` or `uv sync --clean`)*
+*(If you need to prune old dependencies, you can run `uv sync --clean`)*
 
 ### 2. Set up SQLite Database
 Create a `.env` file in the root directory:
@@ -42,7 +42,7 @@ DATABASE_URL=sqlite:///./fission.db
 
 ### 3. Run the Application
 ```bash
-uv run uvicorn app.main:app --reload --port 8000
+uv run uvicorn main:app --reload --port 8000
 ```
 The FastAPI (which includes the Telegram Bot Webhook) will run on `http://localhost:8000`.
 
