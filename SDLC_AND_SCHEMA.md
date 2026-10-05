@@ -50,7 +50,7 @@ We have rebalanced the work so **You (Role 1 & 6)** also own the **Core Ledger E
   - **Confirmation / Human-in-the-Loop Node**: For large transfers or ambiguous transactions, ask confirmation before committing to the DB.
   - **Response Synthesis Node**: Generates friendly, concise Telegram-friendly Markdown responses.
 
-### 3. Komal (Role 3 - AI Gateway & Round-Robin Key Vault)
+### 3. Komal (Role 3 - AI Gateway & Mode Personas)
 - **Gateway Module (`app/services_ai/ai_gateway.py`)**:
   - Wrap `litellm.completion` to make the bot 100% provider agnostic (Gemini, OpenAI, Claude, Groq, Ollama).
   - **Dynamic User Key Management**:
@@ -60,8 +60,12 @@ We have rebalanced the work so **You (Role 1 & 6)** also own the **Core Ledger E
     - Cycle through the user's active API keys on consecutive requests to bypass rate limits (RPM / TPM).
   - **Automatic Fallback**:
     - If a key throws a `RateLimitError` (429) or quota failure, switch immediately to the next available key/provider.
+- **System Prompts & Mode Personas (`app/services_ai/prompts.py`)**:
+  - *Fold App Financial Coach Persona*: Encouraging, data-driven, highlighting savings opportunities.
+  - *Ruthless Budgeter Persona*: Direct, stern feedback when discretionary spending goes high.
+  - *Telegram Quick-Summary Persona*: Compact bullet-points formatted cleanly with emojis for mobile chat.
 
-### 4. Meet (Role 4 - MCP Server & Tool Registry)
+### 4. Meet (Role 4 - MCP Server, Financial Skills & Test Seeder)
 - **MCP Server & Tool Definitions (`app/services_ai/mcp_server.py`)**:
   - Expose clean, typed tools for the LangGraph agent to execute:
     - `log_expense(user_id, amount, category, merchant, account_name, description)`
@@ -70,8 +74,12 @@ We have rebalanced the work so **You (Role 1 & 6)** also own the **Core Ledger E
     - `get_pipe_balances(user_id)`
     - `get_spending_breakdown(user_id, period, category)`
     - `save_user_api_key(user_id, provider, api_key)`
-  - Interface between Gopal's agent and the Database / Core Ledger service.
-  - Validate parameters with Pydantic schemas.
+- **Specialized Financial Skills on MCP**:
+  - `skill_budget_alert_check(user_id)`: Checks if any category has crossed 80% or 100% of its budget cap.
+  - `skill_recurring_bill_detector(user_id)`: Flags repeating transactions to identify hidden/forgotten subscriptions.
+  - `skill_emergency_fund_calculator(user_id)`: Compares total liquid pipe balances against monthly expense burn rate.
+- **Mock Demo Data Seeder (`scripts/seed_demo_data.py`)**:
+  - Creates a test user with mock accounts (HDFC, Cash, Credit Card) and 50 realistic transactions so the team can demo and test instantly without typing manual expenses.
 
 ### 5. Surya (Role 5 - Document Ingestion & Financial Insights)
 - **Statement & Receipt Ingestion (`app/services_ai/transaction_parser.py`)**:

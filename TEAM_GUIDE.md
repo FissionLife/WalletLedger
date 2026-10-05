@@ -56,14 +56,71 @@ The architecture has been split so everyone can work in parallel without merge c
   Telegram bot router (`aiogram`), SQLite3/Postgres schema, core balance ledger & pipe transfers, CI/CD.
 - **Gopal (Role 2 - LangGraph Agent)** (`app/bot/agent.py`):
   Conversational StateGraph brain, intent detection, MCP tool invocation, multi-turn confirmations.
-- **Komal (Role 3 - AI Gateway)** (`app/services_ai/ai_gateway.py`):
-  LiteLLM provider-agnostic routing, user API key encryption/vault, round-robin rotation, and rate-limit fallbacks.
-- **Meet (Role 4 - MCP Server)** (`app/services_ai/mcp_server.py`):
-  Standardized MCP / LangChain tools (`log_expense`, `log_income`, `transfer_funds`, `get_balances`, `save_key`).
+- **Komal (Role 3 - AI Gateway & Mode Personas)** (`app/services_ai/ai_gateway.py`, `app/services_ai/prompts.py`):
+  LiteLLM provider-agnostic routing, user API key encryption/vault, round-robin rotation, prompt personas (*Coach*, *Ruthless Budgeter*, *Quick Summary*).
+- **Meet (Role 4 - MCP Server, Financial Skills & Seeder)** (`app/services_ai/mcp_server.py`, `scripts/seed_demo_data.py`):
+  Standardized MCP tools (`log_expense`, `log_income`, `transfer_funds`), financial skills (`skill_budget_alert_check`, `skill_recurring_bill_detector`, `skill_emergency_fund_calculator`), demo data seeder script.
 - **Surya (Role 5 - Document Ingestion & Insights)** (`app/services_ai/transaction_parser.py`):
   PhonePe / bank PDF statement parser, receipt OCR/chat extraction, smart financial insights & "Reduce Money Mode".
+
+---
+
+## ⚡ Quickstart Commands for the Whole Team
+
+Copy and run these commands to get right to work on your role:
+
+### 1. Clone & Setup Project (All Members)
+```bash
+# Clone the repository
+git clone https://github.com/FissionLife/WalletLedger.git
+cd WalletLedger
+
+# Install uv if you don't have it already
+# Windows: powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+# Mac/Linux: curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Sync dependencies and create .venv automatically
+uv sync
+```
+
+### 2. Create Your Feature Branch
+Pick your role and create your branch:
+```bash
+# For You (Role 1 & 6)
+git checkout -b feature/role-1-6-core-ledger
+
+# For Gopal (Role 2)
+git checkout -b feature/role-2-langgraph-agent
+
+# For Komal (Role 3)
+git checkout -b feature/role-3-ai-gateway
+
+# For Meet (Role 4)
+git checkout -b feature/role-4-mcp-tools
+
+# For Surya (Role 5)
+git checkout -b feature/role-5-ingestion-insights
+```
+
+### 3. Run Application on Localhost
+```bash
+# Start the FastAPI + Telegram Webhook server
+uv run uvicorn main:app --reload --port 8000
+```
+
+### 4. Seed Demo Data (Meet's script)
+```bash
+uv run python scripts/seed_demo_data.py
+```
+
+### 5. Git Commit & Push PR
+```bash
+git add .
+git commit -m "feat(role): implement component according to SDLC contract"
+git push -u origin <your-feature-branch>
+```
 
 ## 🛠️ Working with `uv`
 - To add a new package: `uv add <package_name>`
 - To remove a package: `uv remove <package_name>`
-- To run scripts: `uv run python scripts/seed_data.py`
+- To clean/prune unused packages: `uv sync --clean`
