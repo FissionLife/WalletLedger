@@ -2,18 +2,20 @@ from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
-    """Application configuration settings."""
+    """Application configuration settings for WalletLedger."""
 
-    # Database configuration
-    database_url: str = "postgresql+psycopg2://postgres:1234@localhost:5432/appdb"
+    # Database configuration (defaults to local SQLite for instant local dev without Docker)
+    database_url: str = "sqlite:///./walletledger.db"
 
-    # Order processing configuration
-    enable_strict_idempotency_check: bool = False
-    transaction_settlement_window: float = 0.0
-    enable_graceful_degradation: bool = False
+    # Telegram Bot Token (from BotFather)
+    telegram_bot_token: str = ""
 
-    # Wallet operation configuration
-    wallet_operation_lock_timeout: int = 0
+    # Webhook vs Polling mode (True = webhook, False = polling for local dev)
+    use_webhook: bool = False
+    webhook_url: str = ""
+
+    # Security key for encrypting user API keys
+    secret_key: str = "walletledger-insecure-dev-key-change-in-prod"
 
     class Config:
         env_file = ".env"
