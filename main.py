@@ -1,9 +1,10 @@
 from fastapi import FastAPI
-from app.db import init_db
-from app.routes_users import router as users_router
-from app.routes_orders import router as orders_router
-from app.routes_wallet import router as wallet_router
+
 from app.bot.main import bot_router
+from app.db import init_db
+from app.routes_orders import router as orders_router
+from app.routes_users import router as users_router
+from app.routes_wallet import router as wallet_router
 
 app = FastAPI(title="Payment API", version="1.0.0")
 
@@ -27,9 +28,12 @@ def root():
 def health():
     return {"status": "healthy"}
 
+
 def start_dev():
     import uvicorn
+
     uvicorn.run("main:app", host="127.0.0.1", port=8000, reload=True)
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     start_dev()

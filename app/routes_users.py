@@ -1,9 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from typing import List
-from app.db import get_db
-from app.schemas import UserCreate, UserResponse, UserDetail
+
 from app import services
+from app.db import get_db
+from app.schemas import UserCreate, UserDetail, UserResponse
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -27,7 +27,7 @@ def get_user(user_id: str, db: Session = Depends(get_db)):
     return user
 
 
-@router.get("", response_model=List[UserDetail])
+@router.get("", response_model=list[UserDetail])
 def list_users(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
     """List all users."""
     users = services.list_users(db, skip=skip, limit=limit)

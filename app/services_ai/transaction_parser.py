@@ -1,6 +1,7 @@
 # Role 5: Transaction Engine (PDF & Chat Parsing)
 # Handles extracting financial data from user inputs
 
+
 def parse_phonepe_pdf(file_bytes):
     """
     Extracts text from a PhonePe or bank statement PDF.
@@ -9,6 +10,7 @@ def parse_phonepe_pdf(file_bytes):
     # TODO: Use PyPDF2 or similar to extract text
     # TODO: Call AI Gateway to convert text -> structured JSON
     pass
+
 
 def parse_chat_expense(text: str):
     """

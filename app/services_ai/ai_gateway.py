@@ -1,10 +1,11 @@
 # Role 3: AI Gateway (Provider Agnostic)
 # Handles LLM routing, API keys, and round-robin logic
 
+
 class AIGateway:
     def __init__(self):
         self.default_model = "gemini-flash"
-    
+
     def generate_response(self, user_id: str, prompt: str):
         """
         1. Fetch user's Gemini/OpenAI API key from DB

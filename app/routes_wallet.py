@@ -1,8 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+
+from app import services
 from app.db import get_db
 from app.schemas import WalletOperation, WalletResponse
-from app import services
 
 router = APIRouter(prefix="/wallet", tags=["wallet"])
 

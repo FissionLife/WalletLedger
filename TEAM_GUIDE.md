@@ -1,6 +1,6 @@
 # FissionLifebot - Team Guide & Architecture
 
-FissionLifebot is an AI-powered Telegram bot (similar to Fold App) that helps users track their expenses, categorize them, and generate comprehensive statistics. 
+FissionLifebot is an AI-powered Telegram bot (similar to Fold App) that helps users track their expenses, categorize them, and generate comprehensive statistics.
 
 This project is a preparatory round for our hackathon, designed for a 6-person team to collaborate effectively.
 
@@ -16,9 +16,9 @@ To make the bot highly adaptable to the real world, we are modeling user finance
 3. **Different Modes**: The AI agent should be able to switch modes based on user query (e.g., "Reduce Money Mode" to find subscriptions to cut, or "Analytics Mode" to see where the most was spent).
 
 ## 💽 Storage & Database (SQLite3 Support)
-The system is built to be highly adaptable. Users can store their data wherever they want. 
-While we default to PostgreSQL, **SQLite3 is fully supported and recommended for easy local testing**. 
-- To use SQLite, simply set the environment variable: `DATABASE_URL="sqlite:///./fission.db"` 
+The system is built to be highly adaptable. Users can store their data wherever they want.
+While we default to PostgreSQL, **SQLite3 is fully supported and recommended for easy local testing**.
+- To use SQLite, simply set the environment variable: `DATABASE_URL="sqlite:///./fission.db"`
 - LangGraph checkpointing can also be configured to use `sqlite3` locally.
 
 ---

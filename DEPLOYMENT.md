@@ -12,7 +12,7 @@ Before you begin, ensure you have the following installed:
 
 | Software | Version | Check Command       | Installation                                     |
 | -------- | ------- | ------------------- | ------------------------------------------------ |
-| Python   | 3.11+   | `python3 --version` | [python.org](https://www.python.org/downloads/)  |
+| Python   | 3.14+   | `python --version`  | [python.org](https://www.python.org/downloads/)  |
 | uv       | Latest  | `uv --version`      | [astral.sh/uv](https://github.com/astral-sh/uv)  |
 | Docker   | Latest  | `docker --version`  | [docker.com](https://www.docker.com/get-started) |
 | Git      | Latest  | `git --version`     | [git-scm.com](https://git-scm.com/downloads)     |

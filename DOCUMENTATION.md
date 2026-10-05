@@ -23,7 +23,7 @@ The Payment API is a FastAPI-based backend service that provides order managemen
 - **ORM**: SQLAlchemy 2.0.25
 - **Validation**: Pydantic v2
 - **Server**: Uvicorn
-- **Python**: 3.11+
+- **Python**: 3.14+ (pinned in `.python-version`)
 
 ### Key Features
 
@@ -542,7 +542,7 @@ GET /orders?customer_id=CUST-001
 
 Ensure you have the following installed:
 
-- **Python 3.11 or higher**
+- **Python 3.14 or higher**
 - **uv** (Fast Python package and project manager)
 - **Docker** (for PostgreSQL) or SQLite for local testing
 - **Git** (for cloning the repository)

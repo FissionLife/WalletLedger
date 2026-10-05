@@ -1,0 +1,7 @@
+{
+  "$schema": "https://devprune.vkrishna04.me/schemas/v1/devprune.schema.json",
+  "project_name": "WalletLedger",
+  "prunable": {
+    "directories": []
+  }
+}

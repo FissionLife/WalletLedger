@@ -11,7 +11,7 @@ A production-ready FastAPI-based payment processing, wallet ledger, and AI-power
 
 ## Prerequisites
 
-- Python 3.11+
+- Python 3.14+ (pinned in `.python-version`)
 - [uv](https://github.com/astral-sh/uv) (Fast Python package and project manager)
 - Docker (for PostgreSQL) or SQLite (for local testing)
 
@@ -223,16 +223,49 @@ payment-api/
 ├── sql/
 │   ├── schema.sql               # PostgreSQL schema
 │   └── seed_data.sql            # PostgreSQL sample data
+├── .github/
+│   └── workflows/
+│       └── lint.yml             # GitHub Actions CI linting, formatting & auto-heal workflow
+├── .pre-commit-config.yaml      # Pre-commit hook definitions (ruff, ruff-format, hooks)
+├── project.devprune.json        # dev-prune workspace configuration
 ├── main.py                      # FastAPI application entry point
-├── pyproject.toml               # Project metadata & dependencies
+├── pyproject.toml               # Project metadata, dependencies & ruff config
 ├── uv.lock                      # Locked dependency versions
 ├── .gitignore
-├── .python-version
+├── .python-version              # Python 3.14 pin
 ├── DEPLOYMENT.md                # Detailed deployment guide
 ├── DOCUMENTATION.md             # In-depth architectural & API documentation
 ├── TEAM_GUIDE.md                # Hackathon & "Tank and Pipes" architecture guide
 └── README.md
 ```
+
+## Code Quality, Pre-Commit & CI/CD
+
+### Local Formatting & Linting
+The project uses **Ruff** for fast linting and code formatting:
+```bash
+# Check code and auto-fix issues
+uv run ruff check --fix .
+
+# Auto-format all files
+uv run ruff format .
+```
+
+### Git Pre-Commit Hooks
+Pre-commit hooks are pre-configured to ensure clean commits:
+```bash
+# Install git pre-commit hooks
+uv run pre-commit install
+
+# Run against all files manually
+uv run pre-commit run --all-files
+```
+
+### GitHub Actions CI/CD (Auto-Healing)
+A GitHub Actions workflow is set up in `.github/workflows/lint.yml` on push and pull requests:
+- Automatically validates code against Ruff formatting and lint rules.
+- **Auto-heals**: If any formatting or lint fixes are needed, the workflow automatically fixes them and commits back to the branch.
+- **Non-blocking**: Designed not to break commits, maintaining rapid iteration speed for the hackathon team while keeping the repository clean.
 
 ## Development
 
@@ -244,5 +277,6 @@ The application uses:
 - **uv** for fast package & environment management
 - **aiogram & LangGraph** for AI conversational workflows
 - **LiteLLM** for provider-agnostic LLM routing
+- **Ruff & Pre-Commit** for linting, formatting, and auto-healing
 
 Database schema is automatically initialized on application startup.

@@ -5,9 +5,11 @@ from pydantic import BaseModel
 
 bot_router = APIRouter(prefix="/bot", tags=["Telegram Bot"])
 
+
 class WebhookData(BaseModel):
     update_id: int
     message: dict = None
+
 
 @bot_router.post("/webhook")
 async def telegram_webhook(data: WebhookData):
