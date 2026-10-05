@@ -48,16 +48,20 @@ The FastAPI (which includes the Telegram Bot Webhook) will run on `http://localh
 
 ---
 
-## 👥 Team Collaboration & Roles
+## 👥 Team Collaboration & Assignments
 
-The architecture has been split into 6 parallel roles so we can all work without merge conflicts. **Claim a role, create a new branch (`git checkout -b feature/role-1`), and submit a Pull Request!**
+The architecture has been split so everyone can work in parallel without merge conflicts. **Create a branch for your assigned role and submit PRs!**
 
-1. **Telegram Bot Core (`app/bot/main.py`)**: Handle webhooks, basic commands, and parsing Telegram updates using `aiogram`.
-2. **LangGraph Agent (`app/bot/agent.py`)**: Build the state machine, "Tank and Pipes" reasoning, and conversational "modes" (Analytics Mode, Reduce Expense Mode).
-3. **AI Gateway (`app/services_ai/ai_gateway.py`)**: Implement LiteLLM routing, and fetch user-specific Gemini API keys from the database securely.
-4. **MCP Server (`app/services_ai/mcp_server.py`)**: Expose the backend payment API (get balance of specific pipes, log expense, transfer money) as tools for LangGraph.
-5. **Transaction Engine (`app/services_ai/transaction_parser.py`)**: Build the logic to extract expenses from chat text and parse PhonePe PDF statements, associating them with the correct "Pipe".
-6. **Infrastructure & Deployment**: Manage this `TEAM_GUIDE.md`, the SQLite/Postgres schemas for the Tank model, and CI/CD for our PRs.
+- **You (Role 1 & 6 + Core Ledger)** (`app/bot/main.py`, `app/db.py`, `app/models.py`, `app/services/ledger.py`):
+  Telegram bot router (`aiogram`), SQLite3/Postgres schema, core balance ledger & pipe transfers, CI/CD.
+- **Gopal (Role 2 - LangGraph Agent)** (`app/bot/agent.py`):
+  Conversational StateGraph brain, intent detection, MCP tool invocation, multi-turn confirmations.
+- **Komal (Role 3 - AI Gateway)** (`app/services_ai/ai_gateway.py`):
+  LiteLLM provider-agnostic routing, user API key encryption/vault, round-robin rotation, and rate-limit fallbacks.
+- **Meet (Role 4 - MCP Server)** (`app/services_ai/mcp_server.py`):
+  Standardized MCP / LangChain tools (`log_expense`, `log_income`, `transfer_funds`, `get_balances`, `save_key`).
+- **Surya (Role 5 - Document Ingestion & Insights)** (`app/services_ai/transaction_parser.py`):
+  PhonePe / bank PDF statement parser, receipt OCR/chat extraction, smart financial insights & "Reduce Money Mode".
 
 ## 🛠️ Working with `uv`
 - To add a new package: `uv add <package_name>`
