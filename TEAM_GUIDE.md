@@ -52,7 +52,7 @@ The FastAPI (which includes the Telegram Bot Webhook) will run on `http://localh
 
 The architecture has been split so everyone can work in parallel without merge conflicts. **Create a branch for your assigned role and submit PRs!**
 
-- **You (Role 1 & 6 + Core Ledger)** (`app/bot/main.py`, `app/db.py`, `app/models.py`, `app/services/ledger.py`):
+- **Krishna (Role 1 & 6 + Core Ledger)** (`app/bot/main.py`, `app/db.py`, `app/models.py`, `app/services/ledger.py`):
   Telegram bot router (`aiogram`), SQLite3/Postgres schema, core balance ledger & pipe transfers, CI/CD.
 - **Gopal (Role 2 - LangGraph Agent)** (`app/bot/agent.py`):
   Conversational StateGraph brain, intent detection, MCP tool invocation, multi-turn confirmations.
@@ -86,7 +86,7 @@ uv sync
 ### 2. Create Your Feature Branch
 Pick your role and create your branch:
 ```bash
-# For You (Role 1 & 6)
+# For Krishna (Role 1 & 6)
 git checkout -b feature/role-1-6-core-ledger
 
 # For Gopal (Role 2)

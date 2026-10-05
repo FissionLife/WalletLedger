@@ -1,5 +1,5 @@
 # Role 1: Telegram Bot Core
-# Assigned to: You
+# Assigned to: Krishna
 import logging
 from typing import Any
 

@@ -8,11 +8,11 @@ WalletLedger is a **comprehensive personal expense tracker and financial intelli
 
 ### Workload Assessment:
 Previously, Role 5 (Surya) was overloaded with PDF parsing, chat NLP, database calculations, AND financial advice.
-We have rebalanced the work so **You (Role 1 & 6)** also own the **Core Ledger Engine** (since you are designing the database schema anyway), while **Surya (Role 5)** focuses on **Document Ingestion & Financial Intelligence**.
+We have rebalanced the work so **Krishna (Role 1 & 6)** also owns the **Core Ledger Engine** (since Krishna is designing the database schema anyway), while **Surya (Role 5)** focuses on **Document Ingestion & Financial Intelligence**.
 
 | Member | Role ID | Primary Focus | Scope & Complexity |
 |---|---|---|---|
-| **You** | **Role 1 & 6 + Core Ledger** | Telegram Bot Interface, DB Schema & Core Balance Math | **Balanced (Medium-High)**: Owns DB models, balance calculations, Telegram routing & deployment. |
+| **Krishna** | **Role 1 & 6 + Core Ledger** | Telegram Bot Interface, DB Schema & Core Balance Math | **Balanced (Medium-High)**: Owns DB models, balance calculations, Telegram routing & deployment. |
 | **Gopal** | **Role 2** | LangGraph Agent Workflow ("The Brain") | **Balanced (Medium)**: State machine, intent routing, tool calling, multi-turn confirmations. |
 | **Komal** | **Role 3** | AI Gateway & Round-Robin Key Vault | **Balanced (Medium)**: LiteLLM provider abstraction, user key encryption & round-robin rotation. |
 | **Meet** | **Role 4** | MCP Server & Tool Registry | **Balanced (Medium)**: Exposing ledger & analytics actions as standardized MCP / LangChain tools. |
@@ -22,7 +22,7 @@ We have rebalanced the work so **You (Role 1 & 6)** also own the **Core Ledger E
 
 ## 📋 Detailed Task Breakdown per Person
 
-### 1. You (Role 1 & 6 + Core Ledger Engine)
+### 1. Krishna (Role 1 & 6 + Core Ledger Engine)
 - **Database Layer (`app/db.py`, `app/models.py`)**:
   - Implement SQLite3 / PostgreSQL schema using SQLAlchemy 2.0.
   - Models: `User`, `Account`, `Category`, `Merchant`, `Transaction`, `Subscription`, `ApiKey`.
@@ -173,7 +173,7 @@ CREATE TABLE api_keys (
 
 ## 🤝 Code Contracts & Interfaces
 
-### Contract 1: Bot (You) ➡️ LangGraph Agent (Gopal)
+### Contract 1: Bot (Krishna) ➡️ LangGraph Agent (Gopal)
 ```python
 # app/bot/agent.py
 async def process_user_interaction(chat_id: str, text: str, attachments: list = None) -> str:
@@ -199,7 +199,7 @@ def execute_tool(tool_name: str, **kwargs) -> dict:
     ...
 ```
 
-### Contract 4: MCP Tools (Meet) ➡️ Core Ledger Service (You)
+### Contract 4: MCP Tools (Meet) ➡️ Core Ledger Service (Krishna)
 ```python
 # app/services/ledger.py
 def record_transaction(
@@ -219,7 +219,7 @@ def transfer_funds(user_id: str, from_account: str, to_account: str, amount: flo
     ...
 ```
 
-### Contract 5: Bot (You) ➡️ Ingestion & Insights Engine (Surya)
+### Contract 5: Bot (Krishna) ➡️ Ingestion & Insights Engine (Surya)
 ```python
 # app/services_ai/transaction_parser.py
 async def parse_statement_file(file_bytes: bytes, file_type: str = "pdf") -> list[dict]:
@@ -239,7 +239,7 @@ def generate_financial_insights(user_id: str, mode: str = "summary") -> dict:
 1. **Pull the latest `main` branch**: `git pull origin main`
 2. **Setup virtual environment**: `uv sync`
 3. **Branch out**:
-   - You: `feature/role-1-6-core-ledger`
+   - Krishna: `feature/role-1-6-core-ledger`
    - Gopal: `feature/role-2-langgraph`
    - Komal: `feature/role-3-ai-gateway`
    - Meet: `feature/role-4-mcp-tools`
