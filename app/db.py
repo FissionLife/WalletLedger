@@ -4,20 +4,27 @@ from sqlalchemy.orm import sessionmaker
 from app.config import settings
 from app.models import Base
 
-# Database engine with connection pooling and health checks
-# pool_pre_ping ensures stale connections are recycled
-# Default isolation level: READ COMMITTED (PostgreSQL default)
-# This provides optimal balance between consistency and performance
-# MVCC handles concurrent transactions without explicit locking
-engine = create_engine(settings.database_url, pool_pre_ping=True)
+# Configure engine arguments based on DB dialect
+connect_args = {}
+if settings.database_url.startswith("sqlite"):
+    connect_args["check_same_thread"] = False
+
+engine = create_engine(
+    settings.database_url,
+    connect_args=connect_args,
+    pool_pre_ping=True,
+)
+
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
 def init_db():
+    """Initializes tables in database."""
     Base.metadata.create_all(bind=engine)
 
 
 def get_db():
+    """Dependency for yielding database sessions."""
     db = SessionLocal()
     try:
         yield db
