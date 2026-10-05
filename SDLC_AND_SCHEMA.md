@@ -176,7 +176,9 @@ async def process_user_interaction(chat_id: str, text: str, attachments: list = 
 ### Contract 2: LangGraph Agent (Gopal) ➡️ AI Gateway (Komal)
 ```python
 # app/services_ai/ai_gateway.py
-async def ask_llm(user_id: str, system_prompt: str, user_prompt: str, model_preference: str = None) -> str:
+async def ask_llm(
+    user_id: str, system_prompt: str, user_prompt: str, model_preference: str = None
+) -> str:
     """Pulls user's round-robin API key and executes via LiteLLM."""
     ...
 ```
@@ -192,9 +194,17 @@ def execute_tool(tool_name: str, **kwargs) -> dict:
 ### Contract 4: MCP Tools (Meet) ➡️ Core Ledger Service (You)
 ```python
 # app/services/ledger.py
-def record_transaction(user_id: str, amount: float, account_name: str, category_name: str, merchant_name: str = None, tx_type: str = "expense") -> dict:
+def record_transaction(
+    user_id: str,
+    amount: float,
+    account_name: str,
+    category_name: str,
+    merchant_name: str = None,
+    tx_type: str = "expense",
+) -> dict:
     """Applies atomic debit/credit to account balance and creates transaction record."""
     ...
+
 
 def transfer_funds(user_id: str, from_account: str, to_account: str, amount: float) -> dict:
     """Transfers funds between pipes without counting as an expense."""
@@ -207,6 +217,7 @@ def transfer_funds(user_id: str, from_account: str, to_account: str, amount: flo
 async def parse_statement_file(file_bytes: bytes, file_type: str = "pdf") -> list[dict]:
     """Parses a PhonePe / bank statement PDF and returns a list of extracted transactions."""
     ...
+
 
 def generate_financial_insights(user_id: str, mode: str = "summary") -> dict:
     """Generates analytics for 'where most was spent' or 'reduce money mode'."""
