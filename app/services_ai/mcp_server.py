@@ -6,8 +6,9 @@ MCP transport server). The registry gives the agent one stable dispatch point.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import datetime, timedelta
-from typing import Any, Callable
+from typing import Any
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -55,14 +56,22 @@ def log_expense(
     description: str | None = None,
 ) -> dict[str, Any]:
     """Record an expense and debit its payment account."""
+
     def run(db: Session, **values: Any) -> dict[str, Any]:
         user = _resolve_user(db, values.pop("user_id"))
         values["user_id"] = user.id
         values["amount"] = _positive_amount(values["amount"])
         return record_transaction(db, tx_type="expense", **values)
 
-    return _with_db(run, user_id=user_id, amount=amount, category_name=category,
-                    merchant_name=merchant, account_name=account_name, description=description)
+    return _with_db(
+        run,
+        user_id=user_id,
+        amount=amount,
+        category_name=category,
+        merchant_name=merchant,
+        account_name=account_name,
+        description=description,
+    )
 
 
 def log_income(
@@ -73,14 +82,21 @@ def log_income(
     description: str | None = None,
 ) -> dict[str, Any]:
     """Record income and credit its destination account."""
+
     def run(db: Session, **values: Any) -> dict[str, Any]:
         user = _resolve_user(db, values.pop("user_id"))
         values["user_id"] = user.id
         values["amount"] = _positive_amount(values["amount"])
         return record_transaction(db, tx_type="income", **values)
 
-    return _with_db(run, user_id=user_id, amount=amount, account_name=source_account,
-                    category_name=category, description=description)
+    return _with_db(
+        run,
+        user_id=user_id,
+        amount=amount,
+        account_name=source_account,
+        category_name=category,
+        description=description,
+    )
 
 
 def transfer_funds(
@@ -91,14 +107,21 @@ def transfer_funds(
     description: str | None = None,
 ) -> dict[str, Any]:
     """Transfer money between accounts without recording an expense."""
+
     def run(db: Session, **values: Any) -> dict[str, Any]:
         user = _resolve_user(db, values.pop("user_id"))
         values["user_id"] = user.id
         values["amount"] = _positive_amount(values["amount"])
         return transfer_between_pipes(db, **values)
 
-    return _with_db(run, user_id=user_id, from_account_name=from_account,
-                    to_account_name=to_account, amount=amount, description=description)
+    return _with_db(
+        run,
+        user_id=user_id,
+        from_account_name=from_account,
+        to_account_name=to_account,
+        amount=amount,
+        description=description,
+    )
 
 
 def get_pipe_balances(user_id: str) -> dict[str, Any]:
@@ -122,46 +145,68 @@ def get_spending_breakdown(
         stmt = (
             select(Category.name, func.sum(Transaction.amount))
             .outerjoin(Category, Transaction.category_id == Category.id)
-            .where(Transaction.user_id == uid,
-                   Transaction.transaction_type == "expense",
-                   Transaction.created_at >= start)
+            .where(
+                Transaction.user_id == uid,
+                Transaction.transaction_type == "expense",
+                Transaction.created_at >= start,
+            )
             .group_by(Category.name)
         )
-        breakdown = {name or "Uncategorized": round(float(total), 2)
-                     for name, total in db.execute(stmt)}
+        breakdown = {
+            name or "Uncategorized": round(float(total), 2) for name, total in db.execute(stmt)
+        }
         if category:
-            breakdown = {name: total for name, total in breakdown.items()
-                         if name.casefold() == category.casefold()}
-        return {"period": period, "period_days": periods[period],
-                "total_expenses": round(sum(breakdown.values()), 2),
-                "category_breakdown": breakdown}
+            breakdown = {
+                name: total
+                for name, total in breakdown.items()
+                if name.casefold() == category.casefold()
+            }
+        return {
+            "period": period,
+            "period_days": periods[period],
+            "total_expenses": round(sum(breakdown.values()), 2),
+            "category_breakdown": breakdown,
+        }
 
     return _with_db(run, user_id=user_id)
 
 
 def skill_budget_alert_check(user_id: str) -> dict[str, Any]:
     """Report categories at or above 80% of their monthly budget."""
+
     def run(db: Session, user_id: str) -> dict[str, Any]:
         uid = _resolve_user(db, user_id).id
         now = datetime.utcnow()
         month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
         stmt = (
             select(Category, func.coalesce(func.sum(Transaction.amount), 0.0))
-            .outerjoin(Transaction, (Transaction.category_id == Category.id)
-                       & (Transaction.user_id == uid)
-                       & (Transaction.transaction_type == "expense")
-                       & (Transaction.created_at >= month_start))
-            .where(Category.user_id == uid, Category.type == "expense",
-                   Category.budget_limit.is_not(None))
+            .outerjoin(
+                Transaction,
+                (Transaction.category_id == Category.id)
+                & (Transaction.user_id == uid)
+                & (Transaction.transaction_type == "expense")
+                & (Transaction.created_at >= month_start),
+            )
+            .where(
+                Category.user_id == uid,
+                Category.type == "expense",
+                Category.budget_limit.is_not(None),
+            )
             .group_by(Category.id)
         )
         alerts = []
         for category, spent in db.execute(stmt):
             limit = float(category.budget_limit or 0)
             if limit > 0 and spent / limit >= 0.8:
-                alerts.append({"category": category.name, "spent": round(spent, 2),
-                               "budget": limit, "used_percent": round(spent / limit * 100, 1),
-                               "level": "exceeded" if spent >= limit else "warning"})
+                alerts.append(
+                    {
+                        "category": category.name,
+                        "spent": round(spent, 2),
+                        "budget": limit,
+                        "used_percent": round(spent / limit * 100, 1),
+                        "level": "exceeded" if spent >= limit else "warning",
+                    }
+                )
         return {"month": now.strftime("%Y-%m"), "alerts": alerts}
 
     return _with_db(run, user_id=user_id)
@@ -169,6 +214,7 @@ def skill_budget_alert_check(user_id: str) -> dict[str, Any]:
 
 def skill_recurring_bill_detector(user_id: str) -> dict[str, Any]:
     """Find merchants with similar expense amounts in at least three months."""
+
     def run(db: Session, user_id: str) -> dict[str, Any]:
         uid = _resolve_user(db, user_id).id
         start = datetime.utcnow() - timedelta(days=183)
@@ -176,8 +222,11 @@ def skill_recurring_bill_detector(user_id: str) -> dict[str, Any]:
             select(Transaction, Account.name, Category.name)
             .outerjoin(Account, Transaction.account_id == Account.id)
             .outerjoin(Category, Transaction.category_id == Category.id)
-            .where(Transaction.user_id == uid, Transaction.transaction_type == "expense",
-                   Transaction.created_at >= start)
+            .where(
+                Transaction.user_id == uid,
+                Transaction.transaction_type == "expense",
+                Transaction.created_at >= start,
+            )
         )
         grouped: dict[str, list[tuple[Transaction, str | None, str | None]]] = {}
         for tx, _account, _category in rows:
@@ -191,9 +240,14 @@ def skill_recurring_bill_detector(user_id: str) -> dict[str, Any]:
             if len(months) >= 3 and max(amounts) - min(amounts) <= max(5.0, max(amounts) * 0.1):
                 latest = max(entries, key=lambda item: item[0].created_at)[0]
                 merchant = db.get(Merchant, latest.merchant_id) if latest.merchant_id else None
-                bills.append({"merchant": merchant.name if merchant else latest.description,
-                              "amount": round(sum(amounts) / len(amounts), 2),
-                              "occurrences": len(entries), "months": len(months)})
+                bills.append(
+                    {
+                        "merchant": merchant.name if merchant else latest.description,
+                        "amount": round(sum(amounts) / len(amounts), 2),
+                        "occurrences": len(entries),
+                        "months": len(months),
+                    }
+                )
         return {"recurring_bills": bills}
 
     return _with_db(run, user_id=user_id)
@@ -201,6 +255,7 @@ def skill_recurring_bill_detector(user_id: str) -> dict[str, Any]:
 
 def skill_emergency_fund_calculator(user_id: str) -> dict[str, Any]:
     """Estimate liquid runway using current cash-like balances and 90-day spend."""
+
     def run(db: Session, user_id: str) -> dict[str, Any]:
         uid = _resolve_user(db, user_id).id
         balances = list(db.scalars(select(Account).where(Account.user_id == uid)))
@@ -208,10 +263,13 @@ def skill_emergency_fund_calculator(user_id: str) -> dict[str, Any]:
         summary = get_spending_summary(db, uid, 90)
         monthly_burn = summary["total_expenses"] / 3
         months = liquid / monthly_burn if monthly_burn > 0 else None
-        return {"liquid_balance": round(liquid, 2), "average_monthly_expenses": round(monthly_burn, 2),
-                "runway_months": round(months, 2) if months is not None else None,
-                "target_3_month_fund": round(monthly_burn * 3, 2),
-                "shortfall_to_3_month_target": round(max(0, monthly_burn * 3 - liquid), 2)}
+        return {
+            "liquid_balance": round(liquid, 2),
+            "average_monthly_expenses": round(monthly_burn, 2),
+            "runway_months": round(months, 2) if months is not None else None,
+            "target_3_month_fund": round(monthly_burn * 3, 2),
+            "shortfall_to_3_month_target": round(max(0, monthly_burn * 3 - liquid), 2),
+        }
 
     return _with_db(run, user_id=user_id)
 
@@ -222,9 +280,11 @@ def save_user_api_key(user_id: str, provider: str, api_key: str) -> dict[str, An
         raise ValueError("provider and api_key are required")
 
     def run(db: Session, user_id: str) -> dict[str, Any]:
-        from cryptography.fernet import Fernet
         import base64
         import hashlib
+
+        from cryptography.fernet import Fernet
+
         from app.config import settings
 
         uid = _resolve_user(db, user_id).id
