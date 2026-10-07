@@ -167,6 +167,15 @@ CREATE TABLE api_keys (
     is_active BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+-- 8. Persistent Conversation History (For Gopal's LangGraph Brain)
+CREATE TABLE chat_messages (
+    id VARCHAR(36) PRIMARY KEY,
+    user_id VARCHAR(36) REFERENCES users(id) ON DELETE CASCADE,
+    role VARCHAR(20) NOT NULL, -- 'user', 'assistant'
+    content TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 ```
 
 ---
