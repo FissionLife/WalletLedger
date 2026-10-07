@@ -10,7 +10,18 @@ import tempfile
 # Point the app at a throwaway SQLite DB *before* any app module is imported.
 _TMP_DIR = tempfile.mkdtemp(prefix="walletledger-test-")
 os.environ["DATABASE_URL"] = "sqlite:///" + os.path.join(_TMP_DIR, "test.db").replace("\\", "/")
-for _var in ("GEMINI_API_KEYS", "OPENAI_API_KEYS", "ANTHROPIC_API_KEYS", "GROQ_API_KEYS"):
+_KEY_VARS = (
+    "GEMINI_API_KEYS",
+    "OPENAI_API_KEYS",
+    "ANTHROPIC_API_KEYS",
+    "GROQ_API_KEYS",
+    "GEMINI_API_KEY",
+    "OPENAI_API_KEY",
+    "ANTHROPIC_API_KEY",
+    "GROQ_API_KEY",
+    "AI_MODEL_GEMINI",
+)
+for _var in _KEY_VARS:
     os.environ.pop(_var, None)
 
 import asyncio  # noqa: E402
@@ -54,7 +65,7 @@ class GatewayTestCase(unittest.TestCase):
         gw.reset_rotation_state()
         self.env = patch.dict(os.environ, {}, clear=False)
         self.env.start()
-        for var in ("GEMINI_API_KEYS", "OPENAI_API_KEYS", "ANTHROPIC_API_KEYS", "GROQ_API_KEYS"):
+        for var in _KEY_VARS:
             os.environ.pop(var, None)
 
     def tearDown(self):
@@ -209,6 +220,60 @@ class TestRotationAndFallback(GatewayTestCase):
             run(gw.ask_llm("brand-new-chat", "sys", "hi"))
         self.assertEqual(
             [c.kwargs["api_key"] for c in mock.call_args_list], ["server-key-1", "server-key-2"]
+        )
+
+    def test_server_key_list_beats_unrelated_single_env_keys(self):
+        # Regression: a stray OPENAI_API_KEY in the shell must not be tried before Gemini keys.
+        os.environ["OPENAI_API_KEY"] = "sk-unrelated-company-key"
+        os.environ["GEMINI_API_KEYS"] = "gem-1,gem-2"
+        os.environ["GEMINI_API_KEY"] = "gem-single"
+        order = [(c.provider, c.api_key) for c in gw.build_candidates("fresh-chat")]
+        self.assertEqual(
+            order[:3], [("gemini", "gem-1"), ("gemini", "gem-2"), ("gemini", "gem-single")]
+        )
+        self.assertEqual(order[-1], ("openai", "sk-unrelated-company-key"))
+
+    def test_single_env_key_not_duplicated(self):
+        os.environ["GEMINI_API_KEYS"] = "gem-1"
+        os.environ["GEMINI_API_KEY"] = "gem-1"
+        keys = [c.api_key for c in gw.build_candidates("fresh-chat")]
+        self.assertEqual(keys.count("gem-1"), 1)
+
+    def test_single_env_key_alone_works(self):
+        os.environ["GEMINI_API_KEY"] = "gem-only"
+        mock = AsyncMock(return_value=fake_response("ok"))
+        with patch.object(gw.litellm, "acompletion", mock):
+            self.assertEqual(run(gw.ask_llm("fresh-chat", "sys", "hi")), "ok")
+        self.assertEqual(mock.call_args.kwargs["api_key"], "gem-only")
+
+    def test_access_denied_moves_to_next_key(self):
+        # Regression: gateway proxies reply "Access denied: model ... not found or no access".
+        os.environ["GEMINI_API_KEYS"] = "gem-1,gem-2"
+        denied = litellm.BadRequestError(
+            "OpenAIException - Access denied: model 'x' not found or no access.",
+            model="g",
+            llm_provider="gemini",
+        )
+        mock = AsyncMock(side_effect=[denied, fake_response("second worked")])
+        with patch.object(gw.litellm, "acompletion", mock):
+            self.assertEqual(run(gw.ask_llm("fresh-chat", "sys", "hi")), "second worked")
+        self.assertEqual([c.kwargs["api_key"] for c in mock.call_args_list], ["gem-1", "gem-2"])
+
+    def test_tools_return_full_response_and_history_is_sent(self):
+        os.environ["GEMINI_API_KEYS"] = "gem-1"
+        response = fake_response("tool reply")
+        mock = AsyncMock(return_value=response)
+        tools = [{"type": "function", "function": {"name": "noop", "parameters": {}}}]
+        history = [{"role": "user", "content": "earlier"}, {"role": "assistant", "content": "ok"}]
+        with patch.object(gw.litellm, "acompletion", mock):
+            result = run(
+                gw.ask_llm("fresh-chat", "sys", "now", tools=tools, messages_history=history)
+            )
+        self.assertIs(result, response)
+        self.assertEqual(mock.call_args.kwargs["tools"], tools)
+        self.assertEqual(
+            [m["content"] for m in mock.call_args.kwargs["messages"]],
+            ["sys", "earlier", "ok", "now"],
         )
 
     def test_no_keys_raises_helpful_error(self):
