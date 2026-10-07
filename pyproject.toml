@@ -12,6 +12,7 @@ dependencies = [
     "langchain>=1.4.3",
     "langgraph>=1.2.12",
     "litellm>=1.104.0",
+    "mcp>=1.26.0,<3.0.0",
     "pg8000>=1.31.5",
     "psycopg2-binary>=2.9.13",
     "pydantic>=2.13.5",
