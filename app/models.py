@@ -32,6 +32,9 @@ class User(Base):
     api_keys: Mapped[list[ApiKey]] = relationship(
         "ApiKey", back_populates="user", cascade="all, delete-orphan"
     )
+    chat_messages: Mapped[list[ChatMessage]] = relationship(
+        "ChatMessage", back_populates="user", cascade="all, delete-orphan"
+    )
 
 
 class Account(Base):
@@ -140,3 +143,17 @@ class ApiKey(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     user: Mapped[User] = relationship("User", back_populates="api_keys")
+
+
+class ChatMessage(Base):
+    __tablename__ = "chat_messages"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    role: Mapped[str] = mapped_column(String(20), nullable=False)  # 'user', 'assistant', 'system'
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    user: Mapped[User] = relationship("User", back_populates="chat_messages")

@@ -14,6 +14,7 @@ What it does:
   load across free-tier keys (RPM / TPM limits).
 * **Automatic fallback**: rate-limit (429), quota, auth and provider-outage errors move on to the
   next key / provider immediately. Rate-limited keys sit out a short cooldown.
+* **Tool Calling Support**: seamlessly accepts standard OpenAI/Gemini function calling schemas.
 
 Key sources, in order: the user's own active keys, then optional server keys from environment
 variables (``GEMINI_API_KEYS``, ``OPENAI_API_KEYS``, ``ANTHROPIC_API_KEYS``, ``GROQ_API_KEYS``;
@@ -44,6 +45,7 @@ from app.models import ApiKey, User
 
 logger = logging.getLogger(__name__)
 
+litellm.telemetry = False
 litellm.suppress_debug_info = True
 
 # --------------------------------------------------------------------------------------
@@ -54,9 +56,9 @@ DEFAULT_PROVIDER = "gemini"
 
 # provider -> (default LiteLLM model, env var holding comma-separated server keys)
 PROVIDERS: dict[str, tuple[str, str | None]] = {
-    "gemini": ("gemini/gemini-flash-latest", "GEMINI_API_KEYS"),
+    "gemini": ("gemini/gemini-1.5-flash", "GEMINI_API_KEYS"),
     "openai": ("openai/gpt-4o-mini", "OPENAI_API_KEYS"),
-    "anthropic": ("anthropic/claude-3-5-haiku-latest", "ANTHROPIC_API_KEYS"),
+    "anthropic": ("anthropic/claude-3-5-sonnet-20241022", "ANTHROPIC_API_KEYS"),
     "groq": ("groq/llama-3.3-70b-versatile", "GROQ_API_KEYS"),
     "ollama": ("ollama/llama3.1", None),
 }
@@ -84,7 +86,7 @@ KEY_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
 
 RATE_LIMIT_COOLDOWN_SECONDS = 60
 AUTH_FAILURE_COOLDOWN_SECONDS = 15 * 60
-DEFAULT_TIMEOUT_SECONDS = 60
+DEFAULT_TIMEOUT_SECONDS = 15
 
 
 def normalize_provider(provider: str) -> str:
@@ -100,7 +102,7 @@ def default_model(provider: str) -> str:
 
 
 def resolve_model(model_preference: str | None) -> tuple[str, str]:
-    """Turn a preference ("groq", "claude", "gemini/gemini-2.5-pro", None) into (provider, model)."""
+    """Turn a preference ("groq", "claude", "gemini/gemini-1.5-flash", None) into (provider, model)."""
     if not model_preference:
         return DEFAULT_PROVIDER, default_model(DEFAULT_PROVIDER)
     pref = model_preference.strip()
@@ -180,7 +182,7 @@ def decrypt_api_key(encrypted_key: str) -> str:
 
 
 def _session() -> Session:
-    from app.db import SessionLocal  # imported lazily so tests can point DATABASE_URL elsewhere
+    from app.db import SessionLocal
 
     return SessionLocal()
 
@@ -243,10 +245,7 @@ def add_api_key(user_id: str, provider: str, api_key: str) -> dict[str, Any]:
 def add_api_keys_from_text(
     user_id: str, text: str, default_provider: str | None = None
 ) -> list[dict[str, Any]]:
-    """Store every key found in a chat message (users may paste several Gemini keys at once).
-
-    Tokens in an unknown format are stored under ``default_provider`` when one is given.
-    """
+    """Store every key found in a chat message (users may paste several Gemini keys at once)."""
     keys = extract_api_keys(text)
     if not keys and default_provider:
         tokens = [t for t in re.split(r"[\s,;]+", text or "") if len(t) >= 20]
@@ -419,6 +418,12 @@ def _load_user_keys(user_id: str) -> list[KeyCandidate]:
         db.close()
 
 
+def get_user_api_keys(user_id: str) -> list[tuple[str, str]]:
+    """Convenience helper: returns active (provider, plain_key) pairs."""
+    candidates = build_candidates(user_id)
+    return [(c.provider, c.api_key) for c in candidates if c.api_key]
+
+
 def build_candidates(
     user_id: str, preferred_provider: str = DEFAULT_PROVIDER
 ) -> list[KeyCandidate]:
@@ -433,10 +438,22 @@ def build_candidates(
         for provider in order:
             candidates += _rotate(by_provider.get(provider, []), f"user:{user_id}:{provider}")
     else:
+        # Check standard individual env vars first (GEMINI_API_KEY, OPENAI_API_KEY, etc.)
+        for p, env_var in [
+            ("gemini", "GEMINI_API_KEY"),
+            ("openai", "OPENAI_API_KEY"),
+            ("groq", "GROQ_API_KEY"),
+            ("anthropic", "ANTHROPIC_API_KEY"),
+        ]:
+            val = os.getenv(env_var)
+            if val:
+                candidates.append(KeyCandidate(p, val.strip(), "env"))
+
         order = [preferred_provider] + [p for p in PROVIDERS if p != preferred_provider]
         for provider in order:
             server = [KeyCandidate(provider, k, "server") for k in _server_keys(provider)]
             candidates += _rotate(server, f"server:{provider}")
+
     ready = [c for c in candidates if not _rotation.is_cooling(c.fingerprint)]
     cooling = [c for c in candidates if _rotation.is_cooling(c.fingerprint)]
     return ready + cooling
@@ -472,7 +489,7 @@ _TRANSIENT_ERRORS = (
     litellm.APIConnectionError,
     litellm.Timeout,
     litellm.BadGatewayError,
-    litellm.NotFoundError,  # model not available for this key/provider
+    litellm.NotFoundError,
 )
 _KEY_HINTS = ("api key", "api_key", "apikey", "quota", "credential", "unauthorized", "permission")
 
@@ -485,7 +502,7 @@ def _classify(exc: Exception) -> str | None:
         return "auth"
     if isinstance(exc, _TRANSIENT_ERRORS):
         return "transient"
-    if isinstance(exc, litellm.BadRequestError | litellm.APIError):
+    if isinstance(exc, (litellm.BadRequestError, litellm.APIError)):
         message = str(exc).lower()
         if "429" in message or "resource_exhausted" in message or "rate limit" in message:
             return "rate_limit"
@@ -520,12 +537,11 @@ async def complete(
     user_id: str,
     messages: list[dict[str, Any]],
     model_preference: str | None = None,
+    tools: list[dict[str, Any]] | None = None,
     **kwargs: Any,
-) -> str:
-    """Run a chat completion with rotation + fallback and return the reply text.
-
-    ``messages`` uses the OpenAI format (role/content). Extra kwargs (temperature,
-    max_tokens, response_format, ...) are passed straight to ``litellm.acompletion``.
+) -> Any:
+    """Run a chat completion with rotation + fallback.
+    Returns plain text string if no tools, or full LiteLLM response object if tools are used.
     """
     provider, model = resolve_model(model_preference)
     candidates = await asyncio.to_thread(build_candidates, user_id, provider)
@@ -549,6 +565,11 @@ async def complete(
             )
         else:
             call_kwargs["api_key"] = candidate.api_key
+
+        if tools:
+            call_kwargs["tools"] = tools
+            call_kwargs["tool_choice"] = "auto"
+
         try:
             response = await litellm.acompletion(
                 model=call_model, messages=messages, num_retries=0, **call_kwargs
@@ -574,19 +595,28 @@ async def complete(
             elif kind == "auth":
                 _rotation.cool_down(candidate.fingerprint, AUTH_FAILURE_COOLDOWN_SECONDS)
             continue
-        return _extract_text(response)
+
+        return response if tools else _extract_text(response)
+
     raise AllKeysExhaustedError(attempts)
 
 
 async def ask_llm(
-    user_id: str, system_prompt: str, user_prompt: str, model_preference: str | None = None
-) -> str:
+    user_id: str,
+    system_prompt: str,
+    user_prompt: str,
+    model_preference: str | None = None,
+    tools: list[dict[str, Any]] | None = None,
+    messages_history: list[dict[str, str]] | None = None,
+) -> Any:
     """Contract 2 (Agent -> Gateway): pull the user's round-robin key and run via LiteLLM."""
     messages = []
     if system_prompt:
         messages.append({"role": "system", "content": system_prompt})
+    if messages_history:
+        messages.extend(messages_history)
     messages.append({"role": "user", "content": user_prompt})
-    return await complete(user_id, messages, model_preference=model_preference)
+    return await complete(user_id, messages, model_preference=model_preference, tools=tools)
 
 
 async def ask_persona(
@@ -617,16 +647,43 @@ class AIGateway:
         system_prompt: str,
         user_prompt: str,
         model_preference: str | None = None,
-    ) -> str:
+        tools: list[dict[str, Any]] | None = None,
+        messages_history: list[dict[str, str]] | None = None,
+    ) -> Any:
         return await ask_llm(
-            user_id, system_prompt, user_prompt, model_preference or self.default_model
+            user_id,
+            system_prompt,
+            user_prompt,
+            model_preference or self.default_model,
+            tools=tools,
+            messages_history=messages_history,
         )
 
-    async def generate_response(self, user_id: str, prompt: str) -> str:
-        return await self.ask(user_id, "", prompt)
+    async def generate_response(
+        self,
+        user_id: str,
+        system_prompt: str = "",
+        user_prompt: str = "",
+        prompt: str | None = None,
+        tools: list[dict[str, Any]] | None = None,
+        model_preference: str | None = None,
+        messages_history: list[dict[str, str]] | None = None,
+    ) -> Any:
+        text = user_prompt or prompt or ""
+        return await self.ask(
+            user_id,
+            system_prompt,
+            text,
+            model_preference=model_preference,
+            tools=tools,
+            messages_history=messages_history,
+        )
 
     add_key = staticmethod(add_api_key)
     add_keys_from_text = staticmethod(add_api_keys_from_text)
     list_keys = staticmethod(list_api_keys)
     deactivate_key = staticmethod(deactivate_api_key)
     delete_key = staticmethod(delete_api_key)
+
+
+ai_gateway = AIGateway()
