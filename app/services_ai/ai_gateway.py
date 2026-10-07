@@ -56,11 +56,21 @@ DEFAULT_PROVIDER = "gemini"
 
 # provider -> (default LiteLLM model, env var holding comma-separated server keys)
 PROVIDERS: dict[str, tuple[str, str | None]] = {
-    "gemini": ("gemini/gemini-1.5-flash", "GEMINI_API_KEYS"),
+    # "gemini-flash-latest" always points at Google's current Flash model; pinned versions
+    # such as gemini-1.5-flash / gemini-2.5-flash are retired for new API keys (404).
+    "gemini": ("gemini/gemini-flash-latest", "GEMINI_API_KEYS"),
     "openai": ("openai/gpt-4o-mini", "OPENAI_API_KEYS"),
     "anthropic": ("anthropic/claude-3-5-sonnet-20241022", "ANTHROPIC_API_KEYS"),
     "groq": ("groq/llama-3.3-70b-versatile", "GROQ_API_KEYS"),
     "ollama": ("ollama/llama3.1", None),
+}
+
+# provider -> standard single-key env var (used after the *_API_KEYS list for that provider)
+SINGLE_KEY_ENV: dict[str, str] = {
+    "gemini": "GEMINI_API_KEY",
+    "openai": "OPENAI_API_KEY",
+    "anthropic": "ANTHROPIC_API_KEY",
+    "groq": "GROQ_API_KEY",
 }
 
 PROVIDER_ALIASES = {
@@ -102,7 +112,7 @@ def default_model(provider: str) -> str:
 
 
 def resolve_model(model_preference: str | None) -> tuple[str, str]:
-    """Turn a preference ("groq", "claude", "gemini/gemini-1.5-flash", None) into (provider, model)."""
+    """Turn a preference ("groq", "claude", "gemini/gemini-2.5-pro", None) into (provider, model)."""
     if not model_preference:
         return DEFAULT_PROVIDER, default_model(DEFAULT_PROVIDER)
     pref = model_preference.strip()
@@ -393,6 +403,13 @@ def _server_keys(provider: str) -> list[str]:
     return [k.strip() for k in re.split(r"[\s,;]+", raw) if k.strip()]
 
 
+def _single_env_key(provider: str) -> str | None:
+    """Standard single-key variable (GEMINI_API_KEY, OPENAI_API_KEY, ...), if set."""
+    env_name = SINGLE_KEY_ENV.get(provider)
+    value = os.getenv(env_name, "").strip() if env_name else ""
+    return value or None
+
+
 def _load_user_keys(user_id: str) -> list[KeyCandidate]:
     db = _session()
     try:
@@ -438,21 +455,17 @@ def build_candidates(
         for provider in order:
             candidates += _rotate(by_provider.get(provider, []), f"user:{user_id}:{provider}")
     else:
-        # Check standard individual env vars first (GEMINI_API_KEY, OPENAI_API_KEY, etc.)
-        for p, env_var in [
-            ("gemini", "GEMINI_API_KEY"),
-            ("openai", "OPENAI_API_KEY"),
-            ("groq", "GROQ_API_KEY"),
-            ("anthropic", "ANTHROPIC_API_KEY"),
-        ]:
-            val = os.getenv(env_var)
-            if val:
-                candidates.append(KeyCandidate(p, val.strip(), "env"))
-
+        # Server keys, grouped by provider so the preferred provider is always tried first.
+        # Within a provider: the rotated GEMINI_API_KEYS-style list, then the single
+        # GEMINI_API_KEY-style variable (skipped if it is already in the list).
         order = [preferred_provider] + [p for p in PROVIDERS if p != preferred_provider]
         for provider in order:
-            server = [KeyCandidate(provider, k, "server") for k in _server_keys(provider)]
+            listed = _server_keys(provider)
+            server = [KeyCandidate(provider, k, "server") for k in listed]
             candidates += _rotate(server, f"server:{provider}")
+            single = _single_env_key(provider)
+            if single and single not in listed:
+                candidates.append(KeyCandidate(provider, single, "env"))
 
     ready = [c for c in candidates if not _rotation.is_cooling(c.fingerprint)]
     cooling = [c for c in candidates if _rotation.is_cooling(c.fingerprint)]
@@ -491,7 +504,20 @@ _TRANSIENT_ERRORS = (
     litellm.BadGatewayError,
     litellm.NotFoundError,
 )
-_KEY_HINTS = ("api key", "api_key", "apikey", "quota", "credential", "unauthorized", "permission")
+_KEY_HINTS = (
+    "api key",
+    "api_key",
+    "apikey",
+    "quota",
+    "credential",
+    "unauthorized",
+    "permission",
+    "access denied",
+    "no access",
+    "forbidden",
+    "model not found",
+    "not found or no access",
+)
 
 
 def _classify(exc: Exception) -> str | None:
