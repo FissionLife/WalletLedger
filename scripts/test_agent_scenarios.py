@@ -101,11 +101,9 @@ async def run_tests():
     assert "Coach" in res or "Reduce Money Mode" in res
 
     print("\n--- Test 12: Save API Key ---")
-    res = await process_user_interaction(
-        user_id, "Set my Gemini key: AIzaSyD3m0K3yEx4mpl3V4lu31234567890"
-    )
+    res = await process_user_interaction(user_id, "Set my Gemini key: AQ." + "x" * 40)
     print(res)
-    assert "API Key Saved Successfully" in res
+    assert "Saved 1 API key" in res
 
     print("\n--- Test 13: Help & Greeting ---")
     res = await process_user_interaction(user_id, "help")
