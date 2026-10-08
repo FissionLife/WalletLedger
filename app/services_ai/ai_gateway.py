@@ -106,9 +106,21 @@ def normalize_provider(provider: str) -> str:
     return PROVIDER_ALIASES[key]
 
 
+def _env(name: str) -> str:
+    """Read a setting: real environment variable first, then ``.env`` via app.config.
+
+    pydantic-settings loads ``.env`` into ``settings`` but not into ``os.environ``, so
+    reading only ``os.getenv`` would silently ignore keys placed in ``.env``.
+    """
+    value = os.getenv(name)
+    if value is not None:
+        return value
+    return str(getattr(settings, name.lower(), "") or "")
+
+
 def default_model(provider: str) -> str:
     provider = normalize_provider(provider)
-    return os.getenv(f"AI_MODEL_{provider.upper()}") or PROVIDERS[provider][0]
+    return (_env(f"AI_MODEL_{provider.upper()}") or None) or PROVIDERS[provider][0]
 
 
 def resolve_model(model_preference: str | None) -> tuple[str, str]:
@@ -399,14 +411,14 @@ def _server_keys(provider: str) -> list[str]:
     env_name = PROVIDERS[provider][1]
     if not env_name:
         return []
-    raw = os.getenv(env_name, "")
+    raw = _env(env_name)
     return [k.strip() for k in re.split(r"[\s,;]+", raw) if k.strip()]
 
 
 def _single_env_key(provider: str) -> str | None:
     """Standard single-key variable (GEMINI_API_KEY, OPENAI_API_KEY, ...), if set."""
     env_name = SINGLE_KEY_ENV.get(provider)
-    value = os.getenv(env_name, "").strip() if env_name else ""
+    value = _env(env_name).strip() if env_name else ""
     return value or None
 
 
@@ -586,9 +598,7 @@ async def complete(
         call_model = _model_for(candidate, provider, model)
         call_kwargs = dict(kwargs)
         if candidate.provider == "ollama":
-            call_kwargs.setdefault(
-                "api_base", os.getenv("OLLAMA_API_BASE", "http://localhost:11434")
-            )
+            call_kwargs.setdefault("api_base", _env("OLLAMA_API_BASE") or "http://localhost:11434")
         else:
             call_kwargs["api_key"] = candidate.api_key
 

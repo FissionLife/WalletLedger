@@ -168,7 +168,7 @@ uv run python scripts/seed_data.py --all
 **Option B: Using SQL File**
 
 ```bash
-docker exec -i app_pg psql -U postgres -d appdb < sql/seed_data.sql
+uv run python scripts/seed_demo_data.py
 ```
 
 **Verify seeded data:**
