@@ -50,32 +50,6 @@ uv run python main.py
 
 The API will be available at `http://localhost:8000` (Swagger UI at `http://localhost:8000/docs`).
 
-### MCP Integration
-
-The project exposes its financial tools through the official MCP Python SDK.
-For a local MCP host that launches servers over stdio, configure it to run this
-command from the repository root:
-
-```bash
-uv run python -m app.services_ai.mcp_server
-```
-
-The server exposes `log_expense`, `log_income`, `transfer_between_pipes`,
-`get_pipe_balances`, `get_spending_breakdown`, `save_user_api_key`, and the three
-financial skills. Tools take `user_id` as the Telegram chat ID or the internal
-user UUID.
-
-To expose MCP over Streamable HTTP on the existing FastAPI server, set both
-values in `.env` and restart the app:
-
-```env
-MCP_ENABLED=true
-MCP_API_KEY=replace-with-a-long-random-secret
-```
-
-MCP clients connect to `http://127.0.0.1:8000/mcp` and send
-`Authorization: Bearer <MCP_API_KEY>`. The HTTP endpoint is disabled by default.
-
 ### 4. Seed Sample Data
 
 ```bash

@@ -17,10 +17,6 @@ class Settings(BaseSettings):
     # Security key for encrypting user API keys
     secret_key: str = "walletledger-insecure-dev-key-change-in-prod"
 
-    # Optional Streamable HTTP MCP endpoint. Requires a bearer token when enabled.
-    mcp_enabled: bool = False
-    mcp_api_key: str = ""
-
     class Config:
         env_file = ".env"
         case_sensitive = False
