@@ -1,4 +1,8 @@
-"""Financial tool implementations and their Model Context Protocol server."""
+"""Typed financial tools exposed to the conversational agent.
+
+These functions are ordinary Python tools (the project does not currently run an
+MCP transport server). The registry gives the agent one stable dispatch point.
+"""
 
 from __future__ import annotations
 
@@ -18,14 +22,6 @@ from app.services.ledger import (
     record_transaction,
     transfer_between_pipes,
 )
-
-try:
-    from mcp.server import MCPServer
-except ImportError:  # MCP Python SDK v1 compatibility
-    from mcp.server.fastmcp import FastMCP as MCPServer
-
-
-mcp = MCPServer("WalletLedger", instructions="Tools for a user's personal finance ledger.")
 
 
 def _with_db(fn: Callable[..., dict[str, Any]], **kwargs: Any) -> dict[str, Any]:
@@ -325,29 +321,6 @@ TOOL_REGISTRY: dict[str, Callable[..., dict[str, Any]]] = {
 }
 
 
-def transfer_between_pipes(
-    user_id: str,
-    from_account: str,
-    to_account: str,
-    amount: float,
-    description: str | None = None,
-) -> dict[str, Any]:
-    """Transfer funds between accounts without counting it as an expense."""
-    return transfer_funds(user_id, from_account, to_account, amount, description)
-
-
-# MCP derives each tool's input schema from its type annotations.
-mcp.tool()(log_expense)
-mcp.tool()(log_income)
-mcp.tool()(transfer_between_pipes)
-mcp.tool()(get_pipe_balances)
-mcp.tool()(get_spending_breakdown)
-mcp.tool()(save_user_api_key)
-mcp.tool()(skill_budget_alert_check)
-mcp.tool()(skill_recurring_bill_detector)
-mcp.tool()(skill_emergency_fund_calculator)
-
-
 def execute_tool(tool_name: str, **kwargs: Any) -> dict[str, Any]:
     """Dispatch one registered agent tool and return a JSON-serializable result."""
     try:
@@ -355,8 +328,3 @@ def execute_tool(tool_name: str, **kwargs: Any) -> dict[str, Any]:
     except KeyError as exc:
         raise ValueError(f"Unknown tool: {tool_name}") from exc
     return tool(**kwargs)
-
-
-if __name__ == "__main__":
-    # Launch with stdio, the standard transport for local MCP hosts.
-    mcp.run()
