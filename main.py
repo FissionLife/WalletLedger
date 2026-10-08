@@ -1,17 +1,26 @@
+import logging
 from contextlib import asynccontextmanager
 
 import uvicorn
 from fastapi import FastAPI
 
+from app.bot import telegram
 from app.bot.main import bot_router
 from app.db import init_db
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Initialize database tables on startup
     init_db()
-    yield
+    # Telegram bot: off without a token, polling locally, webhook when USE_WEBHOOK=true
+    app.state.telegram_mode = await telegram.start()
+    try:
+        yield
+    finally:
+        await telegram.stop()
 
 
 app = FastAPI(
@@ -36,7 +45,7 @@ def root():
 
 @app.get("/health")
 def health():
-    return {"status": "healthy"}
+    return {"status": "healthy", "telegram": getattr(app.state, "telegram_mode", "off")}
 
 
 def start_dev():

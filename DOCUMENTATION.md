@@ -69,7 +69,7 @@ WalletLedger/
 │   └── seed_data.py      # Database seeding utility
 ├── sql/
 │   ├── schema.sql        # Database schema definition
-│   └── seed_data.sql     # Sample data for testing
+│   └── (demo data: scripts/seed_demo_data.py)
 ├── main.py               # Application entry point, router registration
 ├── pyproject.toml        # Project metadata and dependencies (managed by uv)
 ├── uv.lock               # Deterministic dependency lockfile

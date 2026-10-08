@@ -28,13 +28,24 @@ def get_or_create_user(db: Session, telegram_chat_id: str) -> User:
 
 
 def get_or_create_account(
-    db: Session, user_id: str, account_name: str, account_type: str = "bank"
+    db: Session,
+    user_id: str,
+    account_name: str,
+    account_type: str = "bank",
+    *,
+    lock: bool = False,
 ) -> Account:
-    """Finds an account by name (case-insensitive) or creates it."""
+    """Finds an account by name (case-insensitive) or creates it.
+
+    ``lock=True`` takes a row lock (SELECT ... FOR UPDATE) so concurrent balance updates on
+    PostgreSQL are serialised until the caller commits. SQLite ignores the lock (harmless).
+    """
     stmt = select(Account).where(
         Account.user_id == user_id,
         func.lower(Account.name) == account_name.strip().lower(),
     )
+    if lock:
+        stmt = stmt.with_for_update()
     account = db.scalar(stmt)
     if not account:
         account = Account(
@@ -105,7 +116,7 @@ def record_transaction(
     """
     Logs an expense or income and updates the corresponding account balance atomically.
     """
-    account = get_or_create_account(db, user_id, account_name)
+    account = get_or_create_account(db, user_id, account_name, lock=True)
 
     cat_id = None
     if category_name:
@@ -162,8 +173,13 @@ def transfer_between_pipes(
     """
     Transfers funds from Pipe A to Pipe B without logging an external expense.
     """
-    from_account = get_or_create_account(db, user_id, from_account_name)
-    to_account = get_or_create_account(db, user_id, to_account_name)
+    # Lock both rows in a stable order (by name) so two opposite transfers cannot deadlock.
+    locked = {
+        name.strip().lower(): get_or_create_account(db, user_id, name, lock=True)
+        for name in sorted([from_account_name, to_account_name], key=lambda n: n.strip().lower())
+    }
+    from_account = locked[from_account_name.strip().lower()]
+    to_account = locked[to_account_name.strip().lower()]
 
     from_account.balance -= float(amount)
     to_account.balance += float(amount)

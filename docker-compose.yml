@@ -1,0 +1,29 @@
+# Local PostgreSQL for WalletLedger.
+#   Start:  docker compose up -d
+#   Status: docker compose ps        (should show "healthy")
+#   Stop:   docker compose down      (data is kept in the walletledger_pgdata volume)
+#   Wipe:   docker compose down -v   (deletes all data)
+#
+# Port 5433 on your machine -> 5432 in the container, so it does not clash with a
+# locally installed PostgreSQL on 5432. Matches DATABASE_URL in .env.example.
+services:
+  db:
+    image: postgres:16
+    container_name: walletledger_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-appdb}
+    ports:
+      - "${POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - walletledger_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  walletledger_pgdata:

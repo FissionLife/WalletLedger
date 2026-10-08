@@ -54,8 +54,9 @@ def log_expense(
     merchant: str | None = None,
     account_name: str = "Cash",
     description: str | None = None,
+    source: str = "chat",
 ) -> dict[str, Any]:
-    """Record an expense and debit its payment account."""
+    """Record an expense and debit its payment account (``source``: chat, pdf, sms...)."""
 
     def run(db: Session, **values: Any) -> dict[str, Any]:
         user = _resolve_user(db, values.pop("user_id"))
@@ -71,6 +72,7 @@ def log_expense(
         merchant_name=merchant,
         account_name=account_name,
         description=description,
+        source=source,
     )
 
 
@@ -80,8 +82,9 @@ def log_income(
     source_account: str = "Bank",
     category: str = "Income",
     description: str | None = None,
+    source: str = "chat",
 ) -> dict[str, Any]:
-    """Record income and credit its destination account."""
+    """Record income and credit its destination account (``source``: chat, pdf, sms...)."""
 
     def run(db: Session, **values: Any) -> dict[str, Any]:
         user = _resolve_user(db, values.pop("user_id"))
@@ -96,6 +99,7 @@ def log_income(
         account_name=source_account,
         category_name=category,
         description=description,
+        source=source,
     )
 
 
