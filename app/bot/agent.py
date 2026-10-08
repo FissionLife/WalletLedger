@@ -14,9 +14,10 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from collections.abc import Sequence
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Literal, TypedDict
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
@@ -26,13 +27,65 @@ from sqlalchemy import select
 from app.db import SessionLocal
 from app.models import ChatMessage, User
 from app.services.ledger import get_or_create_user
-from app.services_ai.ai_gateway import ask_llm, get_user_api_keys
+from app.services_ai.ai_gateway import (
+    NoAPIKeyError,
+    add_api_keys_from_text,
+    ask_llm,
+    ask_persona,
+    extract_api_keys,
+    get_user_api_keys,
+    mask_key,
+)
 from app.services_ai.mcp_server import execute_tool
+from app.services_ai.prompts import detect_mode, get_persona, resolve_mode
 
 logger = logging.getLogger(__name__)
 
 # Transfer amount threshold that requires explicit human-in-the-loop confirmation
 CONFIRMATION_TRANSFER_THRESHOLD = 5000.0
+
+# A pending confirmation older than this is discarded, so a stale "yes" can never move money.
+PENDING_ACTION_TTL = timedelta(minutes=5)
+
+# Only the most recent N prior messages are sent to the LLM as conversation history.
+HISTORY_LIMIT = 20
+
+CONFIRM_WORDS = {
+    "yes", "y", "yeah", "yep", "yup", "confirm", "confirmed", "proceed", "ok", "okay",
+    "sure", "approve", "approved", "do it", "go ahead", "yes please", "yes go ahead",
+}  # fmt: skip
+CANCEL_WORDS = {
+    "no", "n", "nope", "nah", "cancel", "abort", "reject", "stop", "don't", "dont",
+    "no thanks", "dont do it", "don't do it",
+}  # fmt: skip
+
+# Tools whose results are turned into a reply by a persona (Coach / Budgeter / Summary).
+PERSONA_TOOLS = {
+    "financial_advice_bundle",
+    "get_spending_breakdown",
+    "skill_budget_alert_check",
+    "skill_recurring_bill_detector",
+    "skill_emergency_fund_calculator",
+}
+PERSONA_COMMAND = re.compile(r"^\s*/(coach|budgeter|summary)\b(.*)$", re.I | re.S)
+
+
+def classify_reply(text: str) -> Literal["confirmed", "cancelled"] | None:
+    """Map a short yes/no style reply to a decision; anything else returns None."""
+    normalised = re.sub(r"[^\w\s']", " ", (text or "").lower())
+    normalised = re.sub(r"\s+", " ", normalised).strip()
+    if normalised in CONFIRM_WORDS:
+        return "confirmed"
+    if normalised in CANCEL_WORDS:
+        return "cancelled"
+    return None
+
+
+def redact_api_keys(text: str) -> str:
+    """Replace every recognisable API key in ``text`` with its masked form."""
+    for _, key in extract_api_keys(text):
+        text = text.replace(key, mask_key(key))
+    return text
 
 
 # ---------------------------------------------------------------------------
@@ -40,8 +93,8 @@ CONFIRMATION_TRANSFER_THRESHOLD = 5000.0
 # ---------------------------------------------------------------------------
 
 
-def get_db_conversation_history(user_id: str) -> list[BaseMessage]:
-    """Fetches full permanent conversation history for a user from database."""
+def get_db_conversation_history(user_id: str, limit: int | None = None) -> list[BaseMessage]:
+    """Fetch a user's stored conversation (oldest first); ``limit`` keeps only the newest N."""
     db = SessionLocal()
     try:
         user = db.get(User, str(user_id))
@@ -50,12 +103,12 @@ def get_db_conversation_history(user_id: str) -> list[BaseMessage]:
         if not user:
             return []
 
-        stmt = (
-            select(ChatMessage)
-            .where(ChatMessage.user_id == user.id)
-            .order_by(ChatMessage.created_at.asc())
-        )
-        records = list(db.scalars(stmt))
+        stmt = select(ChatMessage).where(ChatMessage.user_id == user.id)
+        if limit:
+            stmt = stmt.order_by(ChatMessage.created_at.desc()).limit(limit)
+            records = list(reversed(list(db.scalars(stmt))))
+        else:
+            records = list(db.scalars(stmt.order_by(ChatMessage.created_at.asc())))
         messages: list[BaseMessage] = []
         for r in records:
             if r.role == "user":
@@ -278,7 +331,7 @@ Rules & Guidelines:
 2. Categories: Infer accurate expense or income categories based on context (e.g., Food, Groceries, Transport, Shopping, Utilities, Subscriptions, Health, Salary, Freelance).
 3. Merchants: Identify payees or brands if mentioned (e.g. Swiggy, Uber, Amazon, Netflix, BigBasket).
 4. Transfers: If money moves between accounts (e.g. Bank to Cash), call `transfer_funds`.
-5. Multi-turn Confirmations: If the user is responding with 'yes', 'confirm', 'proceed' or 'no', 'cancel' to a pending action, output the appropriate confirmation response.
+5. Large transfers: Just call `transfer_funds`; the system asks the user to confirm before money moves.
 6. Advice & Optimization: If the user asks for financial advice, how to save money, or 'Reduce Money Mode', call `financial_advice_bundle`.
 7. Always call tools when the user wants to log an action, query balances, check reports, or run financial skills.
 """
@@ -318,7 +371,20 @@ class SessionStore:
         session.last_active = datetime.utcnow()
 
     def get_pending(self, chat_id: str) -> PendingAction | None:
-        return self.get_session(chat_id).pending_action
+        """Return the pending action, discarding it if it is older than PENDING_ACTION_TTL."""
+        session = self.get_session(chat_id)
+        action = session.pending_action
+        if action is None:
+            return None
+        try:
+            created = datetime.fromisoformat(action.get("created_at", ""))
+        except ValueError:
+            created = session.last_active
+        if datetime.utcnow() - created > PENDING_ACTION_TTL:
+            logger.info("Pending action for chat %s expired; discarding it.", chat_id)
+            session.pending_action = None
+            return None
+        return action
 
     def clear_pending(self, chat_id: str) -> PendingAction | None:
         session = self.get_session(chat_id)
@@ -352,6 +418,8 @@ class AgentState(TypedDict, total=False):
     tool_result: dict[str, Any] | None
     response_text: str
     error: str | None
+    persona_mode: str | None
+    offline_reason: str | None
 
 
 # ---------------------------------------------------------------------------
@@ -362,8 +430,13 @@ class AgentState(TypedDict, total=False):
 async def _run_llm_analysis(
     user_id: str, message: str, history: list[dict[str, str]]
 ) -> dict[str, Any]:
-    """Calls the LLM via AI Gateway to parse intent, extract parameters, and select tools dynamically."""
+    """Calls the LLM via AI Gateway to parse intent, extract parameters, and select tools dynamically.
+
+    Falls back to deterministic offline rules when no key is configured or the AI call fails.
+    On failure the reason is logged and returned as ``offline_reason`` so the reply can say so.
+    """
     keys = get_user_api_keys(user_id)
+    offline_reason: str | None = None
 
     if keys:
         try:
@@ -379,12 +452,16 @@ async def _run_llm_analysis(
             if hasattr(message_obj, "tool_calls") and message_obj.tool_calls:
                 call = message_obj.tool_calls[0]
                 fn_name = call.function.name
-                fn_args = json.loads(call.function.arguments)
+                fn_args = json.loads(call.function.arguments or "{}")
                 return {"type": "tool_call", "tool_name": fn_name, "tool_args": fn_args}
             elif getattr(message_obj, "content", None):
                 return {"type": "direct_text", "content": message_obj.content}
+            offline_reason = "the AI returned an empty response"
         except Exception as e:
-            logger.warning(f"Live LLM call encountered exception: {e}; using dynamic reasoning.")
+            offline_reason = f"{type(e).__name__}: {str(e).splitlines()[0][:200] if str(e) else ''}"
+        logger.warning(
+            "AI unavailable for chat %s (%s); using offline rules.", user_id, offline_reason
+        )
 
     # Dynamic JSON structured reasoning prompt
     reasoning_prompt = f"""Analyze the user's message: "{message}"
@@ -400,7 +477,10 @@ Available tools:
 - financial_advice_bundle()
 - save_user_api_key(provider, api_key)
 """
-    return _dynamic_llm_json_reasoning(message, reasoning_prompt)
+    analysis = _dynamic_llm_json_reasoning(message, reasoning_prompt)
+    if offline_reason:
+        analysis["offline_reason"] = offline_reason
+    return analysis
 
 
 def _dynamic_llm_json_reasoning(message: str, prompt: str) -> dict[str, Any]:
@@ -410,40 +490,7 @@ def _dynamic_llm_json_reasoning(message: str, prompt: str) -> dict[str, Any]:
     clean = message.strip()
     lower = clean.lower()
 
-    # 1. Human-in-the-loop confirmation check
-    if lower in {"yes", "confirm", "proceed", "ok", "okay", "sure", "y", "approve", "do it"}:
-        return {"action": "confirmation", "decision": "confirmed"}
-    if lower in {"no", "cancel", "abort", "reject", "stop", "don't", "n"}:
-        return {"action": "confirmation", "decision": "cancelled"}
-
-    # 2. Save API key check
-    key_match = re.search(
-        r"(?:set|save|my)?\s*(gemini|openai|groq|claude|anthropic)?\s*(?:api\s*)?key\s*(?:to|is|=)?\s*[:=\s]+([A-Za-z0-9_\-]{15,})",
-        clean,
-        re.I,
-    )
-    if key_match:
-        provider = (key_match.group(1) or "gemini").lower()
-        if provider == "anthropic":
-            provider = "claude"
-        return {
-            "action": "tool_call",
-            "tool_name": "save_user_api_key",
-            "tool_args": {"provider": provider, "api_key": key_match.group(2).strip()},
-        }
-    if clean.startswith(("AIzaSy", "sk-", "gsk_")) and len(clean) >= 20:
-        provider = (
-            "gemini"
-            if clean.startswith("AIzaSy")
-            else "groq"
-            if clean.startswith("gsk_")
-            else "openai"
-        )
-        return {
-            "action": "tool_call",
-            "tool_name": "save_user_api_key",
-            "tool_args": {"provider": provider, "api_key": clean},
-        }
+    # Yes/no replies and API keys are handled before this point in llm_reasoning_node.
 
     # 3. Transfer between accounts
     transfer_match = re.search(
@@ -633,7 +680,7 @@ def _dynamic_llm_json_reasoning(message: str, prompt: str) -> dict[str, Any]:
                 "• **Spending Reports:** *'How much did I spend this month?'*\n"
                 "• **Financial Skills:** *'Check budget alerts'*, *'Find recurring bills'*, *'Emergency fund runway'*\n"
                 "• **AI Coach:** *'How can I reduce expenses?'*\n"
-                "• **Set API Key:** *'Set my Gemini key: AIzaSy...'*"
+                "• **Set API Key:** *'My Gemini key is AQ.... or AIza...'*"
             ),
         }
 
@@ -653,35 +700,69 @@ def _dynamic_llm_json_reasoning(message: str, prompt: str) -> dict[str, Any]:
 
 
 async def llm_reasoning_node(state: AgentState) -> dict[str, Any]:
-    """Node 1: LLM analyzes intent, resolves entities, and chooses tools."""
+    """Node 1: LLM analyzes intent, resolves entities, and chooses tools.
+
+    Order of checks (cheapest and safest first):
+      1. Pending confirmation + yes/no reply  -> confirmation_node (no AI call).
+      2. API key(s) in the message            -> stored encrypted, never sent to an AI provider.
+      3. /coach /budgeter /summary command    -> advice bundle rendered by that persona.
+      4. Everything else                      -> AI tool-calling (offline rules if unavailable).
+    """
     chat_id = state.get("chat_id", "")
     user_message = state.get("user_message", "")
+
+    # 1. Human-in-the-loop: a yes/no answer to a pending action never goes to the AI.
+    pending = session_store.get_pending(chat_id)
+    if pending:
+        decision = classify_reply(user_message)
+        if decision:
+            return {
+                "is_confirmation_reply": True,
+                "confirmation_decision": decision,
+                "confirmation_action": pending,
+            }
+        # Unrelated message: drop the pending action and handle the new message normally.
+        session_store.clear_pending(chat_id)
+        logger.info("Chat %s sent a new request; cancelled pending action.", chat_id)
+
+    # 2. API keys pasted in chat (Gemini AIza / AQ., OpenAI, Claude, Groq; several at once).
+    if extract_api_keys(user_message):
+        return _save_keys_from_chat(chat_id, user_message)
+
+    # 3. Explicit persona command, e.g. "/budgeter" or "/summary how did I do?".
+    command = PERSONA_COMMAND.match(user_message)
+    if command:
+        return {
+            "tool_name": "financial_advice_bundle",
+            "tool_args": {"user_id": chat_id},
+            "requires_confirmation": False,
+            "persona_mode": resolve_mode(command.group(1)).value,
+        }
+
+    # 4. AI reasoning. History = previous messages only (the current one is the user_prompt).
     history = [
         {"role": "user" if isinstance(m, HumanMessage) else "assistant", "content": m.content}
         for m in state.get("messages", [])
     ]
-
-    pending = session_store.get_pending(chat_id)
     analysis = await _run_llm_analysis(chat_id, user_message, history)
-
-    if pending and analysis.get("action") == "confirmation":
-        decision = analysis.get("decision", "none")
-        return {
-            "is_confirmation_reply": True,
-            "confirmation_decision": decision,
-            "confirmation_action": pending,
-        }
+    offline = (
+        {"offline_reason": analysis["offline_reason"]} if analysis.get("offline_reason") else {}
+    )
 
     if analysis.get("action") == "tool_call" or analysis.get("type") == "tool_call":
         tool_name = analysis.get("tool_name")
-        tool_args = analysis.get("tool_args", {})
+        tool_args = dict(analysis.get("tool_args") or {})
         tool_args["user_id"] = chat_id
+
+        if tool_name == "save_user_api_key":
+            # Keys are only stored through the regex path above, never from AI output.
+            return {"response_text": _key_help_text(), **offline}
 
         if (
             tool_name == "transfer_funds"
             and float(tool_args.get("amount", 0)) >= CONFIRMATION_TRANSFER_THRESHOLD
         ):
-            amount = tool_args.get("amount", 0.0)
+            amount = float(tool_args.get("amount", 0.0))
             from_acc = tool_args.get("from_account", "Source")
             to_acc = tool_args.get("to_account", "Destination")
             pending_action: PendingAction = {
@@ -696,12 +777,14 @@ async def llm_reasoning_node(state: AgentState) -> dict[str, Any]:
                 "confirmation_action": pending_action,
                 "tool_name": tool_name,
                 "tool_args": tool_args,
+                **offline,
             }
 
         return {
             "tool_name": tool_name,
             "tool_args": tool_args,
             "requires_confirmation": False,
+            **offline,
         }
 
     return {
@@ -709,6 +792,42 @@ async def llm_reasoning_node(state: AgentState) -> dict[str, Any]:
         "tool_name": None,
         "tool_args": None,
         "requires_confirmation": False,
+        **offline,
+    }
+
+
+def _key_help_text() -> str:
+    return (
+        "🔑 I couldn't find a valid API key in that message.\n"
+        "Paste the full key, e.g. *'my Gemini key is AQ....'* or *'AIza...'*."
+    )
+
+
+def _save_keys_from_chat(chat_id: str, message: str) -> dict[str, Any]:
+    """Store every key in the message via the AI gateway vault and reply with masked keys."""
+    try:
+        saved = add_api_keys_from_text(chat_id, message)
+    except Exception as e:
+        logger.error("Could not save API key(s) for chat %s: %s", chat_id, e, exc_info=True)
+        return {"response_text": "⚠️ Could not save your API key. Please try again."}
+    if not saved:
+        return {"response_text": _key_help_text()}
+
+    by_provider: dict[str, list[str]] = {}
+    for item in saved:
+        by_provider.setdefault(item["provider"], []).append(item["masked_key"])
+    lines = [
+        f"• {provider.title()} ({len(keys)}): {', '.join(keys)}"
+        for provider, keys in by_provider.items()
+    ]
+    return {
+        "response_text": (
+            f"🔑 **Saved {len(saved)} API key{'s' if len(saved) != 1 else ''}** "
+            "(stored encrypted):\n"
+            + "\n".join(lines)
+            + "\n\nI'll use them from your next message, rotating between them. "
+            "You can delete your message containing the key."
+        )
     }
 
 
@@ -781,10 +900,63 @@ async def tool_executor_node(state: AgentState) -> dict[str, Any]:
         return {"tool_result": None, "error": str(e)}
 
 
+OFFLINE_NOTE = "\n\n_⚙️ Offline mode: the AI is unavailable right now, so I used basic rules._"
+
+
 async def response_synthesizer_node(state: AgentState) -> dict[str, Any]:
-    """Node 4: Synthesizes clean, rich Telegram Markdown responses."""
-    if state.get("response_text"):
-        return {"response_text": state["response_text"]}
+    """Node 4: Builds the reply.
+
+    Advice/report tools are written by a persona (Coach / Budgeter / Summary) from the tool data;
+    ledger confirmations stay as fast fixed templates. Adds an offline note if the AI failed.
+    """
+    text = state.get("response_text") or await _persona_response(state) or _template_response(state)
+    if state.get("offline_reason"):
+        text += OFFLINE_NOTE
+    return {"response_text": text}
+
+
+async def _persona_response(state: AgentState) -> str | None:
+    """Render advice-type tool results with a prompts.py persona; None -> use the template."""
+    tool_name = state.get("tool_name")
+    tool_result = state.get("tool_result")
+    if tool_name not in PERSONA_TOOLS or not tool_result or state.get("error"):
+        return None
+    if state.get("offline_reason"):
+        return None  # AI already failed this turn; don't spend another call.
+
+    chat_id = state.get("chat_id", "")
+    message = state.get("user_message", "")
+    command = PERSONA_COMMAND.match(message)
+    if command:
+        mode = resolve_mode(command.group(1))
+        message = command.group(2).strip() or "Review my finances using this data."
+    else:
+        mode = (
+            resolve_mode(state.get("persona_mode"))
+            if state.get("persona_mode")
+            else detect_mode(message)
+        )
+
+    try:
+        reply = await ask_persona(chat_id, message, mode=mode.value, context=tool_result)
+    except NoAPIKeyError:
+        return None
+    except Exception as e:
+        logger.warning(
+            "Persona %s failed for chat %s (%s); using template reply.", mode.value, chat_id, e
+        )
+        return None
+    if not reply or not str(reply).strip():
+        return None
+    return f"🧠 *{get_persona(mode).name}*\n\n{str(reply).strip()}"
+
+
+def _template_response(state: AgentState) -> str:
+    return _template_response_dict(state)["response_text"]
+
+
+def _template_response_dict(state: AgentState) -> dict[str, Any]:
+    """Fixed Markdown templates for every tool result (also the offline fallback for advice)."""
 
     tool_name = state.get("tool_name")
     tool_result = state.get("tool_result")
@@ -1081,24 +1253,25 @@ async def process_user_interaction(
 ) -> str:
     """
     Contract 1: Primary entrypoint for Telegram Bot (Krishna) to interact with LangGraph agent.
-    Loads complete conversation history from database, processes input, and persists replies.
+    Loads the recent conversation history, runs the graph, and persists both messages.
     """
     clean_text = (text or "").strip()
 
-    # Load complete conversation history from database
-    history = get_db_conversation_history(chat_id)
+    # Previous messages only (newest HISTORY_LIMIT); the current message is sent separately
+    # as the user prompt, so it must not also appear in the history.
+    history = get_db_conversation_history(chat_id, limit=HISTORY_LIMIT)
 
     initial_state: AgentState = {
         "chat_id": str(chat_id),
         "user_id": str(chat_id),
         "user_message": clean_text,
         "attachments": attachments or [],
-        "messages": list(history) + [HumanMessage(content=clean_text)],
+        "messages": list(history),
     }
 
     try:
-        # Save user message to database
-        save_db_chat_message(chat_id, "user", clean_text)
+        # Save user message to database (API keys masked, so they never reach chat history)
+        save_db_chat_message(chat_id, "user", redact_api_keys(clean_text))
 
         # Run StateGraph
         final_state = await agent_app.ainvoke(initial_state)
