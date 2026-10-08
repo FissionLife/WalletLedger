@@ -34,7 +34,6 @@ logger = logging.getLogger(__name__)
 TELEGRAM_LIMIT = 4096
 CHUNK_SIZE = 4000  # leave room so Markdown fallbacks never exceed the limit
 
-router = Router(name="walletledger")
 
 _bot: Bot | None = None
 _dispatcher: Dispatcher | None = None
@@ -104,7 +103,6 @@ async def feed_webhook_update(update: dict[str, Any]) -> None:
 # ---------------------------------------------------------------------------
 
 
-@router.message(F.document)
 async def on_document(message: Message, bot: Bot) -> None:
     doc = message.document
     file_name = doc.file_name or "statement.pdf"
@@ -123,7 +121,6 @@ async def on_document(message: Message, bot: Bot) -> None:
     await send_reply(message, reply)
 
 
-@router.message(F.text)
 async def on_text(message: Message, bot: Bot) -> None:
     text = message.text or ""
     if should_delete_message(text):
@@ -135,7 +132,6 @@ async def on_text(message: Message, bot: Bot) -> None:
     await send_reply(message, reply)
 
 
-@router.message()
 async def on_other(message: Message) -> None:
     await send_reply(message, "I can read text messages and PDF statements. Try /help.")
 
@@ -143,6 +139,15 @@ async def on_other(message: Message) -> None:
 # ---------------------------------------------------------------------------
 # Lifecycle
 # ---------------------------------------------------------------------------
+
+
+def build_router() -> Router:
+    """A fresh router per start(): aiogram routers can only be attached to one Dispatcher."""
+    router = Router(name="walletledger")
+    router.message.register(on_document, F.document)
+    router.message.register(on_text, F.text)
+    router.message.register(on_other)
+    return router
 
 
 async def start() -> str:
@@ -156,7 +161,7 @@ async def start() -> str:
 
     _bot = Bot(token=token)
     _dispatcher = Dispatcher()
-    _dispatcher.include_router(router)
+    _dispatcher.include_router(build_router())
     me = await _bot.get_me()
 
     if settings.use_webhook:

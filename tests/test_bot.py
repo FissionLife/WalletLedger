@@ -11,6 +11,9 @@ _TMP_DIR = tempfile.mkdtemp(prefix="walletledger-bot-test-")
 os.environ.setdefault(
     "DATABASE_URL", "sqlite:///" + os.path.join(_TMP_DIR, "test.db").replace("\\", "/")
 )
+# Never reach real Telegram from tests, even if a developer's .env has a token.
+os.environ["TELEGRAM_BOT_TOKEN"] = ""
+os.environ["USE_WEBHOOK"] = "false"
 for _var in ("GEMINI_API_KEYS", "GEMINI_API_KEY", "OPENAI_API_KEYS", "OPENAI_API_KEY"):
     os.environ.pop(_var, None)
 
@@ -172,6 +175,11 @@ class TestHttpEndpoints(BotTestCase):
         super().setUp()
         from main import app
 
+        # Settings may already be loaded from a developer's .env: force the bot off.
+        for name, value in (("telegram_bot_token", ""), ("use_webhook", False)):
+            patcher = patch.object(settings, name, value)
+            patcher.start()
+            self.addCleanup(patcher.stop)
         self.client = TestClient(app)
 
     def test_simulate_chat(self):
@@ -224,6 +232,26 @@ class TestTelegramHelpers(unittest.TestCase):
         run(telegram.send_reply(message, "**bad _markdown"))
         self.assertEqual(message.answer.await_count, 2)
         self.assertIsNone(message.answer.await_args.kwargs["parse_mode"])
+
+    def test_restart_builds_fresh_router(self):
+        """start() after stop() in the same process must not reuse an attached router."""
+        fake_bot = SimpleNamespace(
+            get_me=AsyncMock(return_value=SimpleNamespace(username="test_bot")),
+            delete_webhook=AsyncMock(),
+            session=SimpleNamespace(close=AsyncMock()),
+        )
+
+        async def cycle():
+            with (
+                patch.object(settings, "telegram_bot_token", "123:abc"),
+                patch.object(telegram, "Bot", return_value=fake_bot),
+                patch("aiogram.Dispatcher.start_polling", AsyncMock()),
+            ):
+                for _ in range(2):
+                    self.assertEqual(await telegram.start(), "polling")
+                    await telegram.stop()
+
+        run(cycle())
 
     def test_start_without_token_is_off(self):
         with patch.object(settings, "telegram_bot_token", ""):
