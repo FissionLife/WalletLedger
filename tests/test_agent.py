@@ -287,5 +287,90 @@ class TestHistoryAndOfflineMode(AgentTestCase):
         self.assertNotIn("Offline mode", reply)
 
 
+class TestMultiTransactionAndBatchIngestion(AgentTestCase):
+    """Test multi-item list parsing, mixed income+expenses, and multi-tool LLM execution."""
+
+    def test_multi_line_expense_list(self):
+        message = (
+            "190=poornima pizza Dosa\n"
+            "80=Neeraj Dosa\n"
+            "10=water bottle\n"
+            "115.62=petrol\n"
+            "15=dosa\n"
+            "100=family nasta\n"
+            "109=poornima biryani\n"
+            "80=roshani chocaltes\n"
+            "50=idly\n"
+            "300=poornima gift\n"
+            "100=haircut\n"
+            "340=team lunch"
+        )
+        reply = chat(self.chat_id, message)
+        self.assertIn("Ledger Transactions Recorded", reply)
+        self.assertIn("Expenses Logged (12)", reply)
+        self.assertIn("Total Outflow", reply)
+        self.assertIn("1,489.62", reply)
+
+    def test_mixed_income_and_batch_expenses(self):
+        message = (
+            "i got stifend of 15000 from that i spend this 190=poornima pizza Dosa\n"
+            "80=Neeraj Dosa\n"
+            "10=water bottle\n"
+            "115.62=petrol\n"
+            "15=dosa\n"
+            "100=family nasta\n"
+            "109=poornima biryani\n"
+            "80=roshani chocaltes\n"
+            "50=idly\n"
+            "300=poornima gift\n"
+            "100=haircut\n"
+            "340=team lunch"
+        )
+        reply = chat(self.chat_id, message)
+        self.assertIn("Ledger Transactions Recorded", reply)
+        self.assertIn("Income Logged (1)", reply)
+        self.assertIn("Expenses Logged (12)", reply)
+        self.assertIn("15,000.00", reply)
+        self.assertIn("1,489.62", reply)
+        self.assertIn("Net Balance Change", reply)
+
+    def test_natural_spending_query(self):
+        reply = chat(self.chat_id, "how much total i spend")
+        self.assertIn("Spending Breakdown", reply)
+
+    def test_multi_tool_calling_from_llm(self):
+        self.add_key()
+        calls = [
+            SimpleNamespace(
+                function=SimpleNamespace(
+                    name="log_income",
+                    arguments=json.dumps({"amount": 15000, "category": "Stipend", "source_account": "Bank"}),
+                )
+            ),
+            SimpleNamespace(
+                function=SimpleNamespace(
+                    name="log_expense",
+                    arguments=json.dumps({"amount": 190, "category": "Food", "merchant": "Poornima"}),
+                )
+            ),
+            SimpleNamespace(
+                function=SimpleNamespace(
+                    name="log_expense",
+                    arguments=json.dumps({"amount": 80, "category": "Food", "merchant": "Neeraj"}),
+                )
+            ),
+        ]
+        msg = SimpleNamespace(content=None, tool_calls=calls)
+        ai_resp = SimpleNamespace(choices=[SimpleNamespace(message=msg)])
+
+        with patch.object(litellm, "acompletion", AsyncMock(return_value=ai_resp)) as mock:
+            reply = chat(self.chat_id, "stipend and snacks")
+            self.assertEqual(mock.await_count, 1)
+        self.assertIn("Ledger Transactions Recorded", reply)
+        self.assertIn("Income Logged (1)", reply)
+        self.assertIn("Expenses Logged (2)", reply)
+
+
 if __name__ == "__main__":
     unittest.main()
+
