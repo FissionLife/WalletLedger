@@ -15,3 +15,23 @@ env/
 .idea/
 *.log
 .devprune.json
+
+# Secrets: keep the template, ignore real env files
+.env.*
+!.env.example
+
+# SQLite side files
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Tool caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Local tooling / agent state
+.remember/
+.claude/settings.local.json

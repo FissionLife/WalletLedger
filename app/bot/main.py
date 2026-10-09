@@ -20,11 +20,14 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
 from app.bot.agent import classify_reply, process_user_interaction
+from app.config import dev_endpoints_enabled, is_chat_allowed
 from app.db import SessionLocal
 from app.services.ledger import get_account_balances, get_or_create_user, get_spending_summary
 from app.services_ai.ai_gateway import add_api_keys_from_text, extract_api_keys, list_api_keys
 from app.services_ai.mcp_server import execute_tool
 from app.services_ai.transaction_parser import parse_statement_file
+
+PRIVATE_BOT_TEXT = "🔒 This bot is private."
 
 logger = logging.getLogger(__name__)
 
@@ -96,6 +99,8 @@ async def handle_text(chat_id: str, text: str) -> str:
     """Single entry point for a text message from any channel. Returns the reply text."""
     chat_id = str(chat_id)
     clean = (text or "").strip()
+    if not is_chat_allowed(chat_id):
+        return PRIVATE_BOT_TEXT
 
     pending = _get_pending_import(chat_id)
     if pending:
@@ -227,6 +232,8 @@ def upload_type(file_name: str) -> str | None:
 async def handle_document(chat_id: str, file_name: str, file_bytes: bytes) -> str:
     """Parse an uploaded statement and ask the user to confirm the import."""
     chat_id = str(chat_id)
+    if not is_chat_allowed(chat_id):
+        return PRIVATE_BOT_TEXT
     kind = upload_type(file_name)
     if kind is None:
         return "📄 Please upload a PDF statement (or a .txt file with bank SMS lines)."
@@ -331,6 +338,8 @@ async def telegram_webhook(request: Request):
     """
     from app.bot import telegram
 
+    if not telegram.webhook_active() and not dev_endpoints_enabled():
+        raise HTTPException(status_code=404, detail="Not found")
     update = await request.json()
     if telegram.webhook_active():
         header = request.headers.get("X-Telegram-Bot-Api-Secret-Token", "")
@@ -354,4 +363,6 @@ async def telegram_webhook(request: Request):
 @bot_router.post("/simulate_chat")
 async def simulate_chat(req: SimulateMessageRequest):
     """Developer endpoint: same logic as Telegram, no bot token needed."""
+    if not dev_endpoints_enabled():
+        raise HTTPException(status_code=404, detail="Not found")
     return {"status": "ok", "reply": await handle_text(req.chat_id, req.text)}

@@ -2,9 +2,31 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.models import Account, Category, Merchant, Transaction, User
+
+VALID_TX_TYPES = {"expense", "income"}
+MAX_AMOUNT = 10_000_000_000.0
+
+
+class LedgerError(ValueError):
+    """Invalid ledger operation (bad amount or type, same-account transfer)."""
+
+
+def validate_amount(amount: float) -> float:
+    """Returns the amount rounded to 2 decimals, or raises LedgerError (0, negative, NaN, inf)."""
+    try:
+        value = round(float(amount), 2)
+    except (TypeError, ValueError) as exc:
+        raise LedgerError(f"Invalid amount: {amount!r}") from exc
+    if value != value or value in (float("inf"), float("-inf")):
+        raise LedgerError("Amount must be a finite number")
+    if value <= 0:
+        raise LedgerError("Amount must be greater than zero")
+    if value > MAX_AMOUNT:
+        raise LedgerError("Amount is too large")
+    return value
 
 
 def get_or_create_user(db: Session, telegram_chat_id: str) -> User:
@@ -116,6 +138,9 @@ def record_transaction(
     """
     Logs an expense or income and updates the corresponding account balance atomically.
     """
+    if tx_type not in VALID_TX_TYPES:
+        raise LedgerError(f"Invalid transaction type {tx_type!r}; use 'expense' or 'income'")
+    amount = validate_amount(amount)
     account = get_or_create_account(db, user_id, account_name, lock=True)
 
     cat_id = None
@@ -132,22 +157,26 @@ def record_transaction(
 
     # Update balance according to Pipe flow
     if tx_type == "expense":
-        account.balance -= float(amount)
-    elif tx_type == "income":
-        account.balance += float(amount)
+        account.balance = round(account.balance - amount, 2)
+    else:
+        account.balance = round(account.balance + amount, 2)
 
     tx = Transaction(
         user_id=user_id,
         account_id=account.id,
         category_id=cat_id,
         merchant_id=merchant_id,
-        amount=float(amount),
+        amount=amount,
         transaction_type=tx_type,
         description=description,
         source=source,
     )
     db.add(tx)
-    db.commit()
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
     db.refresh(tx)
 
     return {
@@ -173,6 +202,9 @@ def transfer_between_pipes(
     """
     Transfers funds from Pipe A to Pipe B without logging an external expense.
     """
+    amount = validate_amount(amount)
+    if from_account_name.strip().lower() == to_account_name.strip().lower():
+        raise LedgerError("Cannot transfer to the same account")
     # Lock both rows in a stable order (by name) so two opposite transfers cannot deadlock.
     locked = {
         name.strip().lower(): get_or_create_account(db, user_id, name, lock=True)
@@ -181,20 +213,24 @@ def transfer_between_pipes(
     from_account = locked[from_account_name.strip().lower()]
     to_account = locked[to_account_name.strip().lower()]
 
-    from_account.balance -= float(amount)
-    to_account.balance += float(amount)
+    from_account.balance = round(from_account.balance - amount, 2)
+    to_account.balance = round(to_account.balance + amount, 2)
 
     tx = Transaction(
         user_id=user_id,
         account_id=from_account.id,
         to_account_id=to_account.id,
-        amount=float(amount),
+        amount=amount,
         transaction_type="transfer",
         description=description or f"Transfer from {from_account.name} to {to_account.name}",
         source="transfer",
     )
     db.add(tx)
-    db.commit()
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
     db.refresh(tx)
 
     return {
@@ -204,7 +240,7 @@ def transfer_between_pipes(
         "from_balance": round(from_account.balance, 2),
         "to_account": to_account.name,
         "to_balance": round(to_account.balance, 2),
-        "transferred": float(amount),
+        "transferred": amount,
     }
 
 
@@ -227,19 +263,23 @@ def get_spending_summary(db: Session, user_id: str, days: int = 30) -> dict[str,
     """Aggregates recent spending by category and merchant."""
     start_date = datetime.utcnow() - timedelta(days=days)
 
-    stmt = select(Transaction).where(
-        Transaction.user_id == user_id,
-        Transaction.transaction_type == "expense",
-        Transaction.created_at >= start_date,
+    stmt = (
+        select(Transaction)
+        .options(joinedload(Transaction.category))
+        .where(
+            Transaction.user_id == user_id,
+            Transaction.transaction_type == "expense",
+            Transaction.created_at >= start_date,
+        )
     )
-    txs = list(db.scalars(stmt))
+    txs = list(db.scalars(stmt).unique())
 
     total_spent = sum(t.amount for t in txs)
 
     # Categories breakdown
     cat_totals: dict[str, float] = {}
     for t in txs:
-        cat_name = t.category.name if getattr(t, "category", None) else "Uncategorized"
+        cat_name = t.category.name if t.category else "Uncategorized"
         cat_totals[cat_name] = cat_totals.get(cat_name, 0.0) + t.amount
 
     return {

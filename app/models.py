@@ -128,6 +128,7 @@ class Transaction(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     user: Mapped[User] = relationship("User", back_populates="transactions")
+    category: Mapped[Category | None] = relationship("Category", foreign_keys=[category_id])
 
 
 class ApiKey(Base):

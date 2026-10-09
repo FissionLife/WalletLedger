@@ -7,6 +7,8 @@ A production-ready FastAPI-based payment processing, wallet ledger, and AI-power
 - 📖 [Complete Deployment Guide](DEPLOYMENT.md) - Step-by-step local setup instructions
 - 📚 [Technical Documentation](DOCUMENTATION.md) - Architecture, flows, and development guide
 - 👥 [Team & Architecture Guide](TEAM_GUIDE.md) - "Tank and Pipes" model, hackathon roles & bot architecture
+- 🗺️ [Architecture diagrams](docs/ARCHITECTURE.md) - Mermaid flow, sequence, graph and data-model diagrams
+- 🔒 [Security & data storage](docs/SECURITY.md) - what is stored, who can read it, how to harden it
 - 🔗 [API Documentation](http://localhost:8000/docs) - Interactive Swagger UI (after starting server)
 
 ## Prerequisites
