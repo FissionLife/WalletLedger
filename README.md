@@ -6,9 +6,6 @@ categories are pipes out, and transfers between your own accounts are never coun
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) (Mermaid diagrams) · [docs/SECURITY.md](docs/SECURITY.md) (data storage and hardening)
 - [DEPLOYMENT.md](DEPLOYMENT.md) · [DOCUMENTATION.md](DOCUMENTATION.md) · [TEAM_GUIDE.md](TEAM_GUIDE.md) · [SDLC_AND_SCHEMA.md](SDLC_AND_SCHEMA.md)
 
-> Note: DEPLOYMENT.md / DOCUMENTATION.md still describe the retired "users / orders / wallet" payment
-> API and need a rewrite. This README is the source of truth.
-
 ## Run it
 
 ```bash

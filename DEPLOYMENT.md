@@ -1,302 +1,42 @@
-# WalletLedger - Local Deployment Guide
+# Deployment Guide
 
-## Quick Start
+See [.env.example](.env.example) for every setting and [docs/SECURITY.md](docs/SECURITY.md) for the
+hardening checklist.
 
-This guide will help you set up and run the WalletLedger on your local machine in under 10 minutes.
-
----
-
-## Prerequisites
-
-Before you begin, ensure you have the following installed:
-
-| Software | Version | Check Command       | Installation                                     |
-| -------- | ------- | ------------------- | ------------------------------------------------ |
-| Python   | 3.14+   | `python --version`  | [python.org](https://www.python.org/downloads/)  |
-| uv       | Latest  | `uv --version`      | [astral.sh/uv](https://github.com/astral-sh/uv)  |
-| Docker   | Latest  | `docker --version`  | [docker.com](https://www.docker.com/get-started) |
-| Git      | Latest  | `git --version`     | [git-scm.com](https://git-scm.com/downloads)     |
-
----
-
-## Step-by-Step Deployment
-
-### Step 1: Clone the Repository
-
-```bash
-git clone <repository-url>
-cd WalletLedger
-```
-
-### Step 2: Start PostgreSQL Database
-
-Start a PostgreSQL 16 container using Docker:
-
-```bash
-docker run --name app_pg \
-  -e POSTGRES_PASSWORD=postgres \
-  -e POSTGRES_USER=postgres \
-  -e POSTGRES_DB=appdb \
-  -p 5432:5432 \
-  -d postgres:16
-```
-
-**Verify PostgreSQL is running:**
-
-```bash
-docker ps | grep app_pg
-```
-
-Expected output:
-
-```
-CONTAINER ID   IMAGE         STATUS         PORTS
-abc123def456   postgres:16   Up 2 seconds   0.0.0.0:5432->5432/tcp
-```
-
-**Check PostgreSQL logs** (optional):
-
-```bash
-docker logs app_pg
-```
-
-### Step 3: Install Dependencies with uv
-
-Use `uv` to automatically sync the project environment and install all dependencies:
+## 1. Local (SQLite + Telegram polling)
 
 ```bash
 uv sync
+cp .env.example .env
+uv run python -c "import secrets; print(secrets.token_urlsafe(48))"   # -> SECRET_KEY
+# put TELEGRAM_BOT_TOKEN (from @BotFather) and SECRET_KEY into .env
+uv run uvicorn main:app --port 8000
 ```
 
-*This automatically creates a `.venv` directory and installs the dependencies from `pyproject.toml` and `uv.lock`.*
-
-### Step 4: (Optional) Activate Virtual Environment
-
-With `uv`, commands can be run directly using `uv run <command>` without manual activation. However, if you wish to activate the virtual environment manually:
-
-On macOS/Linux:
-
-```bash
-source .venv/bin/activate
-```
-
-On Windows (PowerShell):
-
-```bash
-.venv\Scripts\Activate.ps1
-```
-
-On Windows (Command Prompt):
-
-```bash
-.venv\Scripts\activate.bat
-```
-
-### Step 5: Initialize Database Schema (Option A - Automatic)
-
-The application automatically creates tables on startup. Just run:
-
-```bash
-uv run uvicorn main:app --reload --port 8000
-```
-
-The database schema will be created automatically.
-
-### Step 5: Initialize Database Schema (Option B - Manual SQL)
-
-If you prefer to create the schema manually:
-
-```bash
-# Connect to PostgreSQL
-docker exec -it app_pg psql -U postgres -d appdb
-
-# In psql prompt, run:
-\i /path/to/WalletLedger/sql/schema.sql
-
-# Or from command line:
-docker exec -i app_pg psql -U postgres -d appdb < sql/schema.sql
-```
-
-### Step 6: Run the Application
-
-```bash
-uv run uvicorn main:app --reload --port 8000
-```
-
-**Expected output:**
-
-```
-INFO:     Will watch for changes in these directories: ['/path/to/WalletLedger']
-INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
-INFO:     Started reloader process [12345] using StatReload
-INFO:     Started server process [12346]
-INFO:     Waiting for application startup.
-INFO:     Application startup complete.
-```
-
-### Step 7: Verify Installation
-
-**Test health endpoint:**
-
-```bash
-curl http://localhost:8000/health
-```
-
-Expected response:
-
-```json
-{ "status": "healthy" }
-```
-
-**Access API documentation:**
-
-- Swagger UI: http://localhost:8000/docs
-- ReDoc: http://localhost:8000/redoc
-
-### Step 8: Seed Sample Data (Optional)
-
-**Option A: Using Python Script (Recommended)**
-
-```bash
-# Seed single user
-uv run python scripts/seed_data.py CUST-001
-
-# Seed multiple users
-uv run python scripts/seed_data.py --all
-```
-
-**Option B: Using SQL File**
-
-```bash
-docker exec -i app_pg psql -U postgres -d appdb < sql/seed_data.sql
-```
-
-**Verify seeded data:**
-
-```bash
-curl http://localhost:8000/users/CUST-001
-curl http://localhost:8000/wallet/CUST-001
-curl "http://localhost:8000/orders?customer_id=CUST-001"
-```
-
----
-
-## Database Management
-
-### Connecting to PostgreSQL
-
-**Using psql (inside container):**
-
-```bash
-docker exec -it app_pg psql -U postgres -d appdb
-```
-
-**Common psql commands:**
-
-```sql
-\dt                          -- List all tables
-\d users                     -- Describe users table
-\d orders                    -- Describe orders table
-\d wallets                   -- Describe wallets table
-
-SELECT * FROM users;         -- View all users
-SELECT * FROM wallets;       -- View all wallets
-SELECT * FROM orders;        -- View all orders
-
-\q                           -- Quit psql
-```
-
-### Database Operations
-
-**View table counts:**
-
-```sql
-SELECT 'Users' AS table_name, COUNT(*) AS count FROM users
-UNION ALL
-SELECT 'Wallets', COUNT(*) FROM wallets
-UNION ALL
-SELECT 'Orders', COUNT(*) FROM orders;
-```
-
-**Clear all data (keep schema):**
-
-```sql
-TRUNCATE TABLE orders CASCADE;
-TRUNCATE TABLE wallets CASCADE;
-TRUNCATE TABLE users CASCADE;
-```
-
-**Drop and recreate database:**
-
-```bash
-docker exec -it app_pg psql -U postgres -c "DROP DATABASE appdb;"
-docker exec -it app_pg psql -U postgres -c "CREATE DATABASE appdb;"
-docker exec -i app_pg psql -U postgres -d appdb < sql/schema.sql
-```
-
-### PostgreSQL Container Management
-
-**Stop PostgreSQL:**
-
-```bash
-docker stop app_pg
-```
-
-**Start PostgreSQL:**
-
-```bash
-docker start app_pg
-```
-
-**Restart PostgreSQL:**
-
-```bash
-docker restart app_pg
-```
-
-**Remove PostgreSQL container:**
-
-```bash
-docker stop app_pg
-docker rm app_pg
-```
-
-**View PostgreSQL logs:**
-
-```bash
-docker logs app_pg
-docker logs -f app_pg  # Follow logs in real-time
-```
-
----
-
-## Configuration
-
-### Environment Variables
-
-Create a `.env` file in the project root (optional):
-
-```bash
-# .env
-DATABASE_URL=postgresql+psycopg2://postgres:postgres@localhost:5432/appdb
-```
-
-### Custom Database Configuration
-
-If you want to use a different database:
-
-```bash
-# Start PostgreSQL with custom settings
-docker run --name my_pg \
-  -e POSTGRES_PASSWORD=mypassword \
-  -e POSTGRES_USER=myuser \
-  -e POSTGRES_DB=mydb \
-  -p 5433:5432 \
-  -d postgres:16
-
-# Update .env file
-echo "DATABASE_URL=postgresql+psycopg2://myuser:mypassword@localhost:5433/mydb" > .env
-
-# Run application
-uv run uvicorn main:app --reload --port 8000
-```
+With `USE_WEBHOOK=false` the app long-polls Telegram, so no public URL is needed. Message your bot
+`/start`. Without a bot token, set `ENABLE_DEV_ENDPOINTS=true` and use `POST /bot/simulate_chat`.
+
+Optional demo data: `uv run python scripts/seed_demo_data.py` (chat id `demo`).
+
+## 2. Production (Postgres + webhook)
+
+1. Provision Postgres with TLS and a least-privilege user. Set
+   `DATABASE_URL=postgresql+psycopg2://USER:PASS@HOST:5432/walletledger?sslmode=require`.
+2. Put the app behind an HTTPS reverse proxy (Caddy, nginx, a cloud load balancer).
+3. Set: `USE_WEBHOOK=true`, `WEBHOOK_URL=https://your-domain/bot/webhook`, `WEBHOOK_SECRET`
+   (`python -c "import secrets; print(secrets.token_hex(32))"`), `SECRET_KEY`, `TELEGRAM_BOT_TOKEN`,
+   and `ALLOWED_CHAT_IDS` for a private bot. Keep `ENABLE_DEV_ENDPOINTS=false`.
+4. Run: `uv run uvicorn main:app --host 0.0.0.0 --port 8000` (one worker: confirmations and persona
+   mode are held in process memory).
+5. On startup the app registers the webhook with Telegram. Check `GET /health`.
+
+Tables are created automatically at startup (`create_all`). There is no migration tool yet, so
+schema changes to existing databases need manual SQL or adding Alembic.
+
+## 3. Operations
+- **Backups:** back up the database; encrypt them. Keep `SECRET_KEY` separately, since stored user API
+  keys cannot be decrypted without it.
+- **Key rotation:** move the old `SECRET_KEY` into `SECRET_KEY_OLD`, set a new `SECRET_KEY`.
+- **Tests:** `uv run python -m unittest discover -s tests` (also run in CI).
+- **Troubleshooting:** bot silent -> check the token and that only one poller or webhook is active;
+  403 on the webhook -> `WEBHOOK_SECRET` mismatch; "Cannot decrypt" warnings -> wrong `SECRET_KEY`.
