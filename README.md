@@ -48,6 +48,21 @@ You never maintain model names: the gateway asks each provider which models your
 and picks the best one (cached 6 h; falls back to built-in defaults if the lookup fails). Pin a
 model only if you need to with `AI_MODEL_<PROVIDER>`, or turn it off with `DYNAMIC_MODELS=false`.
 
+### Managing AI keys (in the Telegram chat)
+Type `/` in Telegram to see the command menu. Keys are **tested live before they are saved**, so a
+dead or mistyped key is rejected with a reason instead of silently breaking the bot.
+
+| Command | What it does |
+|---|---|
+| `/setkey <key>` | test, then save (Gemini, OpenAI, Claude, Groq; several at once is fine) |
+| `/keys` | numbered, masked list of your keys |
+| `/testkey [n]` | re-test one key or all of them |
+| `/editkey <n> <new key>` | replace key n (the old one is kept unless the new one works) |
+| `/delkey <n>` / `/pausekey <n>` / `/resumekey <n>` | remove, pause or re-enable key n |
+
+If your keys fail or run out of quota, the bot automatically **falls back to the shared team keys**
+configured on the server (`GEMINI_API_KEYS` etc. in `.env`).
+
 ### Telegram bot (optional)
 Create a bot with @BotFather and put its token in `.env` as `TELEGRAM_BOT_TOKEN`.
 With `USE_WEBHOOK=false` the app polls Telegram when it starts, so just message your bot.

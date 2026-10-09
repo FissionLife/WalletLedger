@@ -457,32 +457,47 @@ def get_user_api_keys(user_id: str) -> list[tuple[str, str]]:
 def build_candidates(
     user_id: str, preferred_provider: str = DEFAULT_PROVIDER
 ) -> list[KeyCandidate]:
-    """Ordered list of keys to try for one request (round-robin rotated, cooling keys last)."""
-    user_keys = _load_user_keys(user_id)
-    candidates: list[KeyCandidate] = []
-    if user_keys:
-        by_provider: dict[str, list[KeyCandidate]] = {}
-        for key in user_keys:
-            by_provider.setdefault(key.provider, []).append(key)
-        order = [preferred_provider] + [p for p in by_provider if p != preferred_provider]
-        for provider in order:
-            candidates += _rotate(by_provider.get(provider, []), f"user:{user_id}:{provider}")
-    else:
-        # Server keys, grouped by provider so the preferred provider is always tried first.
-        # Within a provider: the rotated GEMINI_API_KEYS-style list, then the single
-        # GEMINI_API_KEY-style variable (skipped if it is already in the list).
-        order = [preferred_provider] + [p for p in PROVIDERS if p != preferred_provider]
-        for provider in order:
-            listed = _server_keys(provider)
-            server = [KeyCandidate(provider, k, "server") for k in listed]
-            candidates += _rotate(server, f"server:{provider}")
-            single = _single_env_key(provider)
-            if single and single not in listed:
-                candidates.append(KeyCandidate(provider, single, "env"))
+    """Ordered list of keys to try for one request (round-robin rotated, cooling keys last).
 
-    ready = [c for c in candidates if not _rotation.is_cooling(c.fingerprint)]
-    cooling = [c for c in candidates if _rotation.is_cooling(c.fingerprint)]
+    The user's own keys come first. The team's server keys always follow as a fallback, so a
+    user key that is wrong, revoked or out of quota never leaves the user without AI.
+    """
+    candidates: list[KeyCandidate] = []
+
+    by_provider: dict[str, list[KeyCandidate]] = {}
+    for key in _load_user_keys(user_id):
+        by_provider.setdefault(key.provider, []).append(key)
+    order = [preferred_provider] + [p for p in by_provider if p != preferred_provider]
+    for provider in order:
+        candidates += _rotate(by_provider.get(provider, []), f"user:{user_id}:{provider}")
+
+    # Server keys, grouped by provider so the preferred provider is always tried first.
+    # Within a provider: the rotated GEMINI_API_KEYS-style list, then the single
+    # GEMINI_API_KEY-style variable (skipped if it is already in the list).
+    order = [preferred_provider] + [p for p in PROVIDERS if p != preferred_provider]
+    for provider in order:
+        listed = _server_keys(provider)
+        server = [KeyCandidate(provider, k, "server") for k in listed]
+        candidates += _rotate(server, f"server:{provider}")
+        single = _single_env_key(provider)
+        if single and single not in listed:
+            candidates.append(KeyCandidate(provider, single, "env"))
+
+    seen: set[tuple[str, str]] = set()
+    unique = []
+    for c in candidates:
+        if (c.provider, c.api_key) not in seen:
+            seen.add((c.provider, c.api_key))
+            unique.append(c)
+
+    ready = [c for c in unique if not _rotation.is_cooling(c.fingerprint)]
+    cooling = [c for c in unique if _rotation.is_cooling(c.fingerprint)]
     return ready + cooling
+
+
+def has_server_keys() -> bool:
+    """True if the team configured shared fallback keys (never reveals them)."""
+    return any(_server_keys(p) or _single_env_key(p) for p in PROVIDERS)
 
 
 # --------------------------------------------------------------------------------------
@@ -663,6 +678,122 @@ async def complete(
         return response if tools else _extract_text(response)
 
     raise AllKeysExhaustedError(attempts)
+
+
+# --------------------------------------------------------------------------------------
+# Key testing & editing
+# --------------------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class KeyCheck:
+    """Result of a live key test. ``usable`` keys may be saved."""
+
+    status: str  # "valid" | "rate_limited" | "invalid" | "unverified"
+    detail: str = ""
+
+    @property
+    def usable(self) -> bool:
+        return self.status in ("valid", "rate_limited")
+
+
+async def validate_api_key(provider: str, api_key: str) -> KeyCheck:
+    """Test a key with a tiny real request, so a dead key is never silently saved.
+
+    valid        - the provider answered
+    rate_limited - the key is real but out of quota/rate right now (still worth saving)
+    invalid      - rejected (revoked, mistyped, wrong provider, no access)
+    unverified   - could not tell (offline, provider outage); caller decides
+    """
+    provider = normalize_provider(provider)
+    api_key = (api_key or "").strip()
+    if not api_key:
+        return KeyCheck("invalid", "empty key")
+    model = None
+    if settings.dynamic_models and not _env(f"AI_MODEL_{provider.upper()}"):
+        model = await model_catalog.best_model(provider, api_key)
+    model = model or default_model(provider)
+    try:
+        await litellm.acompletion(
+            model=model,
+            messages=[{"role": "user", "content": "Reply with the single word OK."}],
+            api_key=api_key,
+            max_tokens=8,
+            timeout=15,
+            num_retries=0,
+        )
+        return KeyCheck("valid")
+    except Exception as exc:
+        kind = _classify(exc)
+        if kind == "rate_limit":
+            return KeyCheck("rate_limited", "quota or rate limit reached right now")
+        if kind == "auth":
+            return KeyCheck("invalid", "the provider rejected this key")
+        if isinstance(exc, litellm.NotFoundError):
+            # Key accepted but the model name is unknown: the model list tells us if the key works.
+            model_catalog.invalidate(provider, api_key)
+            if await model_catalog.list_models(provider, api_key):
+                return KeyCheck("valid", "key works (model list available)")
+            return KeyCheck("invalid", "no access to any model with this key")
+        return KeyCheck("unverified", _short_error(exc))
+
+
+async def add_validated_keys(user_id: str, text: str) -> list[dict[str, Any]]:
+    """Find keys in ``text``, test each live, and save only the ones that work.
+
+    Each result has ``status``: added | exists | rejected, plus provider, masked_key, check.
+    """
+    found = list(dict.fromkeys(extract_api_keys(text)))
+    checks = await asyncio.gather(*(validate_api_key(p, k) for p, k in found))
+    results: list[dict[str, Any]] = []
+    for (provider, key), check in zip(found, checks, strict=True):
+        if not check.usable:
+            results.append(
+                {
+                    "status": "rejected",
+                    "provider": provider,
+                    "masked_key": mask_key(key),
+                    "check": check,
+                }
+            )
+            continue
+        saved = await asyncio.to_thread(add_api_key, user_id, provider, key)
+        results.append({**saved, "check": check})
+    return results
+
+
+def replace_api_key(user_id: str, key_id: str, provider: str, api_key: str) -> bool:
+    """Swap the stored secret of an existing key (edit in place). False if it is not theirs."""
+    provider = normalize_provider(provider)
+    db = _session()
+    try:
+        user = _find_user(db, user_id)
+        record = db.get(ApiKey, key_id)
+        if user is None or record is None or record.user_id != user.id:
+            return False
+        record.provider = provider
+        record.encrypted_key = encrypt_api_key(api_key.strip())
+        record.is_active = True
+        db.commit()
+        return True
+    finally:
+        db.close()
+
+
+def get_plain_key(user_id: str, key_id: str) -> tuple[str, str] | None:
+    """(provider, plain key) for one of the user's own keys, or None. For re-testing only."""
+    db = _session()
+    try:
+        user = _find_user(db, user_id)
+        record = db.get(ApiKey, key_id)
+        if user is None or record is None or record.user_id != user.id:
+            return None
+        try:
+            return record.provider, decrypt_api_key(record.encrypted_key)
+        except InvalidToken:
+            return None
+    finally:
+        db.close()
 
 
 async def ask_llm(

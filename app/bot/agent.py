@@ -24,12 +24,12 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from langgraph.graph import END, START, StateGraph
 from sqlalchemy import select
 
+from app.bot.keys import save_keys
 from app.db import SessionLocal
 from app.models import ChatMessage, User
 from app.services.ledger import get_or_create_user
 from app.services_ai.ai_gateway import (
     NoAPIKeyError,
-    add_api_keys_from_text,
     ask_llm,
     ask_persona,
     extract_api_keys,
@@ -727,7 +727,7 @@ async def llm_reasoning_node(state: AgentState) -> dict[str, Any]:
 
     # 2. API keys pasted in chat (Gemini AIza / AQ., OpenAI, Claude, Groq; several at once).
     if extract_api_keys(user_message):
-        return _save_keys_from_chat(chat_id, user_message)
+        return {"response_text": await save_keys(chat_id, user_message)}
 
     # 3. Explicit persona command, e.g. "/budgeter" or "/summary how did I do?".
     command = PERSONA_COMMAND.match(user_message)
@@ -801,34 +801,6 @@ def _key_help_text() -> str:
         "🔑 I couldn't find a valid API key in that message.\n"
         "Paste the full key, e.g. *'my Gemini key is AQ....'* or *'AIza...'*."
     )
-
-
-def _save_keys_from_chat(chat_id: str, message: str) -> dict[str, Any]:
-    """Store every key in the message via the AI gateway vault and reply with masked keys."""
-    try:
-        saved = add_api_keys_from_text(chat_id, message)
-    except Exception as e:
-        logger.error("Could not save API key(s) for chat %s: %s", chat_id, e, exc_info=True)
-        return {"response_text": "⚠️ Could not save your API key. Please try again."}
-    if not saved:
-        return {"response_text": _key_help_text()}
-
-    by_provider: dict[str, list[str]] = {}
-    for item in saved:
-        by_provider.setdefault(item["provider"], []).append(item["masked_key"])
-    lines = [
-        f"• {provider.title()} ({len(keys)}): {', '.join(keys)}"
-        for provider, keys in by_provider.items()
-    ]
-    return {
-        "response_text": (
-            f"🔑 **Saved {len(saved)} API key{'s' if len(saved) != 1 else ''}** "
-            "(stored encrypted):\n"
-            + "\n".join(lines)
-            + "\n\nI'll use them from your next message, rotating between them. "
-            "You can delete your message containing the key."
-        )
-    }
 
 
 async def confirmation_node(state: AgentState) -> dict[str, Any]:
