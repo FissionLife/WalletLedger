@@ -24,7 +24,7 @@ from typing import Any
 from aiogram import Bot, Dispatcher, F, Router
 from aiogram.enums import ChatAction, ParseMode
 from aiogram.exceptions import TelegramBadRequest
-from aiogram.types import BotCommand, Message
+from aiogram.types import Message
 
 from app.bot.main import (
     COMMAND_MENU,
@@ -33,6 +33,7 @@ from app.bot.main import (
     should_delete_message,
     upload_type,
 )
+from app.bot.profile import apply_profile
 from app.config import settings
 
 logger = logging.getLogger(__name__)
@@ -156,14 +157,18 @@ def build_router() -> Router:
     return router
 
 
-async def _publish_command_menu(bot: Bot) -> None:
-    """Show the command list (with descriptions) when users type "/" in Telegram."""
+async def _publish_profile(bot: Bot) -> None:
+    """Refresh the command menu, descriptions and menu button on every start. Never fatal."""
     try:
-        await bot.set_my_commands(
-            [BotCommand(command=name, description=desc) for name, desc in COMMAND_MENU]
-        )
-    except Exception as exc:  # cosmetic: never stop the bot over the menu
-        logger.warning("Could not publish the Telegram command menu: %s", exc)
+        results = await apply_profile(bot)
+    except Exception as exc:  # cosmetic: never stop the bot over its profile
+        logger.warning("Could not publish the Telegram bot profile: %s", exc)
+        return
+    failed = {k: v for k, v in results.items() if v != "ok"}
+    if failed:
+        logger.warning("Bot profile partly applied: %s", failed)
+    else:
+        logger.info("Bot profile published (%d commands)", len(COMMAND_MENU))
 
 
 async def start() -> str:
@@ -179,7 +184,7 @@ async def start() -> str:
     _dispatcher = Dispatcher()
     _dispatcher.include_router(build_router())
     me = await _bot.get_me()
-    await _publish_command_menu(_bot)
+    await _publish_profile(_bot)
 
     if settings.use_webhook:
         if not settings.webhook_url:

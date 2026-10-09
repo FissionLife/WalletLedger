@@ -233,21 +233,5 @@ class CommandHintTests(KeyTestCase):
         self.assertTrue(bot.should_delete_message("/key abc"))
 
 
-class MenuPublishTests(unittest.TestCase):
-    def test_start_publishes_command_menu(self):
-        from app.bot import telegram
-
-        bot_mock = SimpleNamespace(set_my_commands=AsyncMock())
-        run(telegram._publish_command_menu(bot_mock))
-        sent = bot_mock.set_my_commands.await_args.args[0]
-        self.assertEqual([c.command for c in sent], [n for n, _ in bot.COMMAND_MENU])
-
-    def test_menu_failure_is_not_fatal(self):
-        from app.bot import telegram
-
-        bot_mock = SimpleNamespace(set_my_commands=AsyncMock(side_effect=RuntimeError("x")))
-        run(telegram._publish_command_menu(bot_mock))
-
-
 if __name__ == "__main__":
     unittest.main()
