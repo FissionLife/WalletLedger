@@ -17,6 +17,8 @@ from app.db import SessionLocal
 from app.models import Account, ApiKey, Category, Merchant, Transaction, User
 from app.services.ledger import (
     get_account_balances,
+    get_or_create_account,
+    get_or_create_category,
     get_or_create_user,
     get_spending_summary,
     record_transaction,
@@ -131,6 +133,221 @@ def transfer_funds(
 def get_pipe_balances(user_id: str) -> dict[str, Any]:
     def run(db: Session, user_id: str) -> dict[str, Any]:
         return get_account_balances(db, _resolve_user(db, user_id).id)
+
+    return _with_db(run, user_id=user_id)
+
+
+def list_accounts(user_id: str) -> dict[str, Any]:
+    """List the caller's accounts, including balances and account types."""
+
+    def run(db: Session, user_id: str) -> dict[str, Any]:
+        uid = _resolve_user(db, user_id).id
+        accounts = db.scalars(select(Account).where(Account.user_id == uid).order_by(Account.name))
+        return {
+            "accounts": [
+                {"id": a.id, "name": a.name, "type": a.type, "balance": round(a.balance, 2)}
+                for a in accounts
+            ]
+        }
+
+    return _with_db(run, user_id=user_id)
+
+
+def list_categories(user_id: str, transaction_type: str | None = None) -> dict[str, Any]:
+    """List the caller's categories and configured budgets."""
+    if transaction_type not in (None, "expense", "income"):
+        raise ValueError("transaction_type must be expense or income")
+
+    def run(db: Session, user_id: str) -> dict[str, Any]:
+        uid = _resolve_user(db, user_id).id
+        stmt = select(Category).where(Category.user_id == uid)
+        if transaction_type:
+            stmt = stmt.where(Category.type == transaction_type)
+        categories = db.scalars(stmt.order_by(Category.name))
+        return {
+            "categories": [
+                {"id": c.id, "name": c.name, "type": c.type, "monthly_budget": c.budget_limit}
+                for c in categories
+            ]
+        }
+
+    return _with_db(run, user_id=user_id)
+
+
+def search_transactions(
+    user_id: str,
+    query: str | None = None,
+    transaction_type: str | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    limit: int = 20,
+    offset: int = 0,
+) -> dict[str, Any]:
+    """Search the caller's ledger, newest first. Dates use ISO-8601; limit is capped at 100."""
+    if transaction_type not in (None, "expense", "income", "transfer"):
+        raise ValueError("transaction_type must be expense, income, or transfer")
+    if not 1 <= int(limit) <= 100 or int(offset) < 0:
+        raise ValueError("limit must be 1..100 and offset must be non-negative")
+    try:
+        start = datetime.fromisoformat(start_date) if start_date else None
+        end = datetime.fromisoformat(end_date) if end_date else None
+    except ValueError as exc:
+        raise ValueError("dates must be ISO-8601 date or datetime values") from exc
+    if start and end and start > end:
+        raise ValueError("start_date must not be after end_date")
+
+    def run(db: Session, user_id: str) -> dict[str, Any]:
+        uid = _resolve_user(db, user_id).id
+        stmt = (
+            select(Transaction, Account.name, Category.name, Merchant.name)
+            .outerjoin(Account, Transaction.account_id == Account.id)
+            .outerjoin(Category, Transaction.category_id == Category.id)
+            .outerjoin(Merchant, Transaction.merchant_id == Merchant.id)
+            .where(Transaction.user_id == uid)
+        )
+        if transaction_type:
+            stmt = stmt.where(Transaction.transaction_type == transaction_type)
+        if start:
+            stmt = stmt.where(Transaction.created_at >= start)
+        if end:
+            stmt = stmt.where(Transaction.created_at <= end)
+        if query and query.strip():
+            term = f"%{query.strip()}%"
+            stmt = stmt.where(
+                Transaction.description.ilike(term)
+                | Account.name.ilike(term)
+                | Category.name.ilike(term)
+                | Merchant.name.ilike(term)
+            )
+        rows = db.execute(
+            stmt.order_by(Transaction.created_at.desc()).offset(int(offset)).limit(int(limit))
+        )
+        return {
+            "transactions": [
+                {
+                    "id": tx.id,
+                    "date": tx.created_at.isoformat(),
+                    "type": tx.transaction_type,
+                    "amount": round(tx.amount, 2),
+                    "account": account,
+                    "category": category,
+                    "merchant": merchant,
+                    "description": tx.description,
+                    "source": tx.source,
+                }
+                for tx, account, category, merchant in rows
+            ],
+            "limit": int(limit),
+            "offset": int(offset),
+        }
+
+    return _with_db(run, user_id=user_id)
+
+
+def edit_transaction(
+    user_id: str,
+    transaction_id: str,
+    amount: float | None = None,
+    transaction_type: str | None = None,
+    account_name: str | None = None,
+    category: str | None = None,
+    merchant: str | None = None,
+    description: str | None = None,
+    transaction_date: str | None = None,
+) -> dict[str, Any]:
+    """Edit a prior non-transfer entry and reconcile affected account balances."""
+    if amount is not None:
+        amount = _positive_amount(amount)
+    if transaction_type not in (None, "expense", "income"):
+        raise ValueError("transaction_type may be expense or income")
+    try:
+        parsed_date = datetime.fromisoformat(transaction_date) if transaction_date else None
+    except ValueError as exc:
+        raise ValueError("transaction_date must be an ISO-8601 date or datetime") from exc
+
+    def run(db: Session, user_id: str) -> dict[str, Any]:
+        uid = _resolve_user(db, user_id).id
+        tx = db.scalar(
+            select(Transaction)
+            .where(Transaction.id == transaction_id, Transaction.user_id == uid)
+            .with_for_update()
+        )
+        if tx is None:
+            raise ValueError("transaction not found")
+        if tx.transaction_type == "transfer":
+            raise ValueError(
+                "transfer edits are not supported; record a correcting transfer instead"
+            )
+        old_account = db.get(Account, tx.account_id) if tx.account_id else None
+        if old_account and old_account.user_id != uid:
+            raise ValueError("transaction account does not belong to user")
+        new_account = old_account
+        if account_name is not None:
+            if not account_name.strip():
+                raise ValueError("account_name cannot be empty")
+            new_account = get_or_create_account(db, uid, account_name.strip(), lock=True)
+        old_type, old_amount = tx.transaction_type, float(tx.amount)
+        new_type, new_amount = (
+            transaction_type or old_type,
+            amount if amount is not None else old_amount,
+        )
+        # Reverse the old posting, then apply the corrected posting.
+        if old_account:
+            old_account.balance += old_amount if old_type == "expense" else -old_amount
+        if new_account:
+            new_account.balance += -new_amount if new_type == "expense" else new_amount
+        tx.account_id, tx.transaction_type, tx.amount = (
+            (new_account.id if new_account else None),
+            new_type,
+            new_amount,
+        )
+        if category is not None:
+            if category.strip():
+                tx.category_id = get_or_create_category(db, uid, category.strip(), new_type).id
+            else:
+                tx.category_id = None
+        elif new_type != old_type:
+            tx.category_id = None
+        if merchant is not None:
+            if merchant.strip():
+                from app.services.ledger import get_or_create_merchant
+
+                tx.merchant_id = get_or_create_merchant(
+                    db, uid, merchant.strip(), tx.category_id
+                ).id
+            else:
+                tx.merchant_id = None
+        if description is not None:
+            tx.description = description.strip() or None
+        if parsed_date is not None:
+            tx.created_at = parsed_date
+        db.commit()
+        return {
+            "status": "success",
+            "transaction_id": tx.id,
+            "type": tx.transaction_type,
+            "amount": round(tx.amount, 2),
+            "account": new_account.name if new_account else None,
+        }
+
+    return _with_db(run, user_id=user_id)
+
+
+def set_category_budget(
+    user_id: str, category: str, monthly_budget: float | None
+) -> dict[str, Any]:
+    """Set or clear a monthly expense category budget (null clears it)."""
+    if not category.strip():
+        raise ValueError("category is required")
+    if monthly_budget is not None and float(monthly_budget) <= 0:
+        raise ValueError("monthly_budget must be greater than zero or null")
+
+    def run(db: Session, user_id: str) -> dict[str, Any]:
+        uid = _resolve_user(db, user_id).id
+        cat = get_or_create_category(db, uid, category.strip(), "expense")
+        cat.budget_limit = float(monthly_budget) if monthly_budget is not None else None
+        db.commit()
+        return {"status": "success", "category": cat.name, "monthly_budget": cat.budget_limit}
 
     return _with_db(run, user_id=user_id)
 
@@ -322,6 +539,11 @@ TOOL_REGISTRY: dict[str, Callable[..., dict[str, Any]]] = {
     "skill_budget_alert_check": skill_budget_alert_check,
     "skill_recurring_bill_detector": skill_recurring_bill_detector,
     "skill_emergency_fund_calculator": skill_emergency_fund_calculator,
+    "list_accounts": list_accounts,
+    "list_categories": list_categories,
+    "search_transactions": search_transactions,
+    "edit_transaction": edit_transaction,
+    "set_category_budget": set_category_budget,
 }
 
 

@@ -283,6 +283,90 @@ TOOLS_SCHEMA: list[dict[str, Any]] = [
     {
         "type": "function",
         "function": {
+            "name": "list_accounts",
+            "description": "List the user's accounts and current balances.",
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "list_categories",
+            "description": "List the user's income or expense categories and monthly budgets.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "transaction_type": {"type": "string", "enum": ["expense", "income"]}
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "search_transactions",
+            "description": "Find prior ledger transactions by text, type, and ISO date range. Use this first to locate a record before editing it.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string"},
+                    "transaction_type": {
+                        "type": "string",
+                        "enum": ["expense", "income", "transfer"],
+                    },
+                    "start_date": {"type": "string", "description": "ISO date or datetime"},
+                    "end_date": {"type": "string", "description": "ISO date or datetime"},
+                    "limit": {"type": "integer", "description": "1 to 100, default 20"},
+                    "offset": {"type": "integer"},
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "edit_transaction",
+            "description": "Correct a prior expense or income. Search first and use its exact transaction_id. Omit fields that should remain unchanged. Transfers cannot be edited.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "transaction_id": {"type": "string"},
+                    "amount": {"type": "number"},
+                    "transaction_type": {"type": "string", "enum": ["expense", "income"]},
+                    "account_name": {"type": "string"},
+                    "category": {"type": "string", "description": "Empty string clears category"},
+                    "merchant": {"type": "string", "description": "Empty string clears merchant"},
+                    "description": {
+                        "type": "string",
+                        "description": "Empty string clears description",
+                    },
+                    "transaction_date": {
+                        "type": "string",
+                        "description": "New ISO-8601 transaction date or datetime",
+                    },
+                },
+                "required": ["transaction_id"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "set_category_budget",
+            "description": "Set or clear a monthly expense budget for a category.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "category": {"type": "string"},
+                    "monthly_budget": {"type": ["number", "null"]},
+                },
+                "required": ["category", "monthly_budget"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "skill_recurring_bill_detector",
             "description": "Detect repeating monthly bills, subscriptions, or recurring charges from transaction history.",
             "parameters": {"type": "object", "properties": {}},

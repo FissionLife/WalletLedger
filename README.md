@@ -19,6 +19,17 @@ A production-ready FastAPI-based payment processing, wallet ledger, and AI-power
 
 ## Quick Start
 
+### MCP server for agent clients
+
+WalletLedger exposes its ledger tools over MCP stdio. After installing dependencies, configure
+your MCP client to launch `uv run --directory <path-to-WalletLedger> python -m app.services_ai.mcp_transport`.
+The tools accept either the user's Telegram chat ID or internal user UUID as `user_id`. The
+LangGraph agent uses the same tool registry directly.
+
+The tool set includes transaction entry and transfer, balance and category discovery, filtered
+transaction search and correction, spending and budget reports, budget updates, recurring bill
+detection, emergency fund calculations, and encrypted provider key storage.
+
 ### 1. Database Setup
 
 Copy the settings template first (every setting is explained inside):
