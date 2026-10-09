@@ -344,13 +344,17 @@ class TestMultiTransactionAndBatchIngestion(AgentTestCase):
             SimpleNamespace(
                 function=SimpleNamespace(
                     name="log_income",
-                    arguments=json.dumps({"amount": 15000, "category": "Stipend", "source_account": "Bank"}),
+                    arguments=json.dumps(
+                        {"amount": 15000, "category": "Stipend", "source_account": "Bank"}
+                    ),
                 )
             ),
             SimpleNamespace(
                 function=SimpleNamespace(
                     name="log_expense",
-                    arguments=json.dumps({"amount": 190, "category": "Food", "merchant": "Poornima"}),
+                    arguments=json.dumps(
+                        {"amount": 190, "category": "Food", "merchant": "Poornima"}
+                    ),
                 )
             ),
             SimpleNamespace(
@@ -373,4 +377,3 @@ class TestMultiTransactionAndBatchIngestion(AgentTestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

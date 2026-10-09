@@ -17,7 +17,7 @@ import logging
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any, Literal, TypedDict
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
@@ -72,7 +72,7 @@ PERSONA_COMMAND = re.compile(r"^\s*/(coach|budgeter|summary)\b(.*)$", re.I | re.
 
 def _utc_now() -> datetime:
     """Helper to return current timezone-aware UTC datetime."""
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def classify_reply(text: str) -> Literal["confirmed", "cancelled"] | None:
@@ -394,7 +394,7 @@ class SessionStore:
                 created = datetime.fromisoformat(created_raw[:-1] + "+00:00")
             elif "+" not in created_raw and "-" in created_raw:
                 # Handle naive ISO format by assuming UTC
-                created = datetime.fromisoformat(created_raw).replace(tzinfo=timezone.utc)
+                created = datetime.fromisoformat(created_raw).replace(tzinfo=UTC)
             else:
                 created = datetime.fromisoformat(created_raw)
         except Exception:
@@ -516,17 +516,95 @@ def _infer_category_and_merchant(text: str) -> tuple[str, str | None]:
     raw_words = [w for w in re.findall(r"[a-zA-Z]+", text) if w.lower() not in STOP_WORDS]
 
     cat = "General"
-    if any(k in lower for k in ["pizza", "dosa", "idly", "biryani", "lunch", "dinner", "nasta", "breakfast", "food", "tea", "coffee", "restaurant", "burger", "cafe", "swiggy", "zomato"]):
+    if any(
+        k in lower
+        for k in [
+            "pizza",
+            "dosa",
+            "idly",
+            "biryani",
+            "lunch",
+            "dinner",
+            "nasta",
+            "breakfast",
+            "food",
+            "tea",
+            "coffee",
+            "restaurant",
+            "burger",
+            "cafe",
+            "swiggy",
+            "zomato",
+        ]
+    ):
         cat = "Food"
-    elif any(k in lower for k in ["petrol", "diesel", "fuel", "uber", "ola", "cab", "auto", "metro", "bus", "train", "flight", "toll"]):
+    elif any(
+        k in lower
+        for k in [
+            "petrol",
+            "diesel",
+            "fuel",
+            "uber",
+            "ola",
+            "cab",
+            "auto",
+            "metro",
+            "bus",
+            "train",
+            "flight",
+            "toll",
+        ]
+    ):
         cat = "Transport"
-    elif any(k in lower for k in ["water", "milk", "groceries", "vegetables", "fruits", "mart", "bigbasket", "blinkit", "zepto"]):
+    elif any(
+        k in lower
+        for k in [
+            "water",
+            "milk",
+            "groceries",
+            "vegetables",
+            "fruits",
+            "mart",
+            "bigbasket",
+            "blinkit",
+            "zepto",
+        ]
+    ):
         cat = "Groceries"
-    elif any(k in lower for k in ["haircut", "salon", "spa", "grooming", "shampoo", "medicine", "doctor", "pharmacy", "health"]):
+    elif any(
+        k in lower
+        for k in [
+            "haircut",
+            "salon",
+            "spa",
+            "grooming",
+            "shampoo",
+            "medicine",
+            "doctor",
+            "pharmacy",
+            "health",
+        ]
+    ):
         cat = "Personal Care"
-    elif any(k in lower for k in ["gift", "present", "chocaltes", "chocolates", "shopping", "clothes", "amazon", "flipkart", "myntra"]):
+    elif any(
+        k in lower
+        for k in [
+            "gift",
+            "present",
+            "chocaltes",
+            "chocolates",
+            "shopping",
+            "clothes",
+            "amazon",
+            "flipkart",
+            "myntra",
+        ]
+    ):
         cat = "Shopping" if "gift" not in lower else "Gifts"
-    elif any(k in lower for k in ["recharge", "wifi", "broadband", "electricity", "bill", "rent", "maintenance"]):
+    elif any(
+        k in lower
+        for k in ["recharge", "wifi", "broadband", "electricity", "bill", "rent", "maintenance"]
+    ):
         cat = "Utilities"
     elif any(k in lower for k in ["netflix", "prime", "spotify", "movie", "cinema", "game"]):
         cat = "Entertainment"
@@ -554,22 +632,32 @@ def _dynamic_llm_json_reasoning(message: str) -> dict[str, Any]:
     )
     if income_match:
         inc_amount = float(income_match.group(1))
-        inc_cat = "Salary" if "salary" in lower else "Stipend" if any(s in lower for s in ["stipend", "stifend"]) else "Income"
-        batch_calls.append({
-            "tool_name": "log_income",
-            "tool_args": {
-                "amount": inc_amount,
-                "category": inc_cat,
-                "source_account": "Bank",
-                "description": f"{inc_cat} received",
-            },
-        })
+        inc_cat = (
+            "Salary"
+            if "salary" in lower
+            else "Stipend"
+            if any(s in lower for s in ["stipend", "stifend"])
+            else "Income"
+        )
+        batch_calls.append(
+            {
+                "tool_name": "log_income",
+                "tool_args": {
+                    "amount": inc_amount,
+                    "category": inc_cat,
+                    "source_account": "Bank",
+                    "description": f"{inc_cat} received",
+                },
+            }
+        )
 
     # Parse each line for expenses (format: `190=poornima pizza Dosa`, `Poornima Dosa: 190`, `190 petrol`)
     for line in lines:
         line_clean = line.strip()
         # Skip if line was solely the income statement
-        if income_match and line_clean.lower().startswith(("i got stipend", "i got stifend", "got salary", "received salary")):
+        if income_match and line_clean.lower().startswith(
+            ("i got stipend", "i got stifend", "got salary", "received salary")
+        ):
             # But line might contain trailing expense: "from that i spend this 190=..."
             match_trailing = re.search(r"(\d+(?:\.\d{1,2})?)\s*=\s*(.+)", line_clean)
             if not match_trailing:
@@ -577,52 +665,64 @@ def _dynamic_llm_json_reasoning(message: str) -> dict[str, Any]:
             line_clean = match_trailing.group(0)
 
         # Match pattern: 190=Item or 190 = Item or Item=190 or 190 Item
-        eq_match1 = re.match(r"(?:₹|rs\.?|inr)?\s*(\d+(?:\.\d{1,2})?)\s*[=:-]\s*(.+)", line_clean, re.I)
-        eq_match2 = re.match(r"(.+?)\s*[=:-]\s*(?:₹|rs\.?|inr)?\s*(\d+(?:\.\d{1,2})?)", line_clean, re.I)
-        space_match = re.match(r"(?:₹|rs\.?|inr)?\s*(\d+(?:\.\d{1,2})?)\s+([a-zA-Z\s]+)", line_clean, re.I)
+        eq_match1 = re.match(
+            r"(?:₹|rs\.?|inr)?\s*(\d+(?:\.\d{1,2})?)\s*[=:-]\s*(.+)", line_clean, re.I
+        )
+        eq_match2 = re.match(
+            r"(.+?)\s*[=:-]\s*(?:₹|rs\.?|inr)?\s*(\d+(?:\.\d{1,2})?)", line_clean, re.I
+        )
+        space_match = re.match(
+            r"(?:₹|rs\.?|inr)?\s*(\d+(?:\.\d{1,2})?)\s+([a-zA-Z\s]+)", line_clean, re.I
+        )
 
         if eq_match1:
             amt = float(eq_match1.group(1))
             desc = eq_match1.group(2).strip()
             cat, merchant = _infer_category_and_merchant(desc)
-            batch_calls.append({
-                "tool_name": "log_expense",
-                "tool_args": {
-                    "amount": amt,
-                    "category": cat,
-                    "merchant": merchant,
-                    "account_name": "Cash",
-                    "description": desc,
-                },
-            })
+            batch_calls.append(
+                {
+                    "tool_name": "log_expense",
+                    "tool_args": {
+                        "amount": amt,
+                        "category": cat,
+                        "merchant": merchant,
+                        "account_name": "Cash",
+                        "description": desc,
+                    },
+                }
+            )
         elif eq_match2:
             desc = eq_match2.group(1).strip()
             amt = float(eq_match2.group(2))
             cat, merchant = _infer_category_and_merchant(desc)
-            batch_calls.append({
-                "tool_name": "log_expense",
-                "tool_args": {
-                    "amount": amt,
-                    "category": cat,
-                    "merchant": merchant,
-                    "account_name": "Cash",
-                    "description": desc,
-                },
-            })
+            batch_calls.append(
+                {
+                    "tool_name": "log_expense",
+                    "tool_args": {
+                        "amount": amt,
+                        "category": cat,
+                        "merchant": merchant,
+                        "account_name": "Cash",
+                        "description": desc,
+                    },
+                }
+            )
         elif len(lines) > 1 and space_match:
             amt = float(space_match.group(1))
             desc = space_match.group(2).strip()
             cat, merchant = _infer_category_and_merchant(desc)
-            batch_calls.append({
-                "tool_name": "log_expense",
-                "tool_args": {
-                    "amount": amt,
-                    "category": cat,
-                    "merchant": merchant,
-                    "account_name": "Cash",
-                    "description": desc,
-                },
-            })
+            batch_calls.append(
+                {
+                    "tool_name": "log_expense",
+                    "tool_args": {
+                        "amount": amt,
+                        "category": cat,
+                        "merchant": merchant,
+                        "account_name": "Cash",
+                        "description": desc,
+                    },
+                }
+            )
 
     if batch_calls:
         return {
@@ -655,47 +755,127 @@ def _dynamic_llm_json_reasoning(message: str) -> dict[str, Any]:
                 "description": clean,
             },
         }
-        return {"type": "tool_calls", "tool_calls": [call], "tool_name": call["tool_name"], "tool_args": call["tool_args"]}
+        return {
+            "type": "tool_calls",
+            "tool_calls": [call],
+            "tool_name": call["tool_name"],
+            "tool_args": call["tool_args"],
+        }
 
     # 3. Financial Skills & Advice
-    if any(k in lower for k in ["reduce money", "reduce expense", "how to save", "how can i save", "save money", "financial advice", "coach"]):
+    if any(
+        k in lower
+        for k in [
+            "reduce money",
+            "reduce expense",
+            "how to save",
+            "how can i save",
+            "save money",
+            "financial advice",
+            "coach",
+        ]
+    ):
         call = {"tool_name": "financial_advice_bundle", "tool_args": {}}
-        return {"type": "tool_calls", "tool_calls": [call], "tool_name": call["tool_name"], "tool_args": call["tool_args"]}
+        return {
+            "type": "tool_calls",
+            "tool_calls": [call],
+            "tool_name": call["tool_name"],
+            "tool_args": call["tool_args"],
+        }
 
     if any(k in lower for k in ["budget alert", "budget cap", "over budget", "check budget"]):
         call = {"tool_name": "skill_budget_alert_check", "tool_args": {}}
-        return {"type": "tool_calls", "tool_calls": [call], "tool_name": call["tool_name"], "tool_args": call["tool_args"]}
+        return {
+            "type": "tool_calls",
+            "tool_calls": [call],
+            "tool_name": call["tool_name"],
+            "tool_args": call["tool_args"],
+        }
 
-    if any(k in lower for k in ["recurring", "recurring bills", "subscriptions", "detect bills", "hidden bill"]):
+    if any(
+        k in lower
+        for k in ["recurring", "recurring bills", "subscriptions", "detect bills", "hidden bill"]
+    ):
         call = {"tool_name": "skill_recurring_bill_detector", "tool_args": {}}
-        return {"type": "tool_calls", "tool_calls": [call], "tool_name": call["tool_name"], "tool_args": call["tool_args"]}
+        return {
+            "type": "tool_calls",
+            "tool_calls": [call],
+            "tool_name": call["tool_name"],
+            "tool_args": call["tool_args"],
+        }
 
     if any(k in lower for k in ["emergency fund", "runway", "liquid fund", "survival fund"]):
         call = {"tool_name": "skill_emergency_fund_calculator", "tool_args": {}}
-        return {"type": "tool_calls", "tool_calls": [call], "tool_name": call["tool_name"], "tool_args": call["tool_args"]}
+        return {
+            "type": "tool_calls",
+            "tool_calls": [call],
+            "tool_name": call["tool_name"],
+            "tool_args": call["tool_args"],
+        }
 
     # 4. Balances & Spending Breakdown
     if any(k in lower for k in ["balance", "balances", "net worth", "tank", "pipes"]):
         call = {"tool_name": "get_pipe_balances", "tool_args": {}}
-        return {"type": "tool_calls", "tool_calls": [call], "tool_name": call["tool_name"], "tool_args": call["tool_args"]}
+        return {
+            "type": "tool_calls",
+            "tool_calls": [call],
+            "tool_name": call["tool_name"],
+            "tool_args": call["tool_args"],
+        }
 
-    if any(k in lower for k in ["how much did i spend", "how much spent", "how much total i spend", "how much i spend", "total spent", "total spend", "spending breakdown", "spending summary", "expense breakdown", "show expenses", "my expenses"]):
+    if any(
+        k in lower
+        for k in [
+            "how much did i spend",
+            "how much spent",
+            "how much total i spend",
+            "how much i spend",
+            "total spent",
+            "total spend",
+            "spending breakdown",
+            "spending summary",
+            "expense breakdown",
+            "show expenses",
+            "my expenses",
+        ]
+    ):
         period = (
-            "week" if "week" in lower
-            else "quarter" if "quarter" in lower
-            else "year" if "year" in lower
+            "week"
+            if "week" in lower
+            else "quarter"
+            if "quarter" in lower
+            else "year"
+            if "year" in lower
             else "month"
         )
         call = {"tool_name": "get_spending_breakdown", "tool_args": {"period": period}}
-        return {"type": "tool_calls", "tool_calls": [call], "tool_name": call["tool_name"], "tool_args": call["tool_args"]}
+        return {
+            "type": "tool_calls",
+            "tool_calls": [call],
+            "tool_name": call["tool_name"],
+            "tool_args": call["tool_args"],
+        }
 
     # 5. Single Income
-    if any(k in lower for k in ["received", "got salary", "earned", "credited", "income", "freelance salary"]):
+    if any(
+        k in lower
+        for k in ["received", "got salary", "earned", "credited", "income", "freelance salary"]
+    ):
         amt_match = re.search(r"(?:₹|rs\.?|inr)?\s*(\d+(?:\.\d{1,2})?)", clean, re.I)
         if amt_match:
             amount = float(amt_match.group(1))
-            cat = "Salary" if "salary" in lower else "Freelance" if "freelance" in lower else "Income"
-            acc = "Bank" if "bank" in lower else "UPI Wallet" if any(w in lower for w in ["upi", "gpay", "wallet", "phonepe"]) else "Cash" if "cash" in lower else "Bank"
+            cat = (
+                "Salary" if "salary" in lower else "Freelance" if "freelance" in lower else "Income"
+            )
+            acc = (
+                "Bank"
+                if "bank" in lower
+                else "UPI Wallet"
+                if any(w in lower for w in ["upi", "gpay", "wallet", "phonepe"])
+                else "Cash"
+                if "cash" in lower
+                else "Bank"
+            )
             call = {
                 "tool_name": "log_income",
                 "tool_args": {
@@ -705,14 +885,25 @@ def _dynamic_llm_json_reasoning(message: str) -> dict[str, Any]:
                     "description": clean,
                 },
             }
-            return {"type": "tool_calls", "tool_calls": [call], "tool_name": call["tool_name"], "tool_args": call["tool_args"]}
+            return {
+                "type": "tool_calls",
+                "tool_calls": [call],
+                "tool_name": call["tool_name"],
+                "tool_args": call["tool_args"],
+            }
 
     # 6. Single Expense
     amt_match = re.search(r"(?:₹|rs\.?|inr)?\s*(\d+(?:\.\d{1,2})?)", clean, re.I)
     if amt_match:
         amount = float(amt_match.group(1))
         if amount > 0:
-            acc = "UPI Wallet" if any(w in lower for w in ["upi", "gpay", "phonepe", "paytm", "wallet"]) else "Bank" if any(w in lower for w in ["bank", "hdfc", "card", "debit", "credit"]) else "Cash"
+            acc = (
+                "UPI Wallet"
+                if any(w in lower for w in ["upi", "gpay", "phonepe", "paytm", "wallet"])
+                else "Bank"
+                if any(w in lower for w in ["bank", "hdfc", "card", "debit", "credit"])
+                else "Cash"
+            )
             cat, merchant = _infer_category_and_merchant(clean)
             call = {
                 "tool_name": "log_expense",
@@ -724,7 +915,12 @@ def _dynamic_llm_json_reasoning(message: str) -> dict[str, Any]:
                     "description": clean,
                 },
             }
-            return {"type": "tool_calls", "tool_calls": [call], "tool_name": call["tool_name"], "tool_args": call["tool_args"]}
+            return {
+                "type": "tool_calls",
+                "tool_calls": [call],
+                "tool_name": call["tool_name"],
+                "tool_args": call["tool_args"],
+            }
 
     # 7. Greetings / Help fallback
     if lower in {"/help", "help", "/start", "menu", "commands"}:
@@ -788,7 +984,9 @@ async def llm_reasoning_node(state: AgentState) -> dict[str, Any]:
         return {
             "tool_name": "financial_advice_bundle",
             "tool_args": {"user_id": chat_id},
-            "tool_calls": [{"tool_name": "financial_advice_bundle", "tool_args": {"user_id": chat_id}}],
+            "tool_calls": [
+                {"tool_name": "financial_advice_bundle", "tool_args": {"user_id": chat_id}}
+            ],
             "requires_confirmation": False,
             "persona_mode": resolve_mode(command.group(1)).value,
         }
@@ -909,7 +1107,9 @@ async def tool_executor_node(state: AgentState) -> dict[str, Any]:
 
     tool_calls = state.get("tool_calls")
     if not tool_calls and state.get("tool_name"):
-        tool_calls = [{"tool_name": state.get("tool_name"), "tool_args": state.get("tool_args") or {}}]
+        tool_calls = [
+            {"tool_name": state.get("tool_name"), "tool_args": state.get("tool_args") or {}}
+        ]
 
     if not tool_calls:
         return {"tool_result": None, "tool_results": None}
@@ -939,7 +1139,9 @@ async def tool_executor_node(state: AgentState) -> dict[str, Any]:
             results.append({"tool_name": t_name, "tool_args": t_args, "result": res, "error": None})
         except Exception as e:
             logger.error(f"Error executing MCP tool {t_name}: {e}", exc_info=True)
-            results.append({"tool_name": t_name, "tool_args": t_args, "result": None, "error": str(e)})
+            results.append(
+                {"tool_name": t_name, "tool_args": t_args, "result": None, "error": str(e)}
+            )
             if not first_error:
                 first_error = str(e)
 
@@ -1322,7 +1524,9 @@ def route_after_llm_reasoning(state: AgentState) -> str:
 
 def route_after_confirmation(state: AgentState) -> str:
     """After confirmation: execute tool if confirmed; else synthesize response."""
-    if state.get("confirmation_decision") == "confirmed" and (state.get("tool_name") or state.get("tool_calls")):
+    if state.get("confirmation_decision") == "confirmed" and (
+        state.get("tool_name") or state.get("tool_calls")
+    ):
         return "tool_executor_node"
     return "response_synthesizer_node"
 
