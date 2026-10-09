@@ -26,18 +26,27 @@ Copy the settings template first (every setting is explained inside):
 cp .env.example .env
 ```
 
-**Option A: PostgreSQL via Docker Compose (Default)**
+Pick **one** database backend with `DB_MODE` in `.env` (tables are created automatically at startup):
+
+| `DB_MODE` | Use it for | Setup |
+|---|---|---|
+| `sqlite` (default) | development, personal use | nothing. Data lives in `SQLITE_PATH` (`./walletledger.db`) |
+| `postgres` | production, several users | `docker compose up -d`, then `DB_MODE=postgres` |
+
 ```bash
+# SQLite: nothing to do (DB_MODE=sqlite is the default)
+
+# PostgreSQL
 docker compose up -d      # Postgres 16 on localhost:5433, data kept in a named volume
 docker compose ps         # wait until it shows "healthy"
+# then in .env:  DB_MODE=postgres   (POSTGRES_* match docker-compose.yml)
 ```
-Tables are created automatically when the app starts.
+Advanced: a full `DATABASE_URL=...` overrides `DB_MODE`. The active backend is logged at startup.
 
-**Option B: SQLite (Quick Local Testing)**
-In `.env` set:
-```env
-DATABASE_URL=sqlite:///./walletledger.db
-```
+### LLM models are discovered automatically
+You never maintain model names: the gateway asks each provider which models your API key can use
+and picks the best one (cached 6 h; falls back to built-in defaults if the lookup fails). Pin a
+model only if you need to with `AI_MODEL_<PROVIDER>`, or turn it off with `DYNAMIC_MODELS=false`.
 
 ### Telegram bot (optional)
 Create a bot with @BotFather and put its token in `.env` as `TELEGRAM_BOT_TOKEN`.
@@ -203,9 +212,10 @@ docker compose exec db psql -U postgres -d appdb    # then \dt lists the 8 table
 
 ### SQLite
 
-When using `DATABASE_URL=sqlite:///./fission.db`, tables are automatically initialized on application startup. You can inspect data using standard SQLite tools:
+With `DB_MODE=sqlite`, tables are initialized on startup. The file runs in WAL mode with foreign keys
+enforced (so deleting a user cascades). Inspect it with standard tools:
 ```bash
-sqlite3 fission.db
+sqlite3 walletledger.db
 ```
 
 ## Working with `uv`

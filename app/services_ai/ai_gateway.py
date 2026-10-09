@@ -42,6 +42,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.models import ApiKey, User
+from app.services_ai import model_catalog
 
 logger = logging.getLogger(__name__)
 
@@ -563,6 +564,28 @@ def _model_for(candidate: KeyCandidate, provider: str, model: str) -> str:
     return model if candidate.provider == provider else default_model(candidate.provider)
 
 
+def _wants_default_model(model_preference: str | None) -> bool:
+    """True when the caller did not name a specific model ("groq" or nothing, not "groq/x")."""
+    pref = (model_preference or "").strip().lower()
+    return not pref or pref in PROVIDER_ALIASES
+
+
+async def _candidate_model(
+    candidate: KeyCandidate, provider: str, model: str, dynamic: bool
+) -> str:
+    """Model for this key: discovered from the provider's own model list when possible.
+
+    Order: explicit model from the caller > AI_MODEL_<PROVIDER> override > discovered model for
+    this key > static default. Discovery failing (offline, bad key) silently uses the default.
+    """
+    if dynamic and settings.dynamic_models and not _env(f"AI_MODEL_{candidate.provider.upper()}"):
+        base = _env("OLLAMA_API_BASE") or "http://localhost:11434"
+        found = await model_catalog.best_model(candidate.provider, candidate.api_key, base)
+        if found:
+            return found
+    return _model_for(candidate, provider, model)
+
+
 def _extract_text(response: Any) -> str:
     try:
         content = response.choices[0].message.content
@@ -582,6 +605,7 @@ async def complete(
     Returns plain text string if no tools, or full LiteLLM response object if tools are used.
     """
     provider, model = resolve_model(model_preference)
+    dynamic = _wants_default_model(model_preference)
     candidates = await asyncio.to_thread(build_candidates, user_id, provider)
     if provider == "ollama" or not candidates:
         if provider == "ollama":
@@ -595,7 +619,7 @@ async def complete(
 
     attempts: list[dict[str, str]] = []
     for candidate in candidates:
-        call_model = _model_for(candidate, provider, model)
+        call_model = await _candidate_model(candidate, provider, model, dynamic)
         call_kwargs = dict(kwargs)
         if candidate.provider == "ollama":
             call_kwargs.setdefault("api_base", _env("OLLAMA_API_BASE") or "http://localhost:11434")
@@ -612,6 +636,10 @@ async def complete(
             )
         except Exception as exc:
             kind = _classify(exc)
+            if dynamic and isinstance(exc, litellm.NotFoundError):
+                model_catalog.invalidate(
+                    candidate.provider, candidate.api_key
+                )  # re-discover next time
             if kind is None:
                 raise
             masked = mask_key(candidate.api_key) if candidate.api_key else "local"
