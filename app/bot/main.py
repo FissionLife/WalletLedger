@@ -42,6 +42,7 @@ SUPPORTED_UPLOADS = {".pdf": "pdf", ".txt": "text"}
 
 # (command, short description). This list drives BOTH Telegram's "/" menu hints and /help.
 COMMAND_MENU: list[tuple[str, str]] = [
+    ("start", "Welcome and quick tips"),
     ("balance", "Your accounts and net worth"),
     ("report", "30-day spending summary"),
     ("coach", "Friendly savings coach"),

@@ -59,6 +59,20 @@ You never maintain model names: the gateway asks each provider which models your
 and picks the best one (cached 6 h; falls back to built-in defaults if the lookup fails). Pin a
 model only if you need to with `AI_MODEL_<PROVIDER>`, or turn it off with `DYNAMIC_MODELS=false`.
 
+### Bot profile (command menu, description) - set up / refresh
+The "/" command menu, the intro text shown before /start, the profile blurb and the menu button are
+defined in code (`app/bot/main.py` `COMMAND_MENU`, `app/bot/profile.py`). They are applied
+automatically every time the server starts, and you can refresh them any time (also while the
+server is running):
+
+```bash
+uv run python scripts/setup_bot.py                # apply everything
+uv run python scripts/setup_bot.py --show         # what Telegram has now vs this code
+uv run python scripts/setup_bot.py --reset        # clear stale commands in all scopes first
+uv run python scripts/setup_bot.py --name "WalletLedger"   # also rename the bot (rate limited)
+```
+Add or change a command in `COMMAND_MENU`, run the script, and Telegram picks it up.
+
 ### Managing AI keys (in the Telegram chat)
 Type `/` in Telegram to see the command menu. Keys are **tested live before they are saved**, so a
 dead or mistyped key is rejected with a reason instead of silently breaking the bot.
