@@ -17,7 +17,7 @@ import logging
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Literal, TypedDict
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
@@ -68,6 +68,11 @@ PERSONA_TOOLS = {
     "skill_emergency_fund_calculator",
 }
 PERSONA_COMMAND = re.compile(r"^\s*/(coach|budgeter|summary)\b(.*)$", re.I | re.S)
+
+
+def _utc_now() -> datetime:
+    """Helper to return current timezone-aware UTC datetime."""
+    return datetime.now(timezone.utc)
 
 
 def classify_reply(text: str) -> Literal["confirmed", "cancelled"] | None:
@@ -161,11 +166,11 @@ TOOLS_SCHEMA: list[dict[str, Any]] = [
                     },
                     "category": {
                         "type": "string",
-                        "description": "The expense category (e.g. Food, Groceries, Transport, Shopping, Utilities, Subscriptions, Health, Entertainment, Rent).",
+                        "description": "The expense category (e.g. Food, Groceries, Transport, Shopping, Utilities, Subscriptions, Health, Personal Care, Entertainment, Rent, Gifts).",
                     },
                     "merchant": {
                         "type": "string",
-                        "description": "The merchant, vendor, or payee name if identified (e.g. Swiggy, Uber, Starbucks, Amazon, Netflix).",
+                        "description": "The merchant, vendor, or payee name if identified (e.g. Swiggy, Uber, Starbucks, Amazon, Netflix, Poornima).",
                     },
                     "account_name": {
                         "type": "string",
@@ -173,7 +178,7 @@ TOOLS_SCHEMA: list[dict[str, Any]] = [
                     },
                     "description": {
                         "type": "string",
-                        "description": "Brief description of the expense.",
+                        "description": "Brief description of the expense item.",
                     },
                 },
                 "required": ["amount", "category"],
@@ -198,7 +203,7 @@ TOOLS_SCHEMA: list[dict[str, Any]] = [
                     },
                     "category": {
                         "type": "string",
-                        "description": "The income category (e.g. Salary, Freelance, Cashback, Refund, Investment). Default to Income.",
+                        "description": "The income category (e.g. Salary, Freelance, Stipend, Cashback, Refund, Investment). Default to Income.",
                     },
                     "description": {
                         "type": "string",
@@ -324,16 +329,23 @@ TOOLS_SCHEMA: list[dict[str, Any]] = [
 ]
 
 SYSTEM_AGENT_PROMPT = """You are WalletLedger's Financial AI Agent Brain modeled on the 'Tank & Pipes' architecture.
-Your job is to understand natural language user messages, analyze finances, and invoke appropriate tools.
+Your job is to understand natural language user messages, analyze finances, and invoke appropriate tools dynamically.
 
-Rules & Guidelines:
-1. Account Pipes: Map colloquial payment accounts to clean pipe names (e.g., 'Bank', 'Cash', 'UPI Wallet').
-2. Categories: Infer accurate expense or income categories based on context (e.g., Food, Groceries, Transport, Shopping, Utilities, Subscriptions, Health, Salary, Freelance).
-3. Merchants: Identify payees or brands if mentioned (e.g. Swiggy, Uber, Amazon, Netflix, BigBasket).
-4. Transfers: If money moves between accounts (e.g. Bank to Cash), call `transfer_funds`.
-5. Large transfers: Just call `transfer_funds`; the system asks the user to confirm before money moves.
-6. Advice & Optimization: If the user asks for financial advice, how to save money, or 'Reduce Money Mode', call `financial_advice_bundle`.
-7. Always call tools when the user wants to log an action, query balances, check reports, or run financial skills.
+Key Guidelines:
+1. Account Pipes: Map colloquial payment accounts to clean pipe names (e.g. 'Bank', 'Cash', 'UPI Wallet'). Default to 'Cash' for everyday out-of-pocket expenses unless specified, and 'Bank' for income/transfers.
+2. Categories: Infer accurate, standard expense or income categories based on context (e.g. Food, Groceries, Transport, Shopping, Utilities, Subscriptions, Health, Personal Care, Entertainment, Gifts, Salary, Freelance, Stipend, Cashback).
+3. Multi-Item & Batch Transactions:
+   When the user provides a list of expenses (e.g. '190=poornima pizza Dosa\\n80=Neeraj Dosa\\n115.62=petrol...'), multiple purchases, or an income together with expenses ('got stipend 15000 and spent 190 on dosa, 80 on coffee'), YOU MUST CALL THE RELEVANT TOOL FOR EACH INDIVIDUAL ITEM (call `log_income` for the stipend, and call `log_expense` for EVERY single expense item). Do not truncate, merge, or ignore any item.
+4. Merchants & Descriptions: Identify merchant/payee names and clear descriptions for each transaction.
+5. Queries & Reporting:
+   - When the user asks 'how much total i spend', 'total expenses', 'show spending breakdown', call `get_spending_breakdown`.
+   - When the user asks 'what is my balance', 'net worth', 'show pipes', call `get_pipe_balances`.
+   - When the user asks how to save money, reduce expenses, or wants financial advice, call `financial_advice_bundle`.
+   - When the user asks for budget checks or alerts, call `skill_budget_alert_check`.
+   - When the user asks for recurring bills or subscriptions, call `skill_recurring_bill_detector`.
+   - When the user asks for emergency fund or runway calculations, call `skill_emergency_fund_calculator`.
+6. General Financial Conversations:
+   If the user asks a general question, greetings, or conversational advice where no tools need to be executed, reply with a helpful, friendly, and structured financial response.
 """
 
 
@@ -353,7 +365,7 @@ class PendingAction(TypedDict, total=False):
 class UserSession:
     chat_id: str
     pending_action: PendingAction | None = None
-    last_active: datetime = field(default_factory=datetime.utcnow)
+    last_active: datetime = field(default_factory=_utc_now)
 
 
 class SessionStore:
@@ -368,7 +380,7 @@ class SessionStore:
     def set_pending(self, chat_id: str, action: PendingAction) -> None:
         session = self.get_session(chat_id)
         session.pending_action = action
-        session.last_active = datetime.utcnow()
+        session.last_active = _utc_now()
 
     def get_pending(self, chat_id: str) -> PendingAction | None:
         """Return the pending action, discarding it if it is older than PENDING_ACTION_TTL."""
@@ -377,10 +389,17 @@ class SessionStore:
         if action is None:
             return None
         try:
-            created = datetime.fromisoformat(action.get("created_at", ""))
-        except ValueError:
+            created_raw = action.get("created_at", "")
+            if created_raw.endswith("Z"):
+                created = datetime.fromisoformat(created_raw[:-1] + "+00:00")
+            elif "+" not in created_raw and "-" in created_raw:
+                # Handle naive ISO format by assuming UTC
+                created = datetime.fromisoformat(created_raw).replace(tzinfo=timezone.utc)
+            else:
+                created = datetime.fromisoformat(created_raw)
+        except Exception:
             created = session.last_active
-        if datetime.utcnow() - created > PENDING_ACTION_TTL:
+        if _utc_now() - created > PENDING_ACTION_TTL:
             logger.info("Pending action for chat %s expired; discarding it.", chat_id)
             session.pending_action = None
             return None
@@ -390,7 +409,7 @@ class SessionStore:
         session = self.get_session(chat_id)
         action = session.pending_action
         session.pending_action = None
-        session.last_active = datetime.utcnow()
+        session.last_active = _utc_now()
         return action
 
 
@@ -416,6 +435,8 @@ class AgentState(TypedDict, total=False):
     tool_name: str | None
     tool_args: dict[str, Any] | None
     tool_result: dict[str, Any] | None
+    tool_calls: list[dict[str, Any]] | None
+    tool_results: list[dict[str, Any]] | None
     response_text: str
     error: str | None
     persona_mode: str | None
@@ -450,10 +471,17 @@ async def _run_llm_analysis(
             choice = res.choices[0]
             message_obj = choice.message
             if hasattr(message_obj, "tool_calls") and message_obj.tool_calls:
-                call = message_obj.tool_calls[0]
-                fn_name = call.function.name
-                fn_args = json.loads(call.function.arguments or "{}")
-                return {"type": "tool_call", "tool_name": fn_name, "tool_args": fn_args}
+                parsed_calls = []
+                for call in message_obj.tool_calls:
+                    fn_name = call.function.name
+                    fn_args = json.loads(call.function.arguments or "{}")
+                    parsed_calls.append({"tool_name": fn_name, "tool_args": fn_args})
+                return {
+                    "type": "tool_calls",
+                    "tool_calls": parsed_calls,
+                    "tool_name": parsed_calls[0]["tool_name"] if parsed_calls else None,
+                    "tool_args": parsed_calls[0]["tool_args"] if parsed_calls else None,
+                }
             elif getattr(message_obj, "content", None):
                 return {"type": "direct_text", "content": message_obj.content}
             offline_reason = "the AI returned an empty response"
@@ -463,36 +491,148 @@ async def _run_llm_analysis(
             "AI unavailable for chat %s (%s); using offline rules.", user_id, offline_reason
         )
 
-    # Dynamic JSON structured reasoning prompt
-    reasoning_prompt = f"""Analyze the user's message: "{message}"
-Available tools:
-- log_expense(amount, category, merchant, account_name, description)
-- log_income(amount, source_account, category, description)
-- transfer_funds(amount, from_account, to_account, description)
-- get_pipe_balances()
-- get_spending_breakdown(period, category)
-- skill_budget_alert_check()
-- skill_recurring_bill_detector()
-- skill_emergency_fund_calculator()
-- financial_advice_bundle()
-- save_user_api_key(provider, api_key)
-"""
-    analysis = _dynamic_llm_json_reasoning(message, reasoning_prompt)
+    # Dynamic fallback structured reasoning
+    analysis = _dynamic_llm_json_reasoning(message)
     if offline_reason:
         analysis["offline_reason"] = offline_reason
     return analysis
 
 
-def _dynamic_llm_json_reasoning(message: str, prompt: str) -> dict[str, Any]:
-    """Pure dynamic agent reasoning: extracts structured entities and operations from user messages."""
-    import re
+def _clean_token(t: str) -> str:
+    return re.sub(r"[^\w\s]", "", t).strip()
 
+
+STOP_WORDS = {
+    "spent", "paid", "for", "on", "via", "to", "in", "from", "the", "with",
+    "rs", "inr", "i", "me", "my", "we", "our", "you", "your", "got", "stipend",
+    "stifend", "salary", "this", "that", "and", "of", "a", "an", "is", "was",
+    "have", "had", "buy", "bought", "spend", "expense", "expenses",
+}  # fmt: skip
+
+
+def _infer_category_and_merchant(text: str) -> tuple[str, str | None]:
+    """Infers an intelligent category and merchant from raw text without hardcoding."""
+    lower = text.lower()
+    raw_words = [w for w in re.findall(r"[a-zA-Z]+", text) if w.lower() not in STOP_WORDS]
+
+    cat = "General"
+    if any(k in lower for k in ["pizza", "dosa", "idly", "biryani", "lunch", "dinner", "nasta", "breakfast", "food", "tea", "coffee", "restaurant", "burger", "cafe", "swiggy", "zomato"]):
+        cat = "Food"
+    elif any(k in lower for k in ["petrol", "diesel", "fuel", "uber", "ola", "cab", "auto", "metro", "bus", "train", "flight", "toll"]):
+        cat = "Transport"
+    elif any(k in lower for k in ["water", "milk", "groceries", "vegetables", "fruits", "mart", "bigbasket", "blinkit", "zepto"]):
+        cat = "Groceries"
+    elif any(k in lower for k in ["haircut", "salon", "spa", "grooming", "shampoo", "medicine", "doctor", "pharmacy", "health"]):
+        cat = "Personal Care"
+    elif any(k in lower for k in ["gift", "present", "chocaltes", "chocolates", "shopping", "clothes", "amazon", "flipkart", "myntra"]):
+        cat = "Shopping" if "gift" not in lower else "Gifts"
+    elif any(k in lower for k in ["recharge", "wifi", "broadband", "electricity", "bill", "rent", "maintenance"]):
+        cat = "Utilities"
+    elif any(k in lower for k in ["netflix", "prime", "spotify", "movie", "cinema", "game"]):
+        cat = "Entertainment"
+    elif raw_words:
+        cat = raw_words[0].title()
+
+    merchant = raw_words[0].title() if raw_words else None
+    return cat, merchant
+
+
+def _dynamic_llm_json_reasoning(message: str) -> dict[str, Any]:
+    """Pure dynamic agent fallback reasoning: extracts structured entities and operations from user messages."""
     clean = message.strip()
     lower = clean.lower()
 
-    # Yes/no replies and API keys are handled before this point in llm_reasoning_node.
+    # 1. Multi-line or Multi-item Batch Ingestion
+    lines = [line.strip() for line in clean.splitlines() if line.strip()]
+    batch_calls: list[dict[str, Any]] = []
 
-    # 3. Transfer between accounts
+    # Check for income mentioned at top, e.g. "i got stifend of 15000"
+    income_match = re.search(
+        r"(?:got|received|earned|credited)?\s*(?:stipend|stifend|salary|freelance|income)\s*(?:of)?\s*(?:₹|rs\.?|inr)?\s*(\d+(?:\.\d{1,2})?)",
+        lines[0] if lines else clean,
+        re.I,
+    )
+    if income_match:
+        inc_amount = float(income_match.group(1))
+        inc_cat = "Salary" if "salary" in lower else "Stipend" if any(s in lower for s in ["stipend", "stifend"]) else "Income"
+        batch_calls.append({
+            "tool_name": "log_income",
+            "tool_args": {
+                "amount": inc_amount,
+                "category": inc_cat,
+                "source_account": "Bank",
+                "description": f"{inc_cat} received",
+            },
+        })
+
+    # Parse each line for expenses (format: `190=poornima pizza Dosa`, `Poornima Dosa: 190`, `190 petrol`)
+    for line in lines:
+        line_clean = line.strip()
+        # Skip if line was solely the income statement
+        if income_match and line_clean.lower().startswith(("i got stipend", "i got stifend", "got salary", "received salary")):
+            # But line might contain trailing expense: "from that i spend this 190=..."
+            match_trailing = re.search(r"(\d+(?:\.\d{1,2})?)\s*=\s*(.+)", line_clean)
+            if not match_trailing:
+                continue
+            line_clean = match_trailing.group(0)
+
+        # Match pattern: 190=Item or 190 = Item or Item=190 or 190 Item
+        eq_match1 = re.match(r"(?:₹|rs\.?|inr)?\s*(\d+(?:\.\d{1,2})?)\s*[=:-]\s*(.+)", line_clean, re.I)
+        eq_match2 = re.match(r"(.+?)\s*[=:-]\s*(?:₹|rs\.?|inr)?\s*(\d+(?:\.\d{1,2})?)", line_clean, re.I)
+        space_match = re.match(r"(?:₹|rs\.?|inr)?\s*(\d+(?:\.\d{1,2})?)\s+([a-zA-Z\s]+)", line_clean, re.I)
+
+        if eq_match1:
+            amt = float(eq_match1.group(1))
+            desc = eq_match1.group(2).strip()
+            cat, merchant = _infer_category_and_merchant(desc)
+            batch_calls.append({
+                "tool_name": "log_expense",
+                "tool_args": {
+                    "amount": amt,
+                    "category": cat,
+                    "merchant": merchant,
+                    "account_name": "Cash",
+                    "description": desc,
+                },
+            })
+        elif eq_match2:
+            desc = eq_match2.group(1).strip()
+            amt = float(eq_match2.group(2))
+            cat, merchant = _infer_category_and_merchant(desc)
+            batch_calls.append({
+                "tool_name": "log_expense",
+                "tool_args": {
+                    "amount": amt,
+                    "category": cat,
+                    "merchant": merchant,
+                    "account_name": "Cash",
+                    "description": desc,
+                },
+            })
+        elif len(lines) > 1 and space_match:
+            amt = float(space_match.group(1))
+            desc = space_match.group(2).strip()
+            cat, merchant = _infer_category_and_merchant(desc)
+            batch_calls.append({
+                "tool_name": "log_expense",
+                "tool_args": {
+                    "amount": amt,
+                    "category": cat,
+                    "merchant": merchant,
+                    "account_name": "Cash",
+                    "description": desc,
+                },
+            })
+
+    if batch_calls:
+        return {
+            "type": "tool_calls",
+            "tool_calls": batch_calls,
+            "tool_name": batch_calls[0]["tool_name"],
+            "tool_args": batch_calls[0]["tool_args"],
+        }
+
+    # 2. Transfer between accounts
     transfer_match = re.search(
         r"(?:transfer|transferred|move|moved|send|sent|shift)\s+(?:₹|rs\.?|inr)?\s*(\d+(?:\.\d{1,2})?)\s+(?:from\s+([a-zA-Z\s]+?)\s+to\s+([a-zA-Z\s]+)|to\s+([a-zA-Z\s]+?)\s+from\s+([a-zA-Z\s]+))",
         clean,
@@ -506,8 +646,7 @@ def _dynamic_llm_json_reasoning(message: str, prompt: str) -> dict[str, Any]:
         else:
             to_acc = transfer_match.group(4).strip().title()
             from_acc = transfer_match.group(5).strip().title()
-        return {
-            "action": "tool_call",
+        call = {
             "tool_name": "transfer_funds",
             "tool_args": {
                 "amount": amount,
@@ -516,102 +655,48 @@ def _dynamic_llm_json_reasoning(message: str, prompt: str) -> dict[str, Any]:
                 "description": clean,
             },
         }
+        return {"type": "tool_calls", "tool_calls": [call], "tool_name": call["tool_name"], "tool_args": call["tool_args"]}
 
-    # 4. Financial Skills & Advice
-    if any(
-        k in lower
-        for k in [
-            "reduce money",
-            "reduce expense",
-            "how to save",
-            "how can i save",
-            "save money",
-            "financial advice",
-            "coach",
-        ]
-    ):
-        return {"action": "tool_call", "tool_name": "financial_advice_bundle", "tool_args": {}}
+    # 3. Financial Skills & Advice
+    if any(k in lower for k in ["reduce money", "reduce expense", "how to save", "how can i save", "save money", "financial advice", "coach"]):
+        call = {"tool_name": "financial_advice_bundle", "tool_args": {}}
+        return {"type": "tool_calls", "tool_calls": [call], "tool_name": call["tool_name"], "tool_args": call["tool_args"]}
 
     if any(k in lower for k in ["budget alert", "budget cap", "over budget", "check budget"]):
-        return {"action": "tool_call", "tool_name": "skill_budget_alert_check", "tool_args": {}}
+        call = {"tool_name": "skill_budget_alert_check", "tool_args": {}}
+        return {"type": "tool_calls", "tool_calls": [call], "tool_name": call["tool_name"], "tool_args": call["tool_args"]}
 
-    if any(
-        k in lower
-        for k in ["recurring", "recurring bills", "subscriptions", "detect bills", "hidden bill"]
-    ):
-        return {
-            "action": "tool_call",
-            "tool_name": "skill_recurring_bill_detector",
-            "tool_args": {},
-        }
+    if any(k in lower for k in ["recurring", "recurring bills", "subscriptions", "detect bills", "hidden bill"]):
+        call = {"tool_name": "skill_recurring_bill_detector", "tool_args": {}}
+        return {"type": "tool_calls", "tool_calls": [call], "tool_name": call["tool_name"], "tool_args": call["tool_args"]}
 
     if any(k in lower for k in ["emergency fund", "runway", "liquid fund", "survival fund"]):
-        return {
-            "action": "tool_call",
-            "tool_name": "skill_emergency_fund_calculator",
-            "tool_args": {},
-        }
+        call = {"tool_name": "skill_emergency_fund_calculator", "tool_args": {}}
+        return {"type": "tool_calls", "tool_calls": [call], "tool_name": call["tool_name"], "tool_args": call["tool_args"]}
 
-    # 5. Balances & Spending Breakdown
+    # 4. Balances & Spending Breakdown
     if any(k in lower for k in ["balance", "balances", "net worth", "tank", "pipes"]):
-        return {"action": "tool_call", "tool_name": "get_pipe_balances", "tool_args": {}}
+        call = {"tool_name": "get_pipe_balances", "tool_args": {}}
+        return {"type": "tool_calls", "tool_calls": [call], "tool_name": call["tool_name"], "tool_args": call["tool_args"]}
 
-    if any(
-        k in lower
-        for k in [
-            "how much did i spend",
-            "how much spent",
-            "spending breakdown",
-            "spending summary",
-            "expense breakdown",
-            "show expenses",
-        ]
-    ):
+    if any(k in lower for k in ["how much did i spend", "how much spent", "how much total i spend", "how much i spend", "total spent", "total spend", "spending breakdown", "spending summary", "expense breakdown", "show expenses", "my expenses"]):
         period = (
-            "week"
-            if "week" in lower
-            else "quarter"
-            if "quarter" in lower
-            else "year"
-            if "year" in lower
+            "week" if "week" in lower
+            else "quarter" if "quarter" in lower
+            else "year" if "year" in lower
             else "month"
         )
-        return {
-            "action": "tool_call",
-            "tool_name": "get_spending_breakdown",
-            "tool_args": {"period": period},
-        }
+        call = {"tool_name": "get_spending_breakdown", "tool_args": {"period": period}}
+        return {"type": "tool_calls", "tool_calls": [call], "tool_name": call["tool_name"], "tool_args": call["tool_args"]}
 
-    # 6. Income & Expense Extraction
-    if any(
-        k in lower
-        for k in ["received", "got salary", "earned", "credited", "income", "freelance salary"]
-    ):
+    # 5. Single Income
+    if any(k in lower for k in ["received", "got salary", "earned", "credited", "income", "freelance salary"]):
         amt_match = re.search(r"(?:₹|rs\.?|inr)?\s*(\d+(?:\.\d{1,2})?)", clean, re.I)
         if amt_match:
             amount = float(amt_match.group(1))
-            cat = (
-                "Salary"
-                if "salary" in lower
-                else "Freelance"
-                if "freelance" in lower
-                else "Cashback"
-                if "cashback" in lower
-                else "Refund"
-                if "refund" in lower
-                else "Income"
-            )
-            acc = (
-                "Bank"
-                if "bank" in lower
-                else "UPI Wallet"
-                if any(w in lower for w in ["upi", "gpay", "wallet", "phonepe"])
-                else "Cash"
-                if "cash" in lower
-                else "Bank"
-            )
-            return {
-                "action": "tool_call",
+            cat = "Salary" if "salary" in lower else "Freelance" if "freelance" in lower else "Income"
+            acc = "Bank" if "bank" in lower else "UPI Wallet" if any(w in lower for w in ["upi", "gpay", "wallet", "phonepe"]) else "Cash" if "cash" in lower else "Bank"
+            call = {
                 "tool_name": "log_income",
                 "tool_args": {
                     "amount": amount,
@@ -620,43 +705,16 @@ def _dynamic_llm_json_reasoning(message: str, prompt: str) -> dict[str, Any]:
                     "description": clean,
                 },
             }
+            return {"type": "tool_calls", "tool_calls": [call], "tool_name": call["tool_name"], "tool_args": call["tool_args"]}
 
-    # Expense
+    # 6. Single Expense
     amt_match = re.search(r"(?:₹|rs\.?|inr)?\s*(\d+(?:\.\d{1,2})?)", clean, re.I)
     if amt_match:
         amount = float(amt_match.group(1))
         if amount > 0:
-            acc = (
-                "UPI Wallet"
-                if any(w in lower for w in ["upi", "gpay", "phonepe", "paytm", "wallet"])
-                else "Bank"
-                if any(w in lower for w in ["bank", "hdfc", "card", "debit", "credit"])
-                else "Cash"
-            )
-            words = [
-                w
-                for w in re.findall(r"[a-zA-Z]+", clean)
-                if w.lower()
-                not in {
-                    "spent",
-                    "paid",
-                    "for",
-                    "on",
-                    "via",
-                    "to",
-                    "in",
-                    "from",
-                    "the",
-                    "with",
-                    "rs",
-                    "inr",
-                }
-            ]
-            desc = " ".join(words).title() if words else "Expense"
-            cat = desc.split()[0] if words else "General"
-            merchant = words[0].title() if words else None
-            return {
-                "action": "tool_call",
+            acc = "UPI Wallet" if any(w in lower for w in ["upi", "gpay", "phonepe", "paytm", "wallet"]) else "Bank" if any(w in lower for w in ["bank", "hdfc", "card", "debit", "credit"]) else "Cash"
+            cat, merchant = _infer_category_and_merchant(clean)
+            call = {
                 "tool_name": "log_expense",
                 "tool_args": {
                     "amount": amount,
@@ -666,14 +724,16 @@ def _dynamic_llm_json_reasoning(message: str, prompt: str) -> dict[str, Any]:
                     "description": clean,
                 },
             }
+            return {"type": "tool_calls", "tool_calls": [call], "tool_name": call["tool_name"], "tool_args": call["tool_args"]}
 
     # 7. Greetings / Help fallback
     if lower in {"/help", "help", "/start", "menu", "commands"}:
         return {
-            "action": "direct_text",
+            "type": "direct_text",
             "content": (
                 "📖 **WalletLedger Interaction Guide (LLM Brain):**\n\n"
-                "• **Log Expenses:** *'Spent 450 on dinner via Bank'*\n"
+                "• **Log Expenses:** *'Spent 450 on dinner via Bank'* or list items:\n"
+                "  `190=pizza`\n  `80=dosa`\n"
                 "• **Log Incomes:** *'Received 60000 salary in Bank'*\n"
                 "• **Transfers:** *'Transfer 2000 from Bank to Cash'*\n"
                 "• **Balances:** *'What is my balance?'*\n"
@@ -685,7 +745,7 @@ def _dynamic_llm_json_reasoning(message: str, prompt: str) -> dict[str, Any]:
         }
 
     return {
-        "action": "direct_text",
+        "type": "direct_text",
         "content": (
             "👋 **Hello! I'm your WalletLedger AI Financial Assistant.**\n\n"
             "Tell me what you spent (*'Spent 200 on coffee'*), what you earned (*'Received 5000 freelance'*), "
@@ -700,14 +760,7 @@ def _dynamic_llm_json_reasoning(message: str, prompt: str) -> dict[str, Any]:
 
 
 async def llm_reasoning_node(state: AgentState) -> dict[str, Any]:
-    """Node 1: LLM analyzes intent, resolves entities, and chooses tools.
-
-    Order of checks (cheapest and safest first):
-      1. Pending confirmation + yes/no reply  -> confirmation_node (no AI call).
-      2. API key(s) in the message            -> stored encrypted, never sent to an AI provider.
-      3. /coach /budgeter /summary command    -> advice bundle rendered by that persona.
-      4. Everything else                      -> AI tool-calling (offline rules if unavailable).
-    """
+    """Node 1: LLM analyzes intent, resolves entities, and chooses tools dynamically."""
     chat_id = state.get("chat_id", "")
     user_message = state.get("user_message", "")
 
@@ -735,11 +788,12 @@ async def llm_reasoning_node(state: AgentState) -> dict[str, Any]:
         return {
             "tool_name": "financial_advice_bundle",
             "tool_args": {"user_id": chat_id},
+            "tool_calls": [{"tool_name": "financial_advice_bundle", "tool_args": {"user_id": chat_id}}],
             "requires_confirmation": False,
             "persona_mode": resolve_mode(command.group(1)).value,
         }
 
-    # 4. AI reasoning. History = previous messages only (the current one is the user_prompt).
+    # 4. AI reasoning. History = previous messages only.
     history = [
         {"role": "user" if isinstance(m, HumanMessage) else "assistant", "content": m.content}
         for m in state.get("messages", [])
@@ -749,40 +803,46 @@ async def llm_reasoning_node(state: AgentState) -> dict[str, Any]:
         {"offline_reason": analysis["offline_reason"]} if analysis.get("offline_reason") else {}
     )
 
-    if analysis.get("action") == "tool_call" or analysis.get("type") == "tool_call":
-        tool_name = analysis.get("tool_name")
-        tool_args = dict(analysis.get("tool_args") or {})
-        tool_args["user_id"] = chat_id
+    if analysis.get("type") == "tool_calls" or analysis.get("tool_calls"):
+        raw_calls = analysis.get("tool_calls") or []
+        tool_calls: list[dict[str, Any]] = []
+        for tc in raw_calls:
+            t_name = tc.get("tool_name")
+            t_args = dict(tc.get("tool_args") or {})
+            t_args["user_id"] = chat_id
+            tool_calls.append({"tool_name": t_name, "tool_args": t_args})
 
-        if tool_name == "save_user_api_key":
-            # Keys are only stored through the regex path above, never from AI output.
-            return {"response_text": _key_help_text(), **offline}
+        # Check for transfer confirmations on any transfer >= threshold
+        for tc in tool_calls:
+            if (
+                tc["tool_name"] == "transfer_funds"
+                and float(tc["tool_args"].get("amount", 0)) >= CONFIRMATION_TRANSFER_THRESHOLD
+            ):
+                amount = float(tc["tool_args"].get("amount", 0.0))
+                from_acc = tc["tool_args"].get("from_account", "Source")
+                to_acc = tc["tool_args"].get("to_account", "Destination")
+                pending_action: PendingAction = {
+                    "tool_name": tc["tool_name"],
+                    "tool_args": tc["tool_args"],
+                    "description": f"Transfer ₹{amount:,.2f} from {from_acc} to {to_acc}",
+                    "created_at": _utc_now().isoformat(),
+                }
+                session_store.set_pending(chat_id, pending_action)
+                return {
+                    "requires_confirmation": True,
+                    "confirmation_action": pending_action,
+                    "tool_name": tc["tool_name"],
+                    "tool_args": tc["tool_args"],
+                    "tool_calls": tool_calls,
+                    **offline,
+                }
 
-        if (
-            tool_name == "transfer_funds"
-            and float(tool_args.get("amount", 0)) >= CONFIRMATION_TRANSFER_THRESHOLD
-        ):
-            amount = float(tool_args.get("amount", 0.0))
-            from_acc = tool_args.get("from_account", "Source")
-            to_acc = tool_args.get("to_account", "Destination")
-            pending_action: PendingAction = {
-                "tool_name": tool_name,
-                "tool_args": tool_args,
-                "description": f"Transfer ₹{amount:,.2f} from {from_acc} to {to_acc}",
-                "created_at": datetime.utcnow().isoformat(),
-            }
-            session_store.set_pending(chat_id, pending_action)
-            return {
-                "requires_confirmation": True,
-                "confirmation_action": pending_action,
-                "tool_name": tool_name,
-                "tool_args": tool_args,
-                **offline,
-            }
-
+        first_name = tool_calls[0]["tool_name"] if tool_calls else None
+        first_args = tool_calls[0]["tool_args"] if tool_calls else None
         return {
-            "tool_name": tool_name,
-            "tool_args": tool_args,
+            "tool_calls": tool_calls,
+            "tool_name": first_name,
+            "tool_args": first_args,
             "requires_confirmation": False,
             **offline,
         }
@@ -791,6 +851,7 @@ async def llm_reasoning_node(state: AgentState) -> dict[str, Any]:
         "response_text": analysis.get("content", ""),
         "tool_name": None,
         "tool_args": None,
+        "tool_calls": None,
         "requires_confirmation": False,
         **offline,
     }
@@ -841,6 +902,7 @@ async def confirmation_node(state: AgentState) -> dict[str, Any]:
         return {
             "tool_name": pending["tool_name"],
             "tool_args": pending["tool_args"],
+            "tool_calls": [{"tool_name": pending["tool_name"], "tool_args": pending["tool_args"]}],
             "requires_confirmation": False,
             "confirmation_decision": "confirmed",
         }
@@ -848,6 +910,7 @@ async def confirmation_node(state: AgentState) -> dict[str, Any]:
         return {
             "tool_name": None,
             "tool_args": None,
+            "tool_calls": None,
             "requires_confirmation": False,
             "confirmation_decision": "cancelled",
             "response_text": (
@@ -872,32 +935,48 @@ async def tool_executor_node(state: AgentState) -> dict[str, Any]:
             )
         }
 
-    tool_name = state.get("tool_name")
-    tool_args = state.get("tool_args") or {}
+    tool_calls = state.get("tool_calls")
+    if not tool_calls and state.get("tool_name"):
+        tool_calls = [{"tool_name": state.get("tool_name"), "tool_args": state.get("tool_args") or {}}]
 
-    if not tool_name:
-        return {"tool_result": None}
+    if not tool_calls:
+        return {"tool_result": None, "tool_results": None}
 
-    try:
-        if tool_name == "financial_advice_bundle":
-            user_id = tool_args.get("user_id", "")
-            recurring = execute_tool("skill_recurring_bill_detector", user_id=user_id)
-            budget = execute_tool("skill_budget_alert_check", user_id=user_id)
-            emergency = execute_tool("skill_emergency_fund_calculator", user_id=user_id)
-            breakdown = execute_tool("get_spending_breakdown", user_id=user_id, period="month")
-            result = {
-                "recurring": recurring,
-                "budget": budget,
-                "emergency": emergency,
-                "breakdown": breakdown,
-            }
-        else:
-            result = execute_tool(tool_name, **tool_args)
+    results = []
+    first_error = None
+    for tc in tool_calls:
+        t_name = tc.get("tool_name")
+        t_args = dict(tc.get("tool_args") or {})
+        if not t_name:
+            continue
+        try:
+            if t_name == "financial_advice_bundle":
+                uid = t_args.get("user_id", "")
+                recurring = execute_tool("skill_recurring_bill_detector", user_id=uid)
+                budget = execute_tool("skill_budget_alert_check", user_id=uid)
+                emergency = execute_tool("skill_emergency_fund_calculator", user_id=uid)
+                breakdown = execute_tool("get_spending_breakdown", user_id=uid, period="month")
+                res = {
+                    "recurring": recurring,
+                    "budget": budget,
+                    "emergency": emergency,
+                    "breakdown": breakdown,
+                }
+            else:
+                res = execute_tool(t_name, **t_args)
+            results.append({"tool_name": t_name, "tool_args": t_args, "result": res, "error": None})
+        except Exception as e:
+            logger.error(f"Error executing MCP tool {t_name}: {e}", exc_info=True)
+            results.append({"tool_name": t_name, "tool_args": t_args, "result": None, "error": str(e)})
+            if not first_error:
+                first_error = str(e)
 
-        return {"tool_result": result, "error": None}
-    except Exception as e:
-        logger.error(f"Error executing MCP tool {tool_name}: {e}", exc_info=True)
-        return {"tool_result": None, "error": str(e)}
+    first_result = results[0]["result"] if results else None
+    return {
+        "tool_results": results,
+        "tool_result": first_result,
+        "error": first_error,
+    }
 
 
 OFFLINE_NOTE = "\n\n_⚙️ Offline mode: the AI is unavailable right now, so I used basic rules._"
@@ -909,7 +988,11 @@ async def response_synthesizer_node(state: AgentState) -> dict[str, Any]:
     Advice/report tools are written by a persona (Coach / Budgeter / Summary) from the tool data;
     ledger confirmations stay as fast fixed templates. Adds an offline note if the AI failed.
     """
-    text = state.get("response_text") or await _persona_response(state) or _template_response(state)
+    text = (
+        state.get("response_text")
+        or await _persona_response(state)
+        or _multi_tool_or_template_response(state)
+    )
     if state.get("offline_reason"):
         text += OFFLINE_NOTE
     return {"response_text": text}
@@ -951,13 +1034,89 @@ async def _persona_response(state: AgentState) -> str | None:
     return f"🧠 *{get_persona(mode).name}*\n\n{str(reply).strip()}"
 
 
+def _multi_tool_or_template_response(state: AgentState) -> str:
+    """Renders responses for single or batch multi-tool executions."""
+    tool_results = state.get("tool_results")
+    if tool_results and len(tool_results) > 1:
+        return _batch_template_response(tool_results)
+    return _template_response(state)
+
+
+def _batch_template_response(tool_results: list[dict[str, Any]]) -> str:
+    """Renders a comprehensive ledger update card for multiple transactions."""
+    incomes = []
+    expenses = []
+    transfers = []
+    other_msgs = []
+
+    total_income = 0.0
+    total_expense = 0.0
+
+    for item in tool_results:
+        t_name = item.get("tool_name")
+        res = item.get("result") or {}
+        err = item.get("error")
+
+        if err:
+            other_msgs.append(f"⚠️ Failed: {t_name} - {err}")
+            continue
+
+        if t_name == "log_income":
+            amt = float(res.get("amount", 0.0))
+            acc = res.get("account", "Bank")
+            cat = res.get("category", "Income")
+            total_income += amt
+            incomes.append(f"  • **+₹{amt:,.2f}** → {acc} ({cat})")
+        elif t_name == "log_expense":
+            amt = float(res.get("amount", 0.0))
+            acc = res.get("account", "Cash")
+            cat = res.get("category", "General")
+            merchant = res.get("merchant") or "General"
+            desc = item.get("tool_args", {}).get("description") or merchant
+            total_expense += amt
+            expenses.append(f"  • **₹{amt:,.2f}** - {desc} *({cat})* via {acc}")
+        elif t_name == "transfer_funds":
+            amt = float(res.get("transferred", 0.0))
+            from_acc = res.get("from_account", "Source")
+            to_acc = res.get("to_account", "Destination")
+            transfers.append(f"  • **₹{amt:,.2f}** from {from_acc} to {to_acc}")
+        else:
+            other_msgs.append(f"  • {t_name}: Completed")
+
+    sections = ["🧾 **Ledger Transactions Recorded!**\n"]
+
+    if incomes:
+        sections.append(f"💰 **Income Logged ({len(incomes)}):**\n" + "\n".join(incomes))
+    if expenses:
+        sections.append(f"💸 **Expenses Logged ({len(expenses)}):**\n" + "\n".join(expenses))
+    if transfers:
+        sections.append(f"🔄 **Transfers Logged ({len(transfers)}):**\n" + "\n".join(transfers))
+    if other_msgs:
+        sections.append("\n".join(other_msgs))
+
+    # Summary
+    summary_lines = []
+    if total_income > 0:
+        summary_lines.append(f"• **Total Inflow:** ₹{total_income:,.2f}")
+    if total_expense > 0:
+        summary_lines.append(f"• **Total Outflow:** ₹{total_expense:,.2f}")
+    if total_income > 0 and total_expense > 0:
+        net = total_income - total_expense
+        summary_lines.append(f"• **Net Balance Change:** {'+' if net >= 0 else ''}₹{net:,.2f}")
+
+    if summary_lines:
+        sections.append("📊 **Summary:**\n" + "\n".join(summary_lines))
+
+    sections.append("✨ *Updated your Tank & Pipes ledger seamlessly.*")
+    return "\n\n".join(sections)
+
+
 def _template_response(state: AgentState) -> str:
     return _template_response_dict(state)["response_text"]
 
 
 def _template_response_dict(state: AgentState) -> dict[str, Any]:
     """Fixed Markdown templates for every tool result (also the offline fallback for advice)."""
-
     tool_name = state.get("tool_name")
     tool_result = state.get("tool_result")
     error = state.get("error")
@@ -1184,14 +1343,14 @@ def route_after_llm_reasoning(state: AgentState) -> str:
     """Routes to confirmation node, tool executor, or response synthesizer."""
     if state.get("is_confirmation_reply"):
         return "confirmation_node"
-    if state.get("requires_confirmation") or state.get("tool_name"):
+    if state.get("requires_confirmation") or state.get("tool_name") or state.get("tool_calls"):
         return "tool_executor_node"
     return "response_synthesizer_node"
 
 
 def route_after_confirmation(state: AgentState) -> str:
     """After confirmation: execute tool if confirmed; else synthesize response."""
-    if state.get("confirmation_decision") == "confirmed" and state.get("tool_name"):
+    if state.get("confirmation_decision") == "confirmed" and (state.get("tool_name") or state.get("tool_calls")):
         return "tool_executor_node"
     return "response_synthesizer_node"
 
@@ -1257,8 +1416,7 @@ async def process_user_interaction(
     """
     clean_text = (text or "").strip()
 
-    # Previous messages only (newest HISTORY_LIMIT); the current message is sent separately
-    # as the user prompt, so it must not also appear in the history.
+    # Previous messages only (newest HISTORY_LIMIT); current message is the prompt.
     history = get_db_conversation_history(chat_id, limit=HISTORY_LIMIT)
 
     initial_state: AgentState = {
