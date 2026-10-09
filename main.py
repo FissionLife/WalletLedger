@@ -6,6 +6,7 @@ from fastapi import FastAPI
 
 from app.bot import telegram
 from app.bot.main import bot_router
+from app.config import INSECURE_DEV_KEY, settings
 from app.db import init_db
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -15,6 +16,10 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name
 async def lifespan(app: FastAPI):
     # Initialize database tables on startup
     init_db()
+    if settings.secret_key == INSECURE_DEV_KEY:
+        logging.getLogger(__name__).warning(
+            "SECRET_KEY is the public default: set a random one before storing real user API keys"
+        )
     # Telegram bot: off without a token, polling locally, webhook when USE_WEBHOOK=true
     app.state.telegram_mode = await telegram.start()
     try:

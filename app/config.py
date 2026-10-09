@@ -1,5 +1,7 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+INSECURE_DEV_KEY = "walletledger-insecure-dev-key-change-in-prod"
+
 
 class Settings(BaseSettings):
     """Application configuration for WalletLedger.
@@ -29,8 +31,14 @@ class Settings(BaseSettings):
     # Largest statement upload accepted from chat, in megabytes.
     max_upload_mb: int = 10
 
+    # Only these Telegram chat ids may use the bot (comma-separated). Empty = anyone.
+    allowed_chat_ids: str = ""
+    # /bot/simulate_chat and the token-less /bot/webhook let the caller act as ANY chat id.
+    # Unset = enabled only while no bot token is configured; true/false overrides.
+    enable_dev_endpoints: bool | None = None
+
     # Security key for encrypting user API keys
-    secret_key: str = "walletledger-insecure-dev-key-change-in-prod"
+    secret_key: str = INSECURE_DEV_KEY
 
     # Optional server-side AI keys, used only when a user has not added their own key.
     # *_API_KEYS accept several keys separated by commas (round-robin rotation).
@@ -53,3 +61,14 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+
+def is_chat_allowed(chat_id: str) -> bool:
+    allowed = {c.strip() for c in settings.allowed_chat_ids.split(",") if c.strip()}
+    return not allowed or str(chat_id) in allowed
+
+
+def dev_endpoints_enabled() -> bool:
+    if settings.enable_dev_endpoints is not None:
+        return settings.enable_dev_endpoints
+    return not settings.telegram_bot_token
