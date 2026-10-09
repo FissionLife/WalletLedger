@@ -11,6 +11,7 @@ Every channel uses the same logic so there is one code path:
 
 from __future__ import annotations
 
+import difflib
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
@@ -20,10 +21,11 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
 from app.bot.agent import classify_reply, process_user_interaction
+from app.bot.keys import KEY_COMMANDS, handle_key_command
 from app.config import dev_endpoints_enabled, is_chat_allowed
 from app.db import SessionLocal
 from app.services.ledger import get_account_balances, get_or_create_user, get_spending_summary
-from app.services_ai.ai_gateway import add_api_keys_from_text, extract_api_keys, list_api_keys
+from app.services_ai.ai_gateway import extract_api_keys
 from app.services_ai.mcp_server import execute_tool
 from app.services_ai.transaction_parser import parse_statement_file
 
@@ -38,27 +40,58 @@ PREVIEW_ROWS = 5
 IMPORT_ACCOUNT = "Bank"
 SUPPORTED_UPLOADS = {".pdf": "pdf", ".txt": "text"}
 
+# (command, short description). This list drives BOTH Telegram's "/" menu hints and /help.
+COMMAND_MENU: list[tuple[str, str]] = [
+    ("balance", "Your accounts and net worth"),
+    ("report", "30-day spending summary"),
+    ("coach", "Friendly savings coach"),
+    ("budgeter", "Strict budget mode"),
+    ("summary", "Quick emoji summary"),
+    ("keys", "List your AI keys"),
+    ("setkey", "Add an AI key (tested first)"),
+    ("testkey", "Test your AI keys now"),
+    ("editkey", "Replace a key: /editkey 1 <new key>"),
+    ("delkey", "Remove a key: /delkey 1"),
+    ("pausekey", "Pause a key: /pausekey 1"),
+    ("resumekey", "Resume a key: /resumekey 1"),
+    ("help", "How to use WalletLedger"),
+]
+KNOWN_COMMANDS = {f"/{name}" for name, _ in COMMAND_MENU} | {"/start", "/key"}
+
 HELP_TEXT = (
-    "ℹ️ **WalletLedger Help Guide:**\n\n"
-    "• **Log Expense:** *'Paid 150 to Starbucks for coffee'*\n"
-    "• **Log Income:** *'Received 60000 salary in Bank'*\n"
-    "• **Transfer Funds:** *'Transferred 2000 from Bank to Cash'*\n"
-    "• **Upload Statements:** send a PhonePe/GPay/bank PDF statement.\n"
-    "• **AI key:** `/setkey <your key>` (Gemini AIza…/AQ…, OpenAI, Claude, Groq), `/keys` to list.\n"
-    "• **Personas:** `/coach`, `/budgeter`, `/summary`\n"
-    "• **Quick views:** `/balance`, `/report`"
+    "ℹ️ **WalletLedger Help**\n\n"
+    "💬 **Just talk to me**\n"
+    "• *Paid 150 to Starbucks for coffee*\n"
+    "• *Received 60000 salary in Bank*\n"
+    "• *Transferred 2000 from Bank to Cash*\n"
+    "• Send a PhonePe / GPay / bank **PDF** to import transactions\n\n"
+    "📊 **Views**\n"
+    "• /balance · /report\n\n"
+    "🎭 **Advice modes**\n"
+    "• /coach (encouraging) · /budgeter (strict) · /summary (short)\n\n"
+    "🔑 **AI keys** (I test a key before saving it)\n"
+    "• /setkey `<key>` · /keys · /testkey\n"
+    "• /editkey `1 <new key>` · /delkey `1` · /pausekey `1` · /resumekey `1`\n"
+    "• If your key fails, I fall back to the shared team keys.\n\n"
+    "Tip: type / to see the command menu."
 )
 
 START_TEXT = (
     "👋 **Welcome to WalletLedger!** 🪙\n\n"
-    "Your personal finance assistant modeled on the **Tank & Pipes** architecture.\n\n"
-    "📌 **Quick Commands:**\n"
-    "• `/balance` - Check your liquid pipes (Cash, Bank, Cards)\n"
-    "• `/report` - 30-day spending summary & breakdown\n"
-    "• `/setkey <key>` - Add your own AI key (stored encrypted)\n"
-    "• `/help` - Usage tips & commands\n\n"
-    "💬 Or simply chat with me: *'Spent 450 on dinner via Bank'* or upload a PhonePe statement PDF!"
+    "Track money in plain language, import bank statements, and get savings advice.\n\n"
+    "🚀 **Try one now**\n"
+    "• *Spent 450 on dinner via Bank*\n"
+    "• /balance · /report\n"
+    "• Send a statement PDF\n\n"
+    "🔑 Add your own AI key with /setkey `<key>` (I'll test it first), or use the shared one.\n"
+    "Type /help for everything, or / for the command menu."
 )
+
+
+def unknown_command_text(command: str) -> str:
+    close = difflib.get_close_matches(command, sorted(KNOWN_COMMANDS), n=3, cutoff=0.5)
+    hint = "Did you mean " + " or ".join(close) + "?" if close else "Try /help."
+    return f"❓ I don't know `{command}`. {hint}"
 
 
 # ---------------------------------------------------------------------------
@@ -89,10 +122,15 @@ def _get_pending_import(chat_id: str) -> PendingImport | None:
 # ---------------------------------------------------------------------------
 
 
+PERSONA_COMMANDS = {"/coach", "/budgeter", "/summary"}
+
+
 def should_delete_message(text: str) -> bool:
     """True if the user's message contains an API key and should be removed from the chat."""
     clean = (text or "").strip()
-    return clean.lower().startswith("/setkey") or bool(extract_api_keys(clean))
+    return clean.lower().startswith(("/setkey", "/key ", "/editkey")) or bool(
+        extract_api_keys(clean)
+    )
 
 
 async def handle_text(chat_id: str, text: str) -> str:
@@ -112,9 +150,13 @@ async def handle_text(chat_id: str, text: str) -> str:
     if clean.startswith("/"):
         command, _, args = clean.partition(" ")
         command = command.split("@", 1)[0].lower()  # "/balance@MyBot" in groups
+        if command in KEY_COMMANDS:
+            return await handle_key_command(chat_id, command, args.strip())
         reply = _handle_command(chat_id, command, args.strip())
         if reply is not None:
             return reply
+        if command not in PERSONA_COMMANDS:
+            return unknown_command_text(command)
 
     return await process_user_interaction(chat_id=chat_id, text=clean)
 
@@ -130,10 +172,6 @@ def _handle_command(chat_id: str, command: str, args: str) -> str | None:
         return _balance_text(chat_id)
     if command == "/report":
         return _report_text(chat_id)
-    if command == "/setkey":
-        return _set_key(chat_id, args)
-    if command == "/keys":
-        return _keys_text(chat_id)
     return None
 
 
@@ -180,40 +218,6 @@ def _report_text(chat_id: str) -> str:
         f"🧾 **Transactions:** {summary['transaction_count']}\n\n"
         f"**Category Breakdown:**\n{cats_txt}"
     )
-
-
-def _set_key(chat_id: str, args: str) -> str:
-    if not args:
-        return (
-            "🔑 Usage: `/setkey <your API key>`\n"
-            "Supported: Gemini (AIza… or AQ.…), OpenAI (sk-…), Claude (sk-ant-…), Groq (gsk_…). "
-            "Several keys separated by spaces are fine."
-        )
-    try:
-        saved = add_api_keys_from_text(chat_id, args)
-    except Exception as e:
-        logger.error("Could not save API key for chat %s: %s", chat_id, e, exc_info=True)
-        return "⚠️ Could not save your API key. Please try again."
-    if not saved:
-        return (
-            "⚠️ That doesn't look like a supported API key. Check it and send `/setkey <key>` again."
-        )
-    lines = "\n".join(f"• {s['provider'].title()}: {s['masked_key']}" for s in saved)
-    return (
-        f"🔑 **Saved {len(saved)} API key{'s' if len(saved) != 1 else ''}** (stored encrypted):\n"
-        f"{lines}\n\nI removed your message so the key doesn't stay in this chat."
-    )
-
-
-def _keys_text(chat_id: str) -> str:
-    keys = list_api_keys(chat_id)
-    if not keys:
-        return "🔑 No AI keys saved yet. Add one with `/setkey <key>`."
-    lines = "\n".join(
-        f"• {k['provider'].title()}: {k['masked_key']} {'✅' if k['is_active'] else '⏸️ inactive'}"
-        for k in keys
-    )
-    return f"🔑 **Your AI keys:**\n{lines}"
 
 
 # ---------------------------------------------------------------------------

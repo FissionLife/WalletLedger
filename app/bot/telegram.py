@@ -24,9 +24,15 @@ from typing import Any
 from aiogram import Bot, Dispatcher, F, Router
 from aiogram.enums import ChatAction, ParseMode
 from aiogram.exceptions import TelegramBadRequest
-from aiogram.types import Message
+from aiogram.types import BotCommand, Message
 
-from app.bot.main import handle_document, handle_text, should_delete_message, upload_type
+from app.bot.main import (
+    COMMAND_MENU,
+    handle_document,
+    handle_text,
+    should_delete_message,
+    upload_type,
+)
 from app.config import settings
 
 logger = logging.getLogger(__name__)
@@ -150,6 +156,16 @@ def build_router() -> Router:
     return router
 
 
+async def _publish_command_menu(bot: Bot) -> None:
+    """Show the command list (with descriptions) when users type "/" in Telegram."""
+    try:
+        await bot.set_my_commands(
+            [BotCommand(command=name, description=desc) for name, desc in COMMAND_MENU]
+        )
+    except Exception as exc:  # cosmetic: never stop the bot over the menu
+        logger.warning("Could not publish the Telegram command menu: %s", exc)
+
+
 async def start() -> str:
     """Start the bot according to settings. Returns the mode: off, polling or webhook."""
     global _bot, _dispatcher, _polling_task, _mode
@@ -163,6 +179,7 @@ async def start() -> str:
     _dispatcher = Dispatcher()
     _dispatcher.include_router(build_router())
     me = await _bot.get_me()
+    await _publish_command_menu(_bot)
 
     if settings.use_webhook:
         if not settings.webhook_url:

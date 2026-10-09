@@ -158,10 +158,13 @@ class TestApiKeysInChat(AgentTestCase):
     """Fix 2: AQ./AIza keys pasted in chat are stored encrypted and never sent to an AI."""
 
     def test_aq_key_saved_masked_and_encrypted(self):
-        with patch.object(litellm, "acompletion", AsyncMock()) as mock:
+        with (
+            patch.object(litellm, "acompletion", AsyncMock()) as mock,
+            patch.object(gw, "validate_api_key", AsyncMock(return_value=gw.KeyCheck("valid"))),
+        ):
             reply = chat(self.chat_id, f"my gemini key is {AQ_KEY}")
         mock.assert_not_awaited()
-        self.assertIn("Saved 1 API key", reply)
+        self.assertIn("works. Saved", reply)
         self.assertIn(gw.mask_key(AQ_KEY), reply)
         self.assertNotIn(AQ_KEY, reply)
         self.assertEqual(gw.get_user_api_keys(self.chat_id), [("gemini", AQ_KEY)])
@@ -177,13 +180,15 @@ class TestApiKeysInChat(AgentTestCase):
             db.close()
 
     def test_multiple_keys_and_no_expense_logged(self):
-        reply = chat(self.chat_id, f"keys: {AQ_KEY}, {AQ_KEY_2}")
-        self.assertIn("Saved 2 API keys", reply)
+        with patch.object(gw, "validate_api_key", AsyncMock(return_value=gw.KeyCheck("valid"))):
+            reply = chat(self.chat_id, f"keys: {AQ_KEY}, {AQ_KEY_2}")
+        self.assertEqual(reply.count("works. Saved"), 2)
         self.assertEqual(len(gw.get_user_api_keys(self.chat_id)), 2)
         self.assertEqual(self.balances()["Bank"], 50000)
 
     def test_next_message_uses_ai(self):
-        chat(self.chat_id, AQ_KEY)
+        with patch.object(gw, "validate_api_key", AsyncMock(return_value=gw.KeyCheck("valid"))):
+            chat(self.chat_id, AQ_KEY)
         with patch.object(
             litellm, "acompletion", AsyncMock(return_value=text_response("Hi from AI"))
         ) as mock:

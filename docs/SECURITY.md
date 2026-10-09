@@ -68,6 +68,9 @@ Tampered or wrong-key data fails to decrypt instead of returning garbage.
 - Keep `SECRET_KEY` somewhere other than the database host/backups, otherwise the encryption adds
   little.
 
+- When a user adds a key, the bot sends one tiny test request to that provider with it (the same call it would later make), so the key is only ever sent to its own provider.
+- Server (team) fallback keys are never shown to users; `/keys` only says whether a fallback exists.
+
 ## 5. How to protect the rest of the data (recommended order)
 
 1. **Disk / volume encryption** (BitLocker, LUKS, encrypted cloud volumes). Cheapest big win; covers

@@ -111,8 +111,9 @@ class TestCommands(BotTestCase):
         self.assertIn("Total Net Worth", run(bot.handle_text(self.chat_id, "/balance@MyBot")))
 
     def test_setkey_saves_and_masks(self):
-        reply = run(bot.handle_text(self.chat_id, f"/setkey {AQ_KEY}"))
-        self.assertIn("Saved 1 API key", reply)
+        with patch.object(gw, "validate_api_key", AsyncMock(return_value=gw.KeyCheck("valid"))):
+            reply = run(bot.handle_text(self.chat_id, f"/setkey {AQ_KEY}"))
+        self.assertIn("works. Saved", reply)
         self.assertIn(gw.mask_key(AQ_KEY), reply)
         self.assertNotIn(AQ_KEY, reply)
         self.assertEqual(gw.get_user_api_keys(self.chat_id), [("gemini", AQ_KEY)])
@@ -120,8 +121,10 @@ class TestCommands(BotTestCase):
         self.assertIn(gw.mask_key(AQ_KEY), keys)
 
     def test_setkey_usage_and_invalid(self):
-        self.assertIn("Usage", run(bot.handle_text(self.chat_id, "/setkey")))
-        self.assertIn("doesn't look like", run(bot.handle_text(self.chat_id, "/setkey hello")))
+        self.assertIn("Add an AI key", run(bot.handle_text(self.chat_id, "/setkey")))
+        self.assertIn(
+            "couldn't find a supported API key", run(bot.handle_text(self.chat_id, "/setkey hello"))
+        )
 
     def test_should_delete_message(self):
         self.assertTrue(bot.should_delete_message(f"/setkey {AQ_KEY}"))
@@ -196,7 +199,7 @@ class TestHttpEndpoints(BotTestCase):
         update = {"update_id": 1, "message": {"chat": {"id": int(self.chat_id)}, "text": "/help"}}
         with self.client as client:
             res = client.post("/bot/webhook", json=update)
-        self.assertIn("WalletLedger Help Guide", res.json()["reply"])
+        self.assertIn("WalletLedger Help", res.json()["reply"])
 
     def test_webhook_rejects_wrong_secret(self):
         with (
