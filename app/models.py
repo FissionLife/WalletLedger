@@ -1,10 +1,15 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 
 from sqlalchemy import Boolean, DateTime, Float, ForeignKey, String, Text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+
+
+def _utcnow() -> datetime:
+    """Naive UTC timestamp (SQLite/Postgres DateTime columns are timezone-naive here)."""
+    return datetime.now(UTC).replace(tzinfo=None)
 
 
 class Base(DeclarativeBase):
@@ -18,7 +23,7 @@ class User(Base):
     telegram_chat_id: Mapped[str] = mapped_column(
         String(64), unique=True, index=True, nullable=False
     )
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
 
     accounts: Mapped[list[Account]] = relationship(
         "Account", back_populates="user", cascade="all, delete-orphan"
@@ -46,7 +51,7 @@ class Account(Base):
         String(30), default="bank"
     )  # 'bank', 'wallet', 'credit_card', 'cash'
     balance: Mapped[float] = mapped_column(Float, default=0.0)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
 
     user: Mapped[User] = relationship("User", back_populates="accounts")
 
@@ -61,7 +66,7 @@ class Category(Base):
     name: Mapped[str] = mapped_column(String(100), nullable=False)  # e.g., "Food", "Rent", "Salary"
     budget_limit: Mapped[float | None] = mapped_column(Float, nullable=True)  # Monthly limit
     type: Mapped[str] = mapped_column(String(20), default="expense")  # 'expense' or 'income'
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
 
     user: Mapped[User] = relationship("User", back_populates="categories")
 
@@ -122,9 +127,11 @@ class Transaction(Base):
     source: Mapped[str] = mapped_column(
         String(20), default="chat"
     )  # 'chat', 'pdf', 'sms', 'manual'
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
 
     user: Mapped[User] = relationship("User", back_populates="transactions")
+    category: Mapped[Category | None] = relationship("Category", foreign_keys=[category_id])
+    merchant: Mapped[Merchant | None] = relationship("Merchant", foreign_keys=[merchant_id])
 
 
 class ApiKey(Base):
@@ -137,6 +144,6 @@ class ApiKey(Base):
     provider: Mapped[str] = mapped_column(String(50), nullable=False)  # 'gemini', 'openai', etc.
     encrypted_key: Mapped[str] = mapped_column(Text, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
 
     user: Mapped[User] = relationship("User", back_populates="api_keys")

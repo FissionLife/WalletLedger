@@ -32,6 +32,9 @@ jobs:
         run: |
           uv sync --all-groups
 
+      - name: Run tests
+        run: uv run python -m unittest discover -s tests
+
       - name: Auto-heal formatting and lint fixes
         run: |
           echo "Running auto-formatting and auto-fixes..."

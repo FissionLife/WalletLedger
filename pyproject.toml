@@ -6,8 +6,10 @@ readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
     "aiogram>=3.31.0",
+    "cryptography>=50.0.2",
     "email-validator>=2.3.0",
     "fastapi>=0.142.2",
+    "httpx>=0.28.1",
     "langchain>=1.4.3",
     "langgraph>=1.2.12",
     "litellm>=1.104.0",
@@ -23,6 +25,7 @@ dependencies = [
 [dependency-groups]
 dev = [
     "pre-commit>=4.6.2",
+    "pytest>=9.1.1",
     "ruff>=0.16.10",
 ]
 

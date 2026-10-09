@@ -1,282 +1,67 @@
-# WalletLedger (WalletLedger & AI Financial Bot)
+# WalletLedger
 
-A production-ready FastAPI-based payment processing, wallet ledger, and AI-powered financial assistant system with user management, order processing, wallet transactions, and Telegram Bot integration.
+An AI-powered Telegram expense tracker built on a **Tank & Pipes** ledger: accounts are pipes in,
+categories are pipes out, and transfers between your own accounts are never counted as spending.
 
-## Quick Links
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) (Mermaid diagrams) · [docs/SECURITY.md](docs/SECURITY.md) (data storage and hardening)
+- [DEPLOYMENT.md](DEPLOYMENT.md) · [DOCUMENTATION.md](DOCUMENTATION.md) · [TEAM_GUIDE.md](TEAM_GUIDE.md) · [SDLC_AND_SCHEMA.md](SDLC_AND_SCHEMA.md)
 
-- 📖 [Complete Deployment Guide](DEPLOYMENT.md) - Step-by-step local setup instructions
-- 📚 [Technical Documentation](DOCUMENTATION.md) - Architecture, flows, and development guide
-- 👥 [Team & Architecture Guide](TEAM_GUIDE.md) - "Tank and Pipes" model, hackathon roles & bot architecture
-- 🔗 [API Documentation](http://localhost:8000/docs) - Interactive Swagger UI (after starting server)
+> Note: DEPLOYMENT.md / DOCUMENTATION.md still describe the retired "users / orders / wallet" payment
+> API and need a rewrite. This README is the source of truth.
 
-## Prerequisites
+## Run it
 
-- Python 3.14+ (pinned in `.python-version`)
-- [uv](https://github.com/astral-sh/uv) (Fast Python package and project manager)
-- Docker (for PostgreSQL) or SQLite (for local testing)
-
-## Quick Start
-
-### 1. Database Setup
-
-**Option A: PostgreSQL via Docker (Default)**
-```bash
-docker run --name app_pg -e POSTGRES_PASSWORD=postgres -e POSTGRES_USER=postgres -e POSTGRES_DB=appdb -p 5432:5432 -d postgres:16
-```
-
-**Option B: SQLite (Quick Local Testing)**
-Create a `.env` file in the root directory:
-```env
-DATABASE_URL=sqlite:///./fission.db
-```
-
-### 2. Install Dependencies
-
-Use `uv` to automatically synchronize the environment and manage `.venv`:
 ```bash
 uv sync
+uv run uvicorn main:app --reload --port 8000     # SQLite by default (walletledger.db)
+uv run python scripts/seed_demo_data.py          # demo user "demo" with 50 transactions
 ```
 
-### 3. Run the Application
+Try it without Telegram (set `ENABLE_DEV_ENDPOINTS=true` in `.env` first):
 
 ```bash
-uv run uvicorn main:app --reload --port 8000
+curl -X POST localhost:8000/bot/simulate_chat -H 'content-type: application/json' \
+  -d '{"chat_id":"demo","text":"Spent 450 on dinner via HDFC Bank"}'
 ```
 
-*Or run directly:*
-```bash
-uv run python main.py
+## Configuration (`.env`)
+
+| Variable | Purpose |
+|---|---|
+| `DATABASE_URL` | default `sqlite:///./walletledger.db`; Postgres works too |
+| `TELEGRAM_BOT_TOKEN` | enables Telegram. Empty = only `/bot/simulate_chat` |
+| `USE_WEBHOOK`, `WEBHOOK_URL`, `WEBHOOK_SECRET` | webhook mode (otherwise long polling). Always set a secret |
+| `SECRET_KEY` | encrypts users' API keys at rest. **Change it** (startup warns on the default) |
+| `DEFAULT_LLM_MODEL`, `DEFAULT_LLM_API_KEY` | optional server-side fallback LLM |
+| `ENABLE_DEV_ENDPOINTS` | default `false`. Set `true` locally to use `/bot/simulate_chat` (lets the caller act as any chat id) |
+| `ALLOWED_CHAT_IDS` | comma-separated Telegram chat ids allowed to use the bot (empty = anyone) |
+| `SECRET_KEY_OLD` | previous key(s) for rotation |
+| `CONFIRM_THRESHOLD` | amounts at/above this need a "yes" (default 50000) |
+
+## What the bot understands
+
+`Spent 450 on dinner via Bank` · `Paid 150 to Starbucks for coffee` · `Received 50000 salary in Bank` ·
+`Transferred 2000 from Bank to Cash` · `/balance` · `/report` · `how can I reduce expenses?` ·
+`ruthless mode` / `coach mode` / `quick mode` · `/setkey <key>` · send a PhonePe/GPay PDF.
+
+Everything above works with **no LLM key** (rule-based parsing). Adding a Gemini/OpenAI/Groq/Claude
+key (`/setkey`) enables free-form questions, better advice wording and an intent-classifier fallback.
+
+## Layout
+
+```
+main.py                         FastAPI app + Telegram lifecycle
+app/bot/main.py                 Role 1: webhook / polling / commands / document intake
+app/bot/agent.py                Role 2: LangGraph (classify -> act -> respond), confirmations
+app/services_ai/ai_gateway.py   Role 3: LiteLLM routing, round-robin keys, fallback
+app/services_ai/prompts.py      Role 3: personas
+app/services_ai/mcp_server.py   Role 4: tool registry + financial skills (execute_tool)
+app/services_ai/transaction_parser.py   Role 5: chat/PDF/SMS parsing, insights
+app/services/ledger.py          Core ledger (balances, transfers, summaries)
 ```
 
-The API will be available at `http://localhost:8000` (Swagger UI at `http://localhost:8000/docs`).
-
-### 4. Seed Sample Data
-
-```bash
-# Seed multiple users with wallets and orders
-uv run python scripts/seed_data.py --all
-
-# Or seed a single user
-uv run python scripts/seed_data.py CUST-001
-```
-
-## API Endpoints
-
-### Users
-
-**Create User**
-```bash
-curl -X POST http://localhost:8000/users \
-  -H "Content-Type: application/json" \
-  -d '{
-    "user_id": "CUST-001",
-    "email": "customer@example.com",
-    "full_name": "John Doe",
-    "phone": "+91-9876543210"
-  }'
-```
-
-**Get User**
-```bash
-curl http://localhost:8000/users/CUST-001
-```
-
-**List Users**
-```bash
-curl http://localhost:8000/users
-```
-
-### Orders
-
-**Create Order**
-```bash
-curl -X POST http://localhost:8000/orders \
-  -H "Content-Type: application/json" \
-  -d '{
-    "customer_id": "CUST-001",
-    "amount": 499.99,
-    "currency": "INR",
-    "idempotency_key": "order-123"
-  }'
-```
-
-**List Orders**
-```bash
-curl "http://localhost:8000/orders?customer_id=CUST-001"
-```
-
-### Wallet
-
-**Credit Wallet**
-```bash
-curl -X POST http://localhost:8000/wallet/CUST-001/credit \
-  -H "Content-Type: application/json" \
-  -d '{"amount": 1000}'
-```
-
-**Debit Wallet**
-```bash
-curl -X POST http://localhost:8000/wallet/CUST-001/debit \
-  -H "Content-Type: application/json" \
-  -d '{"amount": 200}'
-```
-
-**Get Wallet Balance**
-```bash
-curl http://localhost:8000/wallet/CUST-001
-```
-
-### Telegram Bot Webhook
-
-**Receive Telegram Update**
-```bash
-curl -X POST http://localhost:8000/bot/webhook \
-  -H "Content-Type: application/json" \
-  -d '{
-    "update_id": 10001,
-    "message": {
-      "chat": {"id": 12345},
-      "text": "/start"
-    }
-  }'
-```
-
-## Testing Scenarios
-
-Run test scenarios to validate the API and ledger behaviors:
+## Tests
 
 ```bash
-# Run all scenarios with seeding
-uv run python scripts/run_scenarios.py --scenario all --seed
-
-# Run specific scenario
-uv run python scripts/run_scenarios.py --scenario orders_retry
-uv run python scripts/run_scenarios.py --scenario wallet_concurrency
-uv run python scripts/run_scenarios.py --scenario false_success
-
-# Repeat scenario multiple times
-uv run python scripts/run_scenarios.py --scenario wallet_concurrency --repeat 5
+uv run python -m unittest discover -s tests
 ```
-
-## Database Management
-
-### PostgreSQL via Docker
-
-**Initialize schema:**
-```bash
-docker exec -i app_pg psql -U postgres -d appdb < sql/schema.sql
-```
-
-**Load seed data:**
-```bash
-docker exec -i app_pg psql -U postgres -d appdb < sql/seed_data.sql
-```
-
-**Connect to database:**
-```bash
-docker exec -it app_pg psql -U postgres -d appdb
-```
-
-### SQLite
-
-When using `DATABASE_URL=sqlite:///./fission.db`, tables are automatically initialized on application startup. You can inspect data using standard SQLite tools:
-```bash
-sqlite3 fission.db
-```
-
-## Working with `uv`
-
-- **Sync dependencies**: `uv sync`
-- **Add a dependency**: `uv add <package_name>`
-- **Remove a dependency**: `uv remove <package_name>`
-- **Run scripts**: `uv run python <script.py>`
-- **Run server**: `uv run uvicorn main:app --reload --port 8000`
-- **Prune unneeded packages**: `uv sync --clean`
-
-## Project Structure
-
-```
-WalletLedger/
-├── app/
-│   ├── __init__.py
-│   ├── auth.py                  # Authentication utilities
-│   ├── config.py                # Application settings
-│   ├── db.py                    # Database session & engine
-│   ├── models.py                # SQLAlchemy models (User, Wallet, Order)
-│   ├── routes_orders.py         # Order endpoints
-│   ├── routes_users.py          # User management endpoints
-│   ├── routes_wallet.py         # Wallet balance & transactions
-│   ├── schemas.py               # Pydantic validation schemas
-│   ├── services.py              # Core business & ledger logic
-│   ├── bot/                     # Telegram Bot integration
-│   │   ├── __init__.py
-│   │   ├── agent.py             # LangGraph state machine & reasoning
-│   │   └── main.py              # Telegram webhook endpoint
-│   └── services_ai/             # AI service layers
-│       ├── __init__.py
-│       ├── ai_gateway.py        # LiteLLM routing & API keys
-│       ├── mcp_server.py        # Model Context Protocol tools
-│       └── transaction_parser.py # PDF statement & chat parser
-├── scripts/
-│   ├── run_scenarios.py         # Concurrency and idempotency test scenarios
-│   └── seed_data.py             # Sample data seeding utility
-├── sql/
-│   ├── schema.sql               # PostgreSQL schema
-│   └── seed_data.sql            # PostgreSQL sample data
-├── .github/
-│   └── workflows/
-│       └── lint.yml             # GitHub Actions CI linting, formatting & auto-heal workflow
-├── .pre-commit-config.yaml      # Pre-commit hook definitions (ruff, ruff-format, hooks)
-├── project.devprune.json        # dev-prune workspace configuration
-├── main.py                      # FastAPI application entry point
-├── pyproject.toml               # Project metadata, dependencies & ruff config
-├── uv.lock                      # Locked dependency versions
-├── .gitignore
-├── .python-version              # Python 3.14 pin
-├── DEPLOYMENT.md                # Detailed deployment guide
-├── DOCUMENTATION.md             # In-depth architectural & API documentation
-├── TEAM_GUIDE.md                # Hackathon & "Tank and Pipes" architecture guide
-└── README.md
-```
-
-## Code Quality, Pre-Commit & CI/CD
-
-### Local Formatting & Linting
-The project uses **Ruff** for fast linting and code formatting:
-```bash
-# Check code and auto-fix issues
-uv run ruff check --fix .
-
-# Auto-format all files
-uv run ruff format .
-```
-
-### Git Pre-Commit Hooks
-Pre-commit hooks are pre-configured to ensure clean commits:
-```bash
-# Install git pre-commit hooks
-uv run pre-commit install
-
-# Run against all files manually
-uv run pre-commit run --all-files
-```
-
-### GitHub Actions CI/CD (Auto-Healing)
-A GitHub Actions workflow is set up in `.github/workflows/lint.yml` on push and pull requests:
-- Automatically validates code against Ruff formatting and lint rules.
-- **Auto-heals**: If any formatting or lint fixes are needed, the workflow automatically fixes them and commits back to the branch.
-- **Non-blocking**: Designed not to break commits, maintaining rapid iteration speed for the hackathon team while keeping the repository clean.
-
-## Development
-
-The application uses:
-- **FastAPI** for high-performance REST APIs & ASGI webhook handling
-- **SQLAlchemy 2.x** for ORM persistence
-- **PostgreSQL & SQLite** database backends
-- **Pydantic v2** for request/response validation
-- **uv** for fast package & environment management
-- **aiogram & LangGraph** for AI conversational workflows
-- **LiteLLM** for provider-agnostic LLM routing
-- **Ruff & Pre-Commit** for linting, formatting, and auto-healing
-
-Database schema is automatically initialized on application startup.
