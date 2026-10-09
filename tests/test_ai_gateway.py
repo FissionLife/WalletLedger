@@ -9,6 +9,7 @@ import tempfile
 
 # Point the app at a throwaway SQLite DB *before* any app module is imported.
 _TMP_DIR = tempfile.mkdtemp(prefix="walletledger-test-")
+os.environ["DYNAMIC_MODELS"] = "false"  # tests never hit provider model-list APIs
 os.environ["DATABASE_URL"] = "sqlite:///" + os.path.join(_TMP_DIR, "test.db").replace("\\", "/")
 _KEY_VARS = (
     "GEMINI_API_KEYS",

@@ -7,6 +7,7 @@ import os
 import tempfile
 
 _TMP_DIR = tempfile.mkdtemp(prefix="walletledger-ledger-test-")
+os.environ["DYNAMIC_MODELS"] = "false"  # tests never hit provider model-list APIs
 os.environ["DATABASE_URL"] = "sqlite:///" + os.path.join(_TMP_DIR, "test.db").replace("\\", "/")
 os.environ["TELEGRAM_BOT_TOKEN"] = ""
 os.environ["USE_WEBHOOK"] = "false"

@@ -16,7 +16,7 @@ how to harden it.
 | User LLM API keys | `api_keys.encrypted_key` | Fernet (AES + HMAC) |
 | Server-side fallback LLM keys, bot token, `SECRET_KEY` | environment / `.env` | file permissions only |
 
-The default database is a file, `walletledger.db`. It is git-ignored but is an ordinary file: anyone
+The default (`DB_MODE=sqlite`) is a file, `walletledger.db` (`DB_MODE=postgres` uses a server). It is git-ignored but is an ordinary file: anyone
 who copies it can open it with a SQLite viewer.
 
 ## 2. Authentication: how identity works
