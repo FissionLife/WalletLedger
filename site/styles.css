@@ -1,0 +1,1557 @@
+/*
+  WalletLedger landing page styles
+  ================================
+
+  Visual language: Cloudflare "Kumo" design system, with its BLUE brand colour as the accent.
+  Kumo is MIT-licensed. No Kumo code, logos or assets are copied here; only its colour values and
+  sizing conventions are re-used as plain CSS variables.
+
+  Sources (read 2026-10-11):
+    - Tokens:   https://github.com/cloudflare/kumo/blob/main/packages/kumo/src/styles/theme-kumo.css
+    - Button:   https://github.com/cloudflare/kumo/blob/main/packages/kumo/src/components/button/button.tsx
+    - Badge:    https://github.com/cloudflare/kumo/blob/main/packages/kumo/src/components/badge/badge.tsx
+    - Docs:     https://kumo-ui.com
+
+  Kumo defines its tokens in OKLCH. The hex values below are conversions of those exact values
+  (rounded to the nearest sRGB hex), so they work in every browser.
+
+    Token (Kumo name)            Light                                 Dark
+    --color-kumo-brand           oklch(0.5772 0.2324 260)  = #056dff   same mixed with 10% black = #045ede
+    --color-kumo-brand-hover     blue-700 oklch(48.8% .243 264.4) = #1447e6 (both themes)
+    --text-color-kumo-link       blue-800 = #193cb8                    blue-400 = #51a2ff
+    --text-color-kumo-default    neutral-900 = #18181b                 neutral-100 = #f5f5f5
+    --text-color-kumo-strong     neutral-950 = #0a0a0a                 neutral-50  = #fafafa
+    --text-color-kumo-subtle     neutral-500 = #737373                 neutral-400 = #a1a1a1
+    --color-kumo-base            white #ffffff                         neutral-925 oklch(17%) = #0f0f0f
+    --color-kumo-elevated        oklch(98%) = #f8f8f8                  oklch(12%) = #060606
+    --color-kumo-recessed        oklch(96%) = #f2f2f2                  oklch(15%) = #0b0b0b
+    --color-kumo-tint            neutral-100 = #f5f5f5                 oklch(26.9%) = #262626
+    --color-kumo-fill            neutral-200 = #e5e5e5                 oklch(26.9%) = #262626
+    --color-kumo-line            oklch(14.5% 0 0 / .1)                 oklch(32%) = #333333
+    --color-kumo-hairline        oklch(93.5%) = #e9e9e9                oklch(26.9%) = #262626
+    --text-color-kumo-success    emerald-800 = #006045                 emerald-200 = #a4f4cf
+    --color-kumo-success-tint    oklch(96.2% .043 156.7 / .57)         oklch(39.3% .096 152.3 / .2)
+    --color-kumo-info-tint       oklch(93.2% .032 255.6 / .45)         oklch(38% .145 265.5 / .22)
+    badge-orange-subtle text     orange-800 = #9f2d00                  orange-200 = #ffd6a7
+    --color-kumo-warning-tint    oklch(93.1% .107 94.6 / .2)           oklch(35.3% .079 65 / .37)
+
+  Component conventions taken from Kumo's source:
+    - Buttons: font-weight 500, height 36px (base) / 40px (large), radius 8px ("rounded-lg"),
+      1px ring instead of a border, tiny shadow ("shadow-xs"). Primary = brand blue with a subtle
+      top-to-bottom gradient from (brand + 15% white) to brand, ring = brand + 10% black, white text.
+      Secondary = base surface, default text, 1px ring in the "line" colour, hover = "tint".
+      Focus-visible = 2px brand ring.
+    - Badges: pill ("rounded-full"), 12px text, weight 500, padding 2px 8px, tinted background.
+    - Surfaces: base / elevated / recessed layers separated by 1px "line" / "hairline" rings.
+    - Kumo's own type scale is compact (12/13/14/16px). A landing page needs larger headings, so the
+      heading sizes below are our own; body copy uses Kumo's 16px "lg" step.
+
+  Our additions (not Kumo tokens): --muted (Kumo neutral-600 #525252 in light) is used for longer
+  secondary paragraphs, because neutral-500 is only just AA on off-white surfaces.
+  Fonts: system font stack only (no web fonts are downloaded).
+*/
+
+:root {
+  --brand: #056dff;
+  --brand-hover: #1447e6;
+  --brand-ring: #045ede;
+  --brand-grad-start: #3c86ff;
+  --on-brand: #ffffff;
+  --link: #193cb8;
+
+  --text: #18181b;
+  --text-strong: #0a0a0a;
+  --subtle: #737373;
+  --muted: #525252;
+
+  --canvas: #fbfbfb;
+  --base: #ffffff;
+  --elevated: #f8f8f8;
+  --recessed: #f2f2f2;
+  --tint: #f5f5f5;
+  --fill: #e5e5e5;
+  --line: rgba(10, 10, 10, 0.1);
+  --hairline: #e9e9e9;
+
+  --success-text: #006045;
+  --success-tint: rgba(220, 252, 231, 0.9);
+  --info-text: #193cb8;
+  --info-tint: rgba(219, 234, 254, 0.7);
+  --warn-text: #9f2d00;
+  --warn-tint: rgba(255, 232, 148, 0.45);
+
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.04), 0 8px 24px rgba(0, 0, 0, 0.06);
+  --shadow-phone: 0 1px 0 rgba(0, 0, 0, 0.12), 0 30px 60px -20px rgba(5, 40, 110, 0.35);
+
+  /* Telegram-like chat colours used only inside the phone illustration. */
+  --chat-bg: #e7eef7;
+  --chat-in: #ffffff;
+  --chat-out: #dcebff;
+  --chat-meta: #5f6b7a;
+  --chat-btn: #4a6a8c;
+  --chat-cmd: #193cb8;
+
+  --radius-sm: 6px;
+  --radius: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+
+  --font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans",
+    sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+
+  --max: 1120px;
+  --gutter: 16px;
+
+  color-scheme: light;
+}
+
+/* Dark theme: follows the operating system unless the visitor picked "light" with the toggle. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --brand: #045ede;
+    --brand-hover: #1447e6;
+    --brand-ring: #0a4fc0;
+    --brand-grad-start: #2f78f0;
+    --link: #51a2ff;
+    --text: #f5f5f5;
+    --text-strong: #fafafa;
+    --subtle: #a1a1a1;
+    --muted: #b5b5b5;
+    --canvas: #030303;
+    --base: #0f0f0f;
+    --elevated: #060606;
+    --recessed: #0b0b0b;
+    --tint: #262626;
+    --fill: #262626;
+    --line: #333333;
+    --hairline: #262626;
+    --success-text: #a4f4cf;
+    --success-tint: rgba(12, 84, 43, 0.45);
+    --info-text: #51a2ff;
+    --info-tint: rgba(28, 57, 142, 0.35);
+    --warn-text: #ffd6a7;
+    --warn-tint: rgba(87, 49, 0, 0.6);
+    --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --shadow-card: 0 1px 0 rgba(255, 255, 255, 0.04), 0 8px 24px rgba(0, 0, 0, 0.4);
+    --shadow-phone: 0 0 0 1px rgba(255, 255, 255, 0.08), 0 30px 60px -20px rgba(0, 0, 0, 0.8);
+    --chat-bg: #0e1621;
+    --chat-in: #182533;
+    --chat-out: #2b5278;
+    --chat-meta: #8b9bb0;
+    --chat-btn: #2b4561;
+    --chat-cmd: #b9dcff;
+    color-scheme: dark;
+  }
+}
+
+/* Same values, applied when the visitor chose "dark" with the toggle. Keep in sync with the block above. */
+:root[data-theme="dark"] {
+  --brand: #045ede;
+  --brand-hover: #1447e6;
+  --brand-ring: #0a4fc0;
+  --brand-grad-start: #2f78f0;
+  --link: #51a2ff;
+  --text: #f5f5f5;
+  --text-strong: #fafafa;
+  --subtle: #a1a1a1;
+  --muted: #b5b5b5;
+  --canvas: #030303;
+  --base: #0f0f0f;
+  --elevated: #060606;
+  --recessed: #0b0b0b;
+  --tint: #262626;
+  --fill: #262626;
+  --line: #333333;
+  --hairline: #262626;
+  --success-text: #a4f4cf;
+  --success-tint: rgba(12, 84, 43, 0.45);
+  --info-text: #51a2ff;
+  --info-tint: rgba(28, 57, 142, 0.35);
+  --warn-text: #ffd6a7;
+  --warn-tint: rgba(87, 49, 0, 0.6);
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-card: 0 1px 0 rgba(255, 255, 255, 0.04), 0 8px 24px rgba(0, 0, 0, 0.4);
+  --shadow-phone: 0 0 0 1px rgba(255, 255, 255, 0.08), 0 30px 60px -20px rgba(0, 0, 0, 0.8);
+  --chat-bg: #0e1621;
+  --chat-in: #182533;
+  --chat-out: #2b5278;
+  --chat-meta: #8b9bb0;
+  --chat-btn: #2b4561;
+  --chat-cmd: #b9dcff;
+  color-scheme: dark;
+}
+
+/* ---------- Base ---------- */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  scroll-padding-top: 76px;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  html {
+    scroll-behavior: smooth;
+  }
+}
+
+body {
+  margin: 0;
+  font-family: var(--font);
+  font-size: 16px;
+  line-height: 1.6;
+  color: var(--text);
+  background: var(--base);
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+
+img,
+svg {
+  display: block;
+  max-width: 100%;
+}
+
+h1,
+h2,
+h3 {
+  color: var(--text-strong);
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  margin: 0;
+}
+
+p {
+  margin: 0;
+}
+
+a {
+  color: var(--link);
+  text-underline-offset: 3px;
+}
+
+a:hover {
+  text-decoration-thickness: 2px;
+}
+
+code,
+kbd {
+  font-family: var(--mono);
+  font-size: 0.9em;
+}
+
+:not(pre) > code {
+  background: var(--tint);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm);
+  padding: 0.05em 0.35em;
+  white-space: nowrap;
+}
+
+:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.visually-hidden {
+  position: absolute !important;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.skip-link {
+  position: absolute;
+  left: var(--gutter);
+  top: -100px;
+  z-index: 100;
+  background: var(--brand);
+  color: var(--on-brand);
+  padding: 8px 14px;
+  border-radius: var(--radius);
+  font-weight: 500;
+  text-decoration: none;
+}
+
+.skip-link:focus {
+  top: 12px;
+}
+
+.container {
+  width: 100%;
+  max-width: var(--max);
+  margin: 0 auto;
+  padding: 0 var(--gutter);
+}
+
+@media (min-width: 768px) {
+  :root {
+    --gutter: 24px;
+  }
+}
+
+/* ---------- Buttons (Kumo button) ---------- */
+
+.btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 40px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: var(--radius);
+  font: inherit;
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+  text-decoration: none;
+  cursor: pointer;
+  box-shadow: var(--shadow-xs);
+  transition: background-color 0.15s, color 0.15s, box-shadow 0.15s;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--base), 0 0 0 4px var(--brand);
+}
+
+.btn svg {
+  width: 18px;
+  height: 18px;
+  flex: none;
+}
+
+.btn-primary {
+  color: var(--on-brand);
+  background: linear-gradient(to bottom, var(--brand-grad-start), var(--brand));
+  box-shadow: inset 0 0 0 1px var(--brand-ring), inset 0 1px 0 rgba(255, 255, 255, 0.25),
+    var(--shadow-xs);
+}
+
+.btn-primary:hover {
+  background: var(--brand-hover);
+  text-decoration: none;
+}
+
+.btn-secondary {
+  color: var(--text);
+  background: var(--base);
+  box-shadow: inset 0 0 0 1px var(--line), var(--shadow-xs);
+}
+
+.btn-secondary:hover {
+  background: var(--tint);
+  text-decoration: none;
+}
+
+.btn-ghost {
+  color: var(--text);
+  background: transparent;
+  box-shadow: none;
+}
+
+.btn-ghost:hover {
+  background: var(--tint);
+}
+
+.btn-sm {
+  height: 36px;
+  padding: 0 12px;
+  font-size: 14px;
+}
+
+.btn-icon {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+}
+
+.btn-lg {
+  height: 44px;
+  padding: 0 20px;
+  font-size: 16px;
+}
+
+/* ---------- Badges (Kumo badge) ---------- */
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: fit-content;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
+.badge-info {
+  color: var(--info-text);
+  background: var(--info-tint);
+}
+
+.badge-success {
+  color: var(--success-text);
+  background: var(--success-tint);
+}
+
+.badge-warning {
+  color: var(--warn-text);
+  background: var(--warn-tint);
+}
+
+.badge-neutral {
+  color: var(--text);
+  background: var(--fill);
+}
+
+.badge-outline {
+  color: var(--text);
+  background: var(--base);
+  box-shadow: inset 0 0 0 1px var(--hairline);
+}
+
+.dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+/* ---------- Header / nav ---------- */
+
+.site-header {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  background: color-mix(in srgb, var(--base) 86%, transparent);
+  -webkit-backdrop-filter: saturate(1.4) blur(10px);
+  backdrop-filter: saturate(1.4) blur(10px);
+  border-bottom: 1px solid var(--hairline);
+}
+
+.nav {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 60px;
+}
+
+.logo {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-strong);
+  font-weight: 650;
+  font-size: 17px;
+  letter-spacing: -0.01em;
+  text-decoration: none;
+  margin-right: auto;
+}
+
+.logo:hover {
+  text-decoration: none;
+}
+
+.logo img {
+  width: 28px;
+  height: 28px;
+}
+
+.nav-links {
+  display: none;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.nav-links a {
+  display: block;
+  padding: 6px 10px;
+  border-radius: var(--radius);
+  color: var(--muted);
+  font-size: 15px;
+  font-weight: 500;
+  text-decoration: none;
+}
+
+.nav-links a:hover {
+  color: var(--text-strong);
+  background: var(--tint);
+}
+
+.nav-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.nav-github-label {
+  display: none;
+}
+
+.theme-toggle .icon-sun {
+  display: none;
+}
+
+:root[data-theme="dark"] .theme-toggle .icon-sun {
+  display: block;
+}
+
+:root[data-theme="dark"] .theme-toggle .icon-moon {
+  display: none;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .theme-toggle .icon-sun {
+    display: block;
+  }
+  :root:not([data-theme="light"]) .theme-toggle .icon-moon {
+    display: none;
+  }
+}
+
+.menu-toggle .icon-close {
+  display: none;
+}
+
+.menu-toggle[aria-expanded="true"] .icon-close {
+  display: block;
+}
+
+.menu-toggle[aria-expanded="true"] .icon-menu {
+  display: none;
+}
+
+/* Mobile menu panel */
+.mobile-nav {
+  border-top: 1px solid var(--hairline);
+  background: var(--base);
+  overflow: hidden;
+}
+
+.mobile-nav[hidden] {
+  display: none;
+}
+
+.mobile-nav ul {
+  list-style: none;
+  margin: 0;
+  padding: 8px var(--gutter) 16px;
+}
+
+.mobile-nav a {
+  display: block;
+  padding: 12px 8px;
+  border-bottom: 1px solid var(--hairline);
+  color: var(--text);
+  font-weight: 500;
+  text-decoration: none;
+}
+
+.mobile-nav li:last-child a {
+  border-bottom: 0;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .mobile-nav.is-open {
+    animation: slide-down 0.18s ease-out;
+  }
+}
+
+/* Transform only (no opacity), so the menu is always readable even if the animation is skipped. */
+@keyframes slide-down {
+  from {
+    transform: translateY(-6px);
+  }
+  to {
+    transform: none;
+  }
+}
+
+@media (min-width: 900px) {
+  .nav-links {
+    display: flex;
+    gap: 2px;
+  }
+  .menu-toggle,
+  .mobile-nav {
+    display: none !important;
+  }
+  .nav-github-label {
+    display: inline;
+  }
+  .logo {
+    margin-right: 16px;
+  }
+  .nav-links {
+    margin-right: auto;
+  }
+}
+
+/* ---------- Sections ---------- */
+
+section {
+  padding: 64px 0;
+}
+
+@media (min-width: 768px) {
+  section {
+    padding: 96px 0;
+  }
+}
+
+.section-alt {
+  background: var(--elevated);
+  border-top: 1px solid var(--hairline);
+  border-bottom: 1px solid var(--hairline);
+}
+
+.section-head {
+  max-width: 680px;
+  margin-bottom: 40px;
+}
+
+.eyebrow {
+  display: inline-block;
+  margin-bottom: 12px;
+  color: var(--link);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.section-head h2 {
+  font-size: clamp(28px, 4.2vw, 40px);
+  margin-bottom: 14px;
+}
+
+.section-head p {
+  color: var(--muted);
+  font-size: 17px;
+}
+
+/* ---------- Hero ---------- */
+
+.hero {
+  position: relative;
+  padding: 48px 0 64px;
+  overflow: hidden;
+}
+
+.hero::before {
+  /* soft dotted grid in the background */
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(var(--hairline) 1px, transparent 1px);
+  background-size: 22px 22px;
+  -webkit-mask-image: linear-gradient(to bottom, #000 0%, transparent 85%);
+  mask-image: linear-gradient(to bottom, #000 0%, transparent 85%);
+  pointer-events: none;
+}
+
+.hero-grid {
+  position: relative;
+  display: grid;
+  gap: 48px;
+  align-items: center;
+}
+
+.hero-copy .badge {
+  margin-bottom: 20px;
+}
+
+.hero h1 {
+  font-size: clamp(40px, 8vw, 64px);
+  letter-spacing: -0.035em;
+  margin-bottom: 20px;
+}
+
+.hero h1 .accent {
+  color: var(--brand);
+  white-space: nowrap;
+}
+
+:root[data-theme="dark"] .hero h1 .accent {
+  color: var(--link);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .hero h1 .accent {
+    color: var(--link);
+  }
+}
+
+.lede {
+  max-width: 560px;
+  color: var(--muted);
+  font-size: 18px;
+  margin-bottom: 28px;
+}
+
+@media (min-width: 768px) {
+  .lede {
+    font-size: 20px;
+  }
+}
+
+.cta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.hero-note {
+  margin-top: 18px;
+  color: var(--subtle);
+  font-size: 14px;
+}
+
+.hero-points {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 28px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+@media (min-width: 960px) {
+  .hero {
+    padding: 80px 0 96px;
+  }
+  .hero-grid {
+    grid-template-columns: 1.1fr 0.9fr;
+    gap: 56px;
+  }
+}
+
+/* ---------- Phone mockup (pure HTML/CSS) ---------- */
+
+.phone-wrap {
+  display: flex;
+  justify-content: center;
+  margin: 0;
+}
+
+.phone {
+  width: 100%;
+  max-width: 340px;
+  padding: 10px;
+  border-radius: 44px;
+  background: #111214;
+  box-shadow: var(--shadow-phone);
+}
+
+.phone-screen {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  border-radius: 34px;
+  overflow: hidden;
+  background: var(--chat-bg);
+  font-size: 13.5px;
+  line-height: 1.4;
+}
+
+.phone-status {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 22px 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  background: var(--base);
+}
+
+.phone-notch {
+  width: 80px;
+  height: 20px;
+  border-radius: 20px;
+  background: #111214;
+}
+
+.chat-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 14px 10px;
+  background: var(--base);
+  border-bottom: 1px solid var(--hairline);
+}
+
+.chat-back {
+  color: var(--link);
+  font-size: 20px;
+  line-height: 1;
+}
+
+.chat-avatar {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--brand-grad-start), var(--brand));
+  color: #fff;
+  font-weight: 700;
+  font-size: 15px;
+}
+
+.chat-title {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.25;
+}
+
+.chat-title strong {
+  color: var(--text-strong);
+  font-size: 14px;
+}
+
+.chat-title span {
+  color: var(--subtle);
+  font-size: 12px;
+}
+
+.chat-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 10px 12px;
+  margin: 0;
+  list-style: none;
+}
+
+.msg {
+  position: relative;
+  max-width: 86%;
+  padding: 7px 10px 6px;
+  border-radius: 14px;
+  color: var(--text);
+  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.08);
+  overflow-wrap: anywhere;
+}
+
+.msg-in {
+  align-self: flex-start;
+  background: var(--chat-in);
+  border-bottom-left-radius: 4px;
+}
+
+.msg-out {
+  align-self: flex-end;
+  background: var(--chat-out);
+  border-bottom-right-radius: 4px;
+}
+
+.msg time {
+  display: block;
+  margin-top: 2px;
+  text-align: right;
+  color: var(--chat-meta);
+  font-size: 11px;
+}
+
+.msg .cmd {
+  color: var(--chat-cmd);
+  font-weight: 600;
+}
+
+.msg ul {
+  margin: 4px 0 0;
+  padding-left: 16px;
+}
+
+.msg-file {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.file-icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: var(--brand);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.file-meta {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.3;
+}
+
+.file-meta strong {
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.file-meta span {
+  color: var(--chat-meta);
+  font-size: 12px;
+}
+
+.inline-buttons {
+  align-self: flex-start;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  width: 86%;
+  margin-top: -4px;
+}
+
+.inline-buttons span {
+  display: block;
+  padding: 7px 8px;
+  border-radius: 8px;
+  text-align: center;
+  font-weight: 600;
+  font-size: 13px;
+  color: #fff;
+  background: var(--chat-btn);
+}
+
+.chat-input {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px 14px;
+  background: var(--base);
+  border-top: 1px solid var(--hairline);
+}
+
+.chat-input .field {
+  flex: 1;
+  padding: 8px 12px;
+  border-radius: 18px;
+  background: var(--tint);
+  color: var(--subtle);
+  font-size: 13px;
+}
+
+.chat-input .send {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--brand);
+  color: #fff;
+}
+
+.chat-input .send svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* ---------- Steps ---------- */
+
+.steps {
+  display: grid;
+  gap: 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: step;
+}
+
+@media (min-width: 820px) {
+  .steps {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 20px;
+  }
+}
+
+.card {
+  background: var(--base);
+  border-radius: var(--radius-lg);
+  box-shadow: inset 0 0 0 1px var(--line), var(--shadow-xs);
+  padding: 24px;
+}
+
+.step {
+  counter-increment: step;
+}
+
+.step-num {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  margin-bottom: 16px;
+  border-radius: var(--radius);
+  background: var(--info-tint);
+  color: var(--info-text);
+  font-weight: 700;
+  font-size: 15px;
+}
+
+.card h3 {
+  font-size: 18px;
+  margin-bottom: 8px;
+  letter-spacing: -0.01em;
+}
+
+.card p {
+  color: var(--muted);
+}
+
+.card p + p {
+  margin-top: 10px;
+}
+
+.example {
+  margin-top: 14px;
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  background: var(--recessed);
+  box-shadow: inset 0 0 0 1px var(--hairline);
+  color: var(--text);
+  font-size: 14px;
+}
+
+/* ---------- Feature grid ---------- */
+
+.feature-grid {
+  display: grid;
+  gap: 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+@media (min-width: 640px) {
+  .feature-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (min-width: 1000px) {
+  .feature-grid {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 20px;
+  }
+}
+
+.feature .icon {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  margin-bottom: 16px;
+  border-radius: 10px;
+  background: var(--info-tint);
+  color: var(--info-text);
+}
+
+.feature .icon svg {
+  width: 22px;
+  height: 22px;
+}
+
+.feature-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.feature-head h3 {
+  margin: 0;
+}
+
+.feature-wide {
+  background: linear-gradient(135deg, var(--info-tint), transparent 70%), var(--base);
+}
+
+@media (min-width: 1000px) {
+  .feature-wide {
+    grid-column: span 3;
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 20px;
+    align-items: start;
+  }
+  .feature-wide .icon {
+    margin-bottom: 0;
+  }
+}
+
+/* ---------- Keys section ---------- */
+
+.split {
+  display: grid;
+  gap: 32px;
+  align-items: start;
+}
+
+@media (min-width: 900px) {
+  .split {
+    grid-template-columns: 1fr 1fr;
+    gap: 48px;
+  }
+}
+
+.check-list {
+  display: grid;
+  gap: 14px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.check-list li {
+  display: grid;
+  grid-template-columns: 24px 1fr;
+  gap: 12px;
+  align-items: start;
+}
+
+.check-list svg {
+  width: 22px;
+  height: 22px;
+  margin-top: 2px;
+  color: var(--brand);
+}
+
+:root[data-theme="dark"] .check-list svg {
+  color: var(--link);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .check-list svg {
+    color: var(--link);
+  }
+}
+
+.check-list strong {
+  color: var(--text-strong);
+}
+
+.check-list p {
+  color: var(--muted);
+}
+
+.providers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 24px;
+}
+
+.chain {
+  display: grid;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.chain-title {
+  margin-bottom: 16px;
+  color: var(--text-strong);
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.chain li {
+  position: relative;
+  display: grid;
+  grid-template-columns: 32px 1fr;
+  gap: 14px;
+  padding-bottom: 20px;
+}
+
+.chain li:last-child {
+  padding-bottom: 0;
+}
+
+.chain li::before {
+  /* connecting line between steps */
+  content: "";
+  position: absolute;
+  left: 15px;
+  top: 32px;
+  bottom: 0;
+  width: 2px;
+  background: var(--hairline);
+}
+
+.chain li:last-child::before {
+  display: none;
+}
+
+.chain .n {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--base);
+  box-shadow: inset 0 0 0 1px var(--line);
+  color: var(--text-strong);
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.chain .n.is-brand {
+  background: var(--brand);
+  box-shadow: none;
+  color: #fff;
+}
+
+.chain strong {
+  display: block;
+  color: var(--text-strong);
+}
+
+.chain span {
+  color: var(--muted);
+  font-size: 15px;
+}
+
+/* ---------- Data section ---------- */
+
+.data-grid {
+  display: grid;
+  gap: 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+@media (min-width: 720px) {
+  .data-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.data-grid .card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.data-grid h3 {
+  margin: 0;
+}
+
+.callout {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 24px;
+  padding: 18px 20px;
+  border-radius: var(--radius-lg);
+  background: var(--recessed);
+  box-shadow: inset 0 0 0 1px var(--hairline);
+}
+
+.callout p {
+  max-width: 640px;
+  color: var(--muted);
+}
+
+/* ---------- Setup / code ---------- */
+
+.setup-grid {
+  display: grid;
+  gap: 32px;
+  align-items: start;
+}
+
+@media (min-width: 900px) {
+  .setup-grid {
+    grid-template-columns: 0.8fr 1.2fr;
+    gap: 48px;
+  }
+}
+
+.prereq {
+  margin: 20px 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 10px;
+}
+
+.prereq li {
+  display: flex;
+  gap: 10px;
+  color: var(--muted);
+}
+
+.prereq li::before {
+  content: "";
+  flex: none;
+  width: 6px;
+  height: 6px;
+  margin-top: 10px;
+  border-radius: 50%;
+  background: var(--brand);
+}
+
+.terminal {
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  background: #0b0d12;
+  color: #e6e8ee;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.06), var(--shadow-card);
+}
+
+.terminal-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px 10px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 13px;
+  color: #a1a6b3;
+}
+
+.terminal-bar .lights {
+  display: flex;
+  gap: 6px;
+}
+
+.terminal-bar .lights i {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #3a3f4b;
+}
+
+.cmd-list {
+  margin: 0;
+  padding: 8px 0;
+  list-style: none;
+}
+
+.cmd-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 12px 12px 16px;
+}
+
+.cmd-row + .cmd-row {
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.cmd-label {
+  display: block;
+  margin-bottom: 4px;
+  color: #8b93a5;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.cmd-row pre {
+  margin: 0;
+  overflow-x: auto;
+  font-family: var(--mono);
+  font-size: 14px;
+  line-height: 1.5;
+  white-space: pre;
+}
+
+.cmd-row pre code::before {
+  content: "$ ";
+  color: #6b7385;
+}
+
+.copy-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.08);
+  color: #e6e8ee;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.copy-btn:hover {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.copy-btn:focus-visible {
+  outline: 2px solid #51a2ff;
+  outline-offset: 2px;
+}
+
+.copy-btn svg {
+  width: 14px;
+  height: 14px;
+}
+
+.copy-btn.is-copied {
+  background: rgba(16, 185, 129, 0.25);
+  color: #a4f4cf;
+}
+
+.after-setup {
+  margin-top: 16px;
+  color: var(--muted);
+  font-size: 15px;
+}
+
+/* ---------- FAQ ---------- */
+
+.faq {
+  max-width: 820px;
+}
+
+.faq details {
+  border-radius: var(--radius-lg);
+  background: var(--base);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+.faq details + details {
+  margin-top: 12px;
+}
+
+.faq summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 20px;
+  color: var(--text-strong);
+  font-weight: 600;
+  font-size: 17px;
+  cursor: pointer;
+  list-style: none;
+  border-radius: var(--radius-lg);
+}
+
+.faq summary::-webkit-details-marker {
+  display: none;
+}
+
+.faq summary::after {
+  content: "";
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-right: 2px solid var(--subtle);
+  border-bottom: 2px solid var(--subtle);
+  transform: rotate(45deg) translate(-2px, -2px);
+  transition: transform 0.15s;
+}
+
+.faq details[open] summary::after {
+  transform: rotate(-135deg) translate(-2px, -2px);
+}
+
+.faq summary:hover {
+  background: var(--tint);
+}
+
+.faq .answer {
+  padding: 0 20px 20px;
+  color: var(--muted);
+}
+
+.faq .answer p + p {
+  margin-top: 10px;
+}
+
+/* ---------- Final CTA + footer ---------- */
+
+.final-cta {
+  text-align: center;
+}
+
+.final-cta .section-head {
+  margin: 0 auto 28px;
+}
+
+.final-cta .cta-row {
+  justify-content: center;
+}
+
+.site-footer {
+  padding: 32px 0 40px;
+  border-top: 1px solid var(--hairline);
+  background: var(--elevated);
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.footer-inner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.footer-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 20px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.footer-links a {
+  color: var(--muted);
+}
+
+.footer-links a:hover {
+  color: var(--text-strong);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition: none !important;
+    animation: none !important;
+  }
+}
