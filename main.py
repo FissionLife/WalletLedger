@@ -3,11 +3,14 @@ from contextlib import asynccontextmanager
 
 import uvicorn
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 
 from app.bot import telegram
 from app.bot.main import bot_router
 from app.config import INSECURE_DEV_KEY, settings
 from app.db import init_db
+from app.web.dashboard import STATIC
+from app.web.dashboard import router as dashboard_router
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
@@ -37,6 +40,10 @@ app = FastAPI(
 
 # Include Telegram Bot Router
 app.include_router(bot_router)
+
+# Web dashboard (signed links, read-only)
+app.include_router(dashboard_router)
+app.mount("/static", StaticFiles(directory=STATIC), name="static")
 
 
 @app.get("/")
