@@ -35,6 +35,44 @@ TELEGRAM_WEBHOOK_SECRET=<long random string>      # optional; derived from the t
 The server registers the webhook with Telegram on start. On a scale-to-zero host, use **Postgres**
 (not SQLite), because the local disk disappears when the instance stops.
 
+### Docker / serverless hosts
+
+A `Dockerfile` is included, so any host that runs containers works (Google Cloud Run, Fly.io, Render,
+Railway, a plain VPS):
+
+```bash
+docker build -t walletledger .
+docker run -p 8080:8080 --env-file .env walletledger
+```
+
+For a scale-to-zero host (it sleeps when nobody is chatting), set:
+
+```
+USE_WEBHOOK=true
+WEBHOOK_URL=https://<your-service-url>/bot/webhook
+DB_MODE=postgres            # a hosted Postgres (Neon, Supabase, Cloud SQL, ...), not a local file
+POSTGRES_HOST=...  POSTGRES_USER=...  POSTGRES_PASSWORD=...  POSTGRES_DB=...
+PUBLIC_URL=https://<your-service-url>
+SECRET_KEY=<the same value every time>
+```
+
+Put those in the host's secret settings rather than in a file. Telegram wakes the service with each
+message, so nothing runs (or costs) while the chat is quiet.
+
+### Dashboard link and Telegram Mini App
+
+`/dashboard` sends a private link that expires (`DASHBOARD_LINK_MINUTES`, default 2 hours).
+Without `PUBLIC_URL` the link points at `http://localhost:8000` and opens in a browser on the same
+computer. Set `PUBLIC_URL` to an **https** address and the same button opens inside Telegram as a
+Mini App. For a quick demo from a laptop, a tunnel gives you that address with no hosting:
+
+```bash
+cloudflared tunnel --url http://localhost:8000     # prints https://something.trycloudflare.com
+```
+
+Put that address in `PUBLIC_URL`, restart, and run `uv run python scripts/setup_bot.py` so the bot's
+menu button points to the dashboard.
+
 ### PostgreSQL
 
 ```bash

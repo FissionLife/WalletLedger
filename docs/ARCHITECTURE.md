@@ -17,16 +17,24 @@ flowchart LR
     SIM --> H
 
     H -->|allow-list check| H
-    H -->|"/start /help /balance /report /setkey /keys"| CMD[Fixed commands]
+    H -->|"/balance /stats /history /undo /budget /plan /dashboard /export"| VIEWS[Screens + charts<br/>views.py, analytics.py, charts.py]
+    H -->|"/setkey /keys /admin"| KEYCMD[Key management<br/>keys.py]
     H -->|PDF / TXT| PARSE[transaction_parser]
     H -->|other text| AG[LangGraph agent<br/>app/bot/agent.py]
+    AG -->|clear message| NLU[Rules: nlu.py<br/>no AI call]
+    AG -->|goal or question| ORCH[Multi-step helper<br/>orchestrator.py]
 
     AG --> MCP[Tool registry<br/>mcp_server.execute_tool]
+    ORCH --> MCP
     AG <-->|prompt + context| GW[AI Gateway<br/>LiteLLM]
-    GW <--> LLM[(Gemini / OpenAI /<br/>Claude / Groq / Ollama)]
+    ORCH <--> GW
+    GW <--> LLM[(Gemini / OpenAI / Claude / Groq /<br/>OpenRouter / Grok / DeepSeek / Mistral / Ollama)]
+    VIEWS --> LED
+    VIEWS -.->|signed link| WEB[Web dashboard / Mini App<br/>app/web]
+    WEB --> LED
     GW --> KEYS[(api_keys<br/>Fernet-encrypted)]
+    KEYCMD -->|test live, then save| KEYS
     MCP --> LED[Ledger service]
-    CMD --> LED
     PARSE -->|user confirms import| LED
     AG --> HIST[(chat_messages<br/>history, keys redacted)]
     LED --> DB[(SQLite / Postgres)]
@@ -52,13 +60,13 @@ sequenceDiagram
 
     U->>T: "Spent 450 on dinner via Bank"
     T->>B: update (chat_id, text)
-    B->>B: allow-list check, fixed commands
+    B->>B: allow-list check, fixed commands (/stats, /plan, ...)
     B->>A: process_user_interaction(chat_id, text)
     A->>D: load last 20 chat messages, save redacted user message
-    A->>G: reasoning prompt + history + tool schemas
-    G-->>A: tool call log_expense(450, Food, Bank)
-    alt large amount or ambiguous
-        A-->>U: "Please confirm" (waits for yes / no)
+    A->>A: rules (nlu.py) read the message: no AI needed
+    Note over A,G: only if the rules cannot read it: ask the AI,<br/>or the multi-step helper for goals and questions
+    alt transfer of 5,000 or more
+        A-->>U: "Please confirm" [Yes] [Cancel]
     else
         A->>M: execute_tool(log_expense, ...)
         M->>L: record_transaction (validated)
@@ -66,11 +74,10 @@ sequenceDiagram
         L-->>M: new balance
         M-->>A: result
     end
-    A->>G: synthesize friendly reply (persona)
     A->>D: save assistant message
-    A-->>B: reply text
-    B->>T: send_message
-    T-->>U: "Expense logged ..."
+    A-->>B: reply text + transaction ids
+    B->>T: send_message with [Undo] button
+    T-->>U: "-450 Food & Dining / Bank 84,550"
 ```
 
 ## 3. The agent graph (LangGraph)
@@ -86,6 +93,29 @@ flowchart TD
     T --> Y
     Y --> E([END: reply text])
 ```
+
+### The multi-step helper (goals and questions)
+
+For "can I afford ...", "how am I doing", "I want to save ...", the AI runs a short loop instead of
+a single call. Same tools as everywhere, a few extra guard rails.
+
+```mermaid
+flowchart TD
+    Q[Question or goal<br/>no clear transaction in it] --> L1[AI chooses tools]
+    L1 -->|no tools needed| ANS[Final short answer]
+    L1 -->|tool calls| CHK{Allowed?}
+    CHK -->|"save_user_api_key / unknown tool"| SKIP[Refused, AI is told]
+    CHK -->|"transfer of 5,000 or more"| WAIT[Stop and ask the user: Yes / Cancel]
+    CHK -->|ok| RUN[Run tool for THIS user<br/>user_id is always overwritten]
+    SKIP --> L2[AI reads the results]
+    RUN --> L2
+    L2 -->|"max 5 rounds, 12 tool calls"| L1
+    L2 --> ANS
+    L1 -.->|AI unavailable and nothing changed yet| FB[Fall back to the simple single-call path]
+```
+
+The roles (Ledger records, Analyst looks at real numbers, Planner uses `savings_plan`, Writer answers
+briefly) are instructions in one prompt, not separate programs.
 
 ## 4. Tank & Pipes money model
 
@@ -158,10 +188,12 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    Q[ask_llm user_id, prompt] --> K{Keys available?<br/>user keys, then server env keys}
+    Q[ask_llm user_id, prompt] --> K{Keys available?<br/>1 the user's own, 2 shared keys the admin added, 3 server .env keys}
     K -- none --> NO[Error to caller<br/>agent shows offline-mode reply]
     K -- some --> RR[Start at next key round-robin]
-    RR --> TRY[litellm call with that key]
+    RR --> TRY[litellm call with that key<br/>best model for that key, discovered automatically]
+    TRY -- "model retired or busy" --> TRY2[Next model on the SAME key]
+    TRY2 --> TRY
     TRY -- success --> OK[Return text]
     TRY -- "429 / quota / auth / outage" --> CD[Cool down that key]
     CD --> NEXT{More keys?}

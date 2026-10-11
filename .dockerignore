@@ -1,0 +1,16 @@
+.git
+.venv
+.env
+.env.*
+!.env.example
+*.db
+*.db-wal
+*.db-shm
+__pycache__
+.ruff_cache
+.claude
+.remember
+out_charts
+tests
+site
+docs

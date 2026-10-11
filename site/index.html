@@ -111,13 +111,14 @@
 
               <ol class="chat-body">
                 <li class="msg msg-out">Spent 450 on dinner via Bank<time>9:38</time></li>
-                <li class="msg msg-in">&#9989; Expense logged: <b>&#8377;450.00</b> &rarr; Food &amp; Dining.<br>&#127974; Bank balance: <b>&#8377;14,550.00</b><time>9:38</time></li>
+                <li class="msg msg-in">&#128184; <b>&minus;&#8377;450</b> &middot; Food &amp; Dining<br>Bank &#8377;14,550<time>9:38</time></li>
+                <li class="inline-buttons" aria-label="Reply buttons"><span>&#8617;&#65039; Undo</span></li>
                 <li class="msg msg-out"><span class="cmd">/balance</span><time>9:39</time></li>
                 <li class="msg msg-in">
-                  <b>Total net worth: &#8377;21,350.00</b>
+                  <b>&#128176; Total &nbsp;&#8377;21,350</b>
                   <ul>
-                    <li>Bank: &#8377;14,550.00</li>
-                    <li>Cash: &#8377;6,800.00</li>
+                    <li>&#127974; Bank &nbsp;&#8377;14,550</li>
+                    <li>&#128181; Cash &nbsp;&#8377;6,800</li>
                   </ul>
                   <time>9:39</time>
                 </li>
@@ -161,12 +162,12 @@
           <li class="card">
             <span class="step-num" aria-hidden="true">2</span>
             <h3>It works out what you meant</h3>
-            <p>With an AI key, an AI model reads your message. Without one, built-in rules understand common phrasing. Either way it picks the right action: expense, income or transfer.</p>
+            <p>Clear messages like &ldquo;spent 200 on chai, 80 on auto&rdquo; are read instantly by built-in rules, no AI needed. Questions and goals go to an AI if you added a key. Either way it picks the right action: expense, income or transfer.</p>
           </li>
           <li class="card">
             <span class="step-num" aria-hidden="true">3</span>
             <h3>Your books update</h3>
-            <p>The balance changes and the transaction is saved in one safe step, then the bot replies with your new balance. Big amounts (&#8377;50,000 and up) ask &ldquo;are you sure?&rdquo; first.</p>
+            <p>The balance changes and the transaction is saved in one safe step, then the bot replies in two lines with an Undo button. Big transfers (&#8377;5,000 and up) ask &ldquo;are you sure?&rdquo; first.</p>
           </li>
         </ol>
       </div>
@@ -194,13 +195,13 @@
           </li>
           <li class="card card-outlined card-hover">
             <span class="icon-tile" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18M16 15h2"/></svg></span>
-            <h3>Balances and reports</h3>
-            <p><code>/balance</code> shows every account and your total. <code>/report</code> shows the last 30 days of spending by category.</p>
+            <h3>Stats and balances</h3>
+            <p><code>/balance</code> shows every account and your total. <code>/stats</code> shows spending against the last period, with buttons to change the period or the chart. Try <code>/stats last month food</code>.</p>
           </li>
           <li class="card card-outlined card-hover">
             <span class="icon-tile" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg></span>
             <h3>Charts and a web dashboard</h3>
-            <p>See where your money goes at a glance, in charts and on a simple web dashboard.</p>
+            <p>13 chart types in the chat (categories, trend, weekdays, heatmap, merchants, net worth&hellip;). <code>/dashboard</code> opens a private web page, or a Telegram Mini App, with 12 interactive charts, filters and a transactions table.</p>
           </li>
           <li class="card card-outlined card-hover span-2">
             <span class="icon-tile" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.4l-5.2 2.7 1-5.8L3.5 9.2l5.9-.9z"/></svg></span>
@@ -226,7 +227,17 @@
           <li class="card card-outlined card-hover">
             <span class="icon-tile" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14L4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 010 11H11"/></svg></span>
             <h3>Undo and confirmations</h3>
-            <p>Made a mistake? Undo it. Large amounts and statement imports ask you to confirm first, so a typo can&rsquo;t move a fortune.</p>
+            <p>Made a mistake? Tap Undo (or <code>/undo</code>). Big transfers and statement imports ask you to confirm first, so a typo can&rsquo;t move a fortune.</p>
+          </li>
+          <li class="card card-outlined card-hover span-2">
+            <span class="icon-tile" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 114 2c-.9.6-1.5 1.1-1.5 2.2M12 17h.01"/></svg></span>
+            <div class="feature-head"><h3>Ask in plain words</h3><span class="badge badge-neutral">needs an AI key</span></div>
+            <p>&ldquo;Can I afford a &#8377;50,000 laptop in 5 months?&rdquo; or &ldquo;how am I doing this month?&rdquo; The AI looks up your real numbers in a few short steps, then answers briefly. It can only use the bot&rsquo;s own tools, and big transfers still wait for your Yes.</p>
+          </li>
+          <li class="card card-outlined card-hover">
+            <span class="icon-tile" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r=".8"/></svg></span>
+            <h3>Savings goals</h3>
+            <p><code>/plan 50000 6</code> checks the goal against what you really earn and spend, and suggests what to trim. No AI needed.</p>
           </li>
           <li class="card card-outlined card-hover span-2">
             <span class="icon-tile" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l8 3v6c0 5-3.5 9-8 11-4.5-2-8-6-8-11V5z"/><path d="M9 12l2 2 4-4"/></svg></span>
@@ -244,7 +255,7 @@
           <div class="section-head">
             <span class="eyebrow">Bring your own key</span>
             <h2 id="keys-title">Use the AI you already have</h2>
-            <p>An AI key lets the bot understand free-form questions and write advice. You manage keys right in the chat; no config files needed.</p>
+            <p>Everyone brings their own AI key, so there is no shared bill. It lets the bot answer free-form questions and write advice. You manage keys right in the chat; no config files needed.</p>
           </div>
           <ul class="check-list">
             <li>
@@ -265,6 +276,10 @@
             <li class="chip">OpenAI</li>
             <li class="chip">Claude</li>
             <li class="chip">Groq</li>
+            <li class="chip">OpenRouter</li>
+            <li class="chip">Grok</li>
+            <li class="chip">DeepSeek</li>
+            <li class="chip">Mistral</li>
           </ul>
         </div>
 
@@ -296,14 +311,14 @@
             <p>Saved AI keys are encrypted in the database. Someone who copies the database file cannot read them without the server&rsquo;s secret key.</p>
           </li>
           <li class="card card-outlined">
-            <span class="badge badge-warning"><span class="dot" aria-hidden="true"></span>Being added</span>
-            <h3>Chat history</h3>
-            <p>Encryption of chat history at rest is being added. Until it ships, your past conversations are stored as plain text in the database.</p>
+            <span class="badge badge-success"><span class="dot" aria-hidden="true"></span>Encrypted</span>
+            <h3>Chat history and notes</h3>
+            <p>Your conversations and the notes on each transaction are encrypted in the database too. Older rows are encrypted once with a one-line command (<code>scripts/protect_data.py encrypt</code>).</p>
           </li>
           <li class="card card-outlined">
             <span class="badge badge-info"><span class="dot" aria-hidden="true"></span>You control it</span>
             <h3>One database you own</h3>
-            <p>Everything lives in one place: a single SQLite file by default, or a PostgreSQL database you run. Accounts, transactions and balances are stored in plain text, so keep that file private and use disk encryption.</p>
+            <p>Everything lives in one place: a single SQLite file by default, or a PostgreSQL database you run. Amounts, dates, accounts, categories and merchant names are stored as readable values (the database has to add them up), so keep that file private and use disk encryption.</p>
           </li>
           <li class="card card-outlined">
             <span class="badge badge-neutral"><span class="dot" aria-hidden="true"></span>Good to know</span>
@@ -385,7 +400,7 @@
           <details>
             <summary>Which AI providers does it work with?</summary>
             <div class="answer">
-              <p>Google Gemini (both <code>AIza&hellip;</code> and the newer <code>AQ.&hellip;</code> keys), OpenAI, Anthropic Claude and Groq. Model names are discovered automatically.</p>
+              <p>Google Gemini (both <code>AIza&hellip;</code> and the newer <code>AQ.&hellip;</code> keys), OpenAI, Anthropic Claude, Groq, OpenRouter, xAI Grok, DeepSeek and Mistral. Model names are discovered automatically.</p>
             </div>
           </details>
           <details>
@@ -397,7 +412,7 @@
           <details>
             <summary>Is my data private?</summary>
             <div class="answer">
-              <p>It stays in a database on the computer or server you run. AI keys are encrypted; encryption of chat history at rest is being added; transactions and balances are stored in plain text. This is not a zero-knowledge design: whoever runs the server can read the data, and an AI provider sees what is sent to it when you use a key.</p>
+              <p>It stays in a database on the computer or server you run. AI keys, chat history and transaction notes are encrypted; amounts, dates and category names are stored readable so they can be added up. This is not a zero-knowledge design: whoever runs the server can read the data, and an AI provider sees what is sent to it when you use a key.</p>
               <p>Details are in <a data-repo-path="docs/SECURITY.md" href="https://github.com/FissionLife/WalletLedger/blob/main/docs/SECURITY.md">SECURITY.md</a>.</p>
             </div>
           </details>

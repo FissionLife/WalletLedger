@@ -11,6 +11,14 @@ Plain-language overview: [HOW_IT_WORKS.md](HOW_IT_WORKS.md). Diagrams: [ARCHITEC
 | `app/bot/telegram.py` | aiogram: polling or webhook, sending replies, command menu |
 | `app/bot/main.py` | command routing, PDF import, access checks, `/simulate_chat` (dev) |
 | `app/bot/agent.py` | LangGraph agent: understand message, call tools, write the reply |
+| `app/bot/nlu.py` | rules that read plain messages ("Spent 200 on chai, 80 on auto yesterday"), dates, questions, savings goals |
+| `app/bot/orchestrator.py` | the multi-step loop for goals and questions (look up, act, answer) |
+| `app/bot/replies.py`, `fmt.py` | the short reply wording and money/date formatting (Indian digit grouping) |
+| `app/bot/views.py`, `ui.py`, `callbacks.py` | screens (stats, charts, balance, history, budgets, plan), buttons, button taps |
+| `app/services/analytics.py` | all the numbers: periods, filters, breakdowns, trends, budgets, projections, savings plans |
+| `app/charts.py` | the 13 chart pictures (matplotlib) |
+| `app/web/` | the web dashboard and Telegram Mini App: signed links (`tokens.py`), API (`dashboard.py`), page (`static/`) |
+| `app/crypto.py` | encryption of chat history and notes; key rotation |
 | `app/bot/keys.py` | `/setkey`, `/keys`, `/testkey`, `/editkey`, `/admin` |
 | `app/bot/profile.py` | the bot's Telegram profile (menu, description) |
 | `app/health.py` | `/status` and the setup health check |
@@ -23,13 +31,19 @@ Plain-language overview: [HOW_IT_WORKS.md](HOW_IT_WORKS.md). Diagrams: [ARCHITEC
 | `scripts/inspect_statement.py` | debug how a statement PDF is read (format, rows, skipped lines) |
 | `scripts/setup.py` | setup wizard and `--check` |
 | `scripts/setup_bot.py` | publish/refresh the Telegram command menu |
-| `scripts/seed_demo_data.py` | demo user with sample transactions |
+| `scripts/seed_demo_data.py` | 90 days of demo data for a chat (`--chat-id`, `--reset`) |
+| `scripts/protect_data.py` | encrypt older rows, show progress, rotate `SECRET_KEY` |
+| `Dockerfile` | one container for any host (see [DEPLOYMENT.md](DEPLOYMENT.md)) |
+| `site/` | the landing page published on GitHub Pages |
 
 ## Endpoints
 
 | Method | Path | Notes |
 |---|---|---|
 | GET | `/`, `/health` | status |
+| GET | `/d/{token}`, `/d` | web dashboard page (signed, expiring link or Telegram Mini App) |
+| GET | `/api/dashboard`, `/api/transactions`, `/api/export.csv` | dashboard data (token in a header) |
+| POST | `/api/webapp/auth` | Telegram Mini App sign-in (verifies Telegram's signed data) |
 | POST | `/bot/webhook` | Telegram updates (verified with a secret header) |
 | POST | `/bot/simulate_chat` | dev only: on while no bot token is set, or `ENABLE_DEV_ENDPOINTS=true` |
 

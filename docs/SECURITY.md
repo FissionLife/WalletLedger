@@ -48,7 +48,19 @@ There are no passwords or logins. **Identity = Telegram chat id**, and all data 
 - **Private bot:** set `ALLOWED_CHAT_IDS=123,456` to restrict the bot to specific people. Empty means
   anyone who finds the bot can create an account.
 - Telegram chats are encrypted client-to-server only, not end-to-end. Telegram can read messages.
-- There are no REST endpoints that return user data; all access is through the bot.
+- **Web dashboard:** the only web endpoints that return user data (`/api/dashboard`,
+  `/api/transactions`, `/api/export.csv`). Access needs a **signed, expiring token** that the bot sends
+  only to the chat it belongs to (`/dashboard`). The token holds the chat id and an expiry, signed
+  with HMAC-SHA256 using a key derived from `SECRET_KEY`, so nobody can forge one for another person.
+  Links expire after `DASHBOARD_LINK_MINUTES` (default 2 hours). The API reads the token from a
+  header only (never a query string), responses are `no-store`, pages send a strict
+  Content-Security-Policy and `no-referrer`, and requests are rate-limited. Inside Telegram (Mini App)
+  the server instead verifies Telegram's own signed sign-in data. Anyone who is *sent* a link can open
+  it until it expires, so do not forward it. Using `https` (`PUBLIC_URL`) keeps links from being read
+  in transit.
+- **AI helper limits:** the multi-step helper can only call the bot's own tools, always acts on the
+  chat it was started for (an id the AI makes up is overwritten), can never read or save API keys, and
+  a transfer of ₹5,000 or more waits for your tap on Yes.
 
 ## 3. Who can read what
 
