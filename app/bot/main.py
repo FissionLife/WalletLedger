@@ -325,29 +325,43 @@ def _import_preview(file_name: str, rows: list[dict[str, Any]]) -> str:
     )
 
 
+def _row_day(row: dict[str, Any]) -> str:
+    """ISO date of a parsed statement row (today when the statement gave none)."""
+    raw = str(row.get("date") or "")[:10]
+    return raw if len(raw) == 10 else datetime.utcnow().date().isoformat()
+
+
 def _drop_already_imported(chat_id: str, rows: list[dict[str, Any]]) -> tuple[list, int]:
-    """Skip rows already in the ledger (same type, amount and description, which carries the
-    date and merchant), so uploading the same statement twice never double-counts."""
-    descriptions = sorted({r["description"] for r in rows if r.get("description")})
-    if not descriptions:
+    """Skip rows already in the ledger (same type, amount, date and note), so uploading the same
+    statement twice never double-counts. Compared in Python because notes are stored encrypted."""
+    if not rows:
         return rows, 0
+    days = sorted(_row_day(r) for r in rows)
+    start = datetime.fromisoformat(days[0])
+    end = datetime.fromisoformat(days[-1]) + timedelta(days=1)
     existing: Counter = Counter()
     db = SessionLocal()
     try:
         user_id = get_or_create_user(db, telegram_chat_id=chat_id).id
-        for start in range(0, len(descriptions), 500):
-            found = db.execute(
-                select(Transaction.transaction_type, Transaction.amount, Transaction.description)
-                .where(Transaction.user_id == user_id)
-                .where(Transaction.description.in_(descriptions[start : start + 500]))
+        found = db.execute(
+            select(
+                Transaction.transaction_type,
+                Transaction.amount,
+                Transaction.created_at,
+                Transaction.description,
             )
-            existing.update((t, round(a, 2), d) for t, a, d in found)
+            .where(Transaction.user_id == user_id)
+            .where(Transaction.source == "pdf")
+            .where(Transaction.created_at >= start)
+            .where(Transaction.created_at < end)
+        )
+        existing.update((t, round(a, 2), c.date().isoformat(), d or "") for t, a, c, d in found)
     finally:
         db.close()
     fresh, duplicates = [], 0
     for row in rows:
         tx_type = "income" if row.get("type") == "income" else "expense"
-        key = (tx_type, round(float(row["amount"]), 2), row.get("description"))
+        key = (tx_type, round(float(row["amount"]), 2), _row_day(row), row.get("description") or "")
         if existing[key] > 0:
             existing[key] -= 1
             duplicates += 1
@@ -400,7 +414,7 @@ def _finish_import(chat_id: str, decision: str) -> str:
         text += f"\n↩️ Skipped {duplicates} already in your ledger."
     if failed:
         text += f"\n⚠️ {failed} rows could not be imported."
-    return text + "\nSee them with `/report` or `/balance`."
+    return text + "\nSee them in /stats or /history."
 
 
 # ---------------------------------------------------------------------------

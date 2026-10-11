@@ -53,9 +53,11 @@ file cannot read them without the server's `SECRET_KEY`.
 ## Where your data lives
 
 In one database: a single SQLite file (`walletledger.db`) by default, or PostgreSQL if you switch
-`DB_MODE`. It holds your accounts, transactions, chat history and encrypted AI keys.
-**Only the AI keys are encrypted.** Anyone who can read the file can read your transactions, so keep the
-file private, use disk encryption, and keep `ALLOWED_CHAT_IDS` set. Details: [SECURITY.md](SECURITY.md).
+`DB_MODE`. It holds your accounts, transactions, chat history and AI keys.
+**Chat history, transaction notes and AI keys are encrypted** with the server's `SECRET_KEY`. Amounts,
+dates, account, category and merchant names are not (the database needs them to add things up), and
+the server itself can read everything. Keep the file private, use disk encryption, and keep
+`ALLOWED_CHAT_IDS` set. Details: [SECURITY.md](SECURITY.md).
 
 ## Who can use the bot
 

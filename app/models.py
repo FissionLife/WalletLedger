@@ -6,6 +6,8 @@ from datetime import datetime
 from sqlalchemy import Boolean, DateTime, Float, ForeignKey, String, Text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
+from app.crypto import EncryptedText  # encrypted at rest, plaintext in Python (docs/SECURITY.md)
+
 
 class Base(DeclarativeBase):
     pass
@@ -121,7 +123,7 @@ class Transaction(Base):
     transaction_type: Mapped[str] = mapped_column(
         String(20), nullable=False
     )  # 'expense', 'income', 'transfer'
-    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    description: Mapped[str | None] = mapped_column(EncryptedText, nullable=True)
     source: Mapped[str] = mapped_column(
         String(20), default="chat"
     )  # 'chat', 'pdf', 'sms', 'manual'
@@ -155,7 +157,7 @@ class ChatMessage(Base):
         String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
     role: Mapped[str] = mapped_column(String(20), nullable=False)  # 'user', 'assistant', 'system'
-    content: Mapped[str] = mapped_column(Text, nullable=False)
+    content: Mapped[str] = mapped_column(EncryptedText, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     user: Mapped[User] = relationship("User", back_populates="chat_messages")

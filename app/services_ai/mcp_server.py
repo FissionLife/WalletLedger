@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from datetime import datetime, timedelta
+from itertools import islice
 from typing import Any
 
 from sqlalchemy import func, select
@@ -221,17 +222,19 @@ def search_transactions(
             stmt = stmt.where(Transaction.created_at >= start)
         if end:
             stmt = stmt.where(Transaction.created_at <= end)
-        if query and query.strip():
-            term = f"%{query.strip()}%"
-            stmt = stmt.where(
-                Transaction.description.ilike(term)
-                | Account.name.ilike(term)
-                | Category.name.ilike(term)
-                | Merchant.name.ilike(term)
+        stmt = stmt.order_by(Transaction.created_at.desc())
+        term = (query or "").strip().casefold()
+        if term:
+            # description is encrypted at rest (app/crypto.py), so SQL cannot search it: match
+            # the decrypted rows here instead, then page.
+            hits = (
+                row
+                for row in db.execute(stmt)
+                if any(term in (text or "").casefold() for text in (row[0].description, *row[1:]))
             )
-        rows = db.execute(
-            stmt.order_by(Transaction.created_at.desc()).offset(int(offset)).limit(int(limit))
-        )
+            rows = list(islice(hits, int(offset), int(offset) + int(limit)))
+        else:
+            rows = db.execute(stmt.offset(int(offset)).limit(int(limit))).all()
         return {
             "transactions": [
                 {
@@ -511,16 +514,10 @@ def save_user_api_key(user_id: str, provider: str, api_key: str) -> dict[str, An
         raise ValueError("provider and api_key are required")
 
     def run(db: Session, user_id: str) -> dict[str, Any]:
-        import base64
-        import hashlib
-
-        from cryptography.fernet import Fernet
-
-        from app.config import settings
+        from app.crypto import encrypt_vault  # same vault format as ai_gateway.encrypt_api_key
 
         uid = _resolve_user(db, user_id).id
-        secret = hashlib.sha256(settings.secret_key.encode("utf-8")).digest()
-        encrypted = Fernet(base64.urlsafe_b64encode(secret)).encrypt(api_key.encode()).decode()
+        encrypted = encrypt_vault(api_key.strip())
         record = ApiKey(user_id=uid, provider=provider.strip().lower(), encrypted_key=encrypted)
         db.add(record)
         db.commit()

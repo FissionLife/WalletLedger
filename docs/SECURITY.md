@@ -1,23 +1,36 @@
 # Data Storage and Security
 
-Honest summary: **only users' LLM API keys are encrypted. Balances, transactions, merchants and the
-full chat history are stored as plain text in the database.** Anyone who can read the database file,
-the server disk or a backup can read all of it. This page lists what is stored, who can see it, and
-how to harden it.
+Honest summary: **chat history, transaction notes and users' AI keys are encrypted in the database.
+Amounts, dates, balances and account / category / merchant names are not.** The encryption key is
+derived from the server's `SECRET_KEY`, so it protects a copied database file or backup, not a
+running server, and **not against the operator**: whoever runs the server and has `SECRET_KEY` can
+read everyone's data. The bot has to read your data to answer you, so true "even the operator can't
+read it" protection is not possible without breaking the product (see "Private mode" below).
 
 ## 1. What is stored where
 
-| Data | Where | Protected? |
+| Data | Where | At rest |
 |---|---|---|
-| Telegram chat id (the user's identity) | `users.telegram_chat_id` | plain text |
-| Account names and balances | `accounts` | plain text |
-| Transactions (amount, merchant, description, date) | `transactions`, `merchants`, `categories` | plain text |
-| **Conversation history** (everything users type and the bot says) | `chat_messages` (permanent; last 20 are sent to the LLM as context) | plain text. API keys are redacted before saving |
-| User LLM API keys | `api_keys.encrypted_key` | Fernet (AES + HMAC) |
-| Server-side fallback LLM keys, bot token, `SECRET_KEY` | environment / `.env` | file permissions only |
+| **Conversation history** (everything users type and the bot says) | `chat_messages.content` | **encrypted** (field key). API keys are also redacted before saving |
+| **Transaction notes** (free text) | `transactions.description` | **encrypted** (field key) |
+| User and shared AI keys | `api_keys.encrypted_key` | **encrypted** (vault key) |
+| Amounts, dates, transaction type, source | `transactions` | plain text, see below |
+| Account names and balances | `accounts` | plain text, see below |
+| Category names and budgets, merchant names | `categories`, `merchants` | plain text, see below |
+| Telegram chat id (the user's identity) | `users.telegram_chat_id` | plain text (needed to find the user) |
+| Bot token, server AI keys, `SECRET_KEY` | environment / `.env` | file permissions only |
 
-The default (`DB_MODE=sqlite`) is a file, `walletledger.db` (`DB_MODE=postgres` uses a server). It is git-ignored but is an ordinary file: anyone
-who copies it can open it with a SQLite viewer.
+**Why some columns stay plain text.** The database adds up amounts (`SUM`), filters by date,
+groups by category and merchant, and joins tables on ids. It can only do that with values it can
+read. Encrypted values are also different every time (random IV), so even "equal to" does not work
+on them. Encrypting those columns would mean loading every row into Python for every report: slow,
+complex, and still readable by the server. So we encrypt the free text people type, which is the
+most personal part ("dinner with my ex", "loan to Ravi for rent", "my salary is ..."), and leave
+the numbers and labels the database needs.
+
+The default (`DB_MODE=sqlite`) is a file, `walletledger.db` (`DB_MODE=postgres` uses a server). It
+is git-ignored but is an ordinary file: anyone who copies it can open it with a SQLite viewer and
+see the plain-text columns above.
 
 ## 2. Authentication: how identity works
 
@@ -37,65 +50,118 @@ There are no passwords or logins. **Identity = Telegram chat id**, and all data 
 - Telegram chats are encrypted client-to-server only, not end-to-end. Telegram can read messages.
 - There are no REST endpoints that return user data; all access is through the bot.
 
-## 3. Can someone hack in and read the data?
+## 3. Who can read what
 
-| Attacker | Can they read financial data? |
-|---|---|
-| Random person on the internet | Not through the API: no endpoint returns data without a valid Telegram-signed request, as long as a bot token is set and dev endpoints are off. |
-| Another Telegram user | Only their own data (queries filter by `user_id`; covered by a test). With `ALLOWED_CHAT_IDS` they cannot use the bot at all. |
-| Someone with the `.db` file, a backup or server disk | **Yes, everything except API keys**, including all past conversations. |
-| Someone who also gets `.env` | **Yes, including API keys** (they have `SECRET_KEY`). |
-| Someone with the bot token | Can impersonate the bot and read messages sent to it; cannot read your database. Revoke in BotFather if leaked. |
-| You / the server operator | Yes. This is not a zero-knowledge design. |
-| The LLM provider | Receives what the agent sends: recent chat history, balances and spending summaries, for the key that made the call. |
-| Someone reading Telegram history | Anything users typed stays there. API keys sent in chat are redacted in the database, and the bot tries to delete the message, but tell users to check. |
+| Who | Amounts, dates, names | Chat history, notes | AI keys |
+|---|---|---|---|
+| Another Telegram user | No (queries filter by `user_id`; tested). With `ALLOWED_CHAT_IDS` they cannot use the bot at all | No | No |
+| Random person on the internet | Not through the API (no endpoint returns data without a Telegram-signed request, as long as a bot token is set and dev endpoints are off) | No | No |
+| Someone with a copy of the database file or a backup, **without** `SECRET_KEY` | **Yes** | No | No |
+| Someone who reads the DB through a bug such as SQL injection | **Yes** | No (they get ciphertext) | No |
+| Someone with the database **and** `.env` / `SECRET_KEY` | Yes | Yes | Yes |
+| Someone who controls the running server (or its memory) | Yes | Yes | Yes |
+| **You, the operator** (you have the server and `SECRET_KEY`) | **Yes** | **Yes** | **Yes** |
+| The AI provider (Gemini, OpenAI, ...) | What the bot sends for a request: recent chat, balances and spending summaries | the recent chat in that request | only the key used for the call |
+| Telegram / someone reading the Telegram chat | Anything users typed stays there. API keys sent in chat are redacted in the database and the bot tries to delete the message | same | same |
+
+**What encryption at rest protects against:** a stolen or leaked database file, a lost backup or
+disk, a database admin or hosting provider who can read tables but does not have `SECRET_KEY`, and
+"read the table" style leaks (SQL injection, a misconfigured DB port).
+
+**What it does not protect against:** a compromised running server (it has the key in memory), the
+operator, the AI provider (it receives the prompt in plain text), Telegram, or a weak / leaked
+`SECRET_KEY`.
 
 Known software gaps: money is stored as floats (rounded to 2 decimals), there is no rate limiting,
 no database migrations, and confirmation state is held in process memory (use one worker).
 
-## 4. How the API keys are encrypted
+## 4. How the encryption works
 
-Keys are encrypted with Fernet (AES-128-CBC plus an HMAC-SHA256 integrity tag, random IV) in
-[ai_gateway.py](../app/services_ai/ai_gateway.py). The Fernet key is `sha256(SECRET_KEY)`.
-Tampered or wrong-key data fails to decrypt instead of returning garbage.
+All of it is in [app/crypto.py](../app/crypto.py), about 200 lines.
+
+| What | Key | Format in the database |
+|---|---|---|
+| `chat_messages.content`, `transactions.description` | HKDF-SHA256(`SECRET_KEY`, label `walletledger/field/v1`) | `enc1:` + Fernet token |
+| `api_keys.encrypted_key` | HKDF-SHA256(`SECRET_KEY`, label `walletledger/api-key-vault/v1`) | Fernet token |
+| Old API keys saved before this change | `sha256(SECRET_KEY)` (legacy, read-only) | Fernet token |
+
+- **Fernet** = AES-128-CBC with a random IV plus an HMAC-SHA256 tag. Tampered or wrong-key data
+  fails to decrypt instead of returning garbage.
+- **Separate keys per purpose:** the field key and the vault key are different keys derived from the
+  same `SECRET_KEY`, so one cannot be used in place of the other.
+- **Automatic:** the two text columns use a SQLAlchemy type (`EncryptedText`) that encrypts on save
+  and decrypts on load. The rest of the code just sees plain text.
+- **Old rows keep working:** a value without the `enc1:` prefix is treated as old plain text and
+  returned as is. Run `scripts/protect_data.py encrypt` once to encrypt them. Old API keys in the
+  `sha256(SECRET_KEY)` format still decrypt; `rotate` upgrades them.
+- **Wrong key does not crash the bot:** a value no configured key can read is shown as
+  `[unreadable: encrypted with a different key]` and a warning is logged once.
+- **Search:** "find my transactions about lunch" can no longer be done by the database for notes, so
+  the bot loads that user's transactions and matches the decrypted text in Python. Fine for a
+  personal ledger (thousands of rows); it would need an index design for millions.
+
+### SECRET_KEY rules
 
 - Use a long random `SECRET_KEY`: `python -c "import secrets; print(secrets.token_urlsafe(48))"`.
-  The built-in default is public in the repo; the app warns at startup if you keep it.
-- Because the key is a plain SHA-256 of `SECRET_KEY` (no salt or slow KDF), a weak or guessable
-  `SECRET_KEY` can be brute-forced by anyone holding the database. Random 48+ characters avoids that.
-- **Never change `SECRET_KEY` casually**: stored user keys become unreadable (users re-add them).
-  There is no rotation support yet; adding `MultiFernet` with a list of old keys is the fix.
-- Keep `SECRET_KEY` somewhere other than the database host/backups, otherwise the encryption adds
-  little.
+  The setup wizard generates one. The built-in default and the `.env.example` placeholder are public:
+  `scripts/setup.py --check` flags both, and `protect_data.py` refuses to encrypt with them.
+- HKDF is fast, so it does not slow down guessing a weak secret. Random 48+ characters avoids that.
+- Keep `SECRET_KEY` somewhere other than the database host's backups, otherwise the encryption adds
+  little: whoever gets both gets everything.
+- **Losing `SECRET_KEY` means losing the encrypted data** (chat history, notes, stored AI keys).
+  Amounts and balances survive. Back up `.env` securely, separately from the database.
 
-- When a user adds a key, the bot sends one tiny test request to that provider with it (the same call it would later make), so the key is only ever sent to its own provider.
-- Server (team) fallback keys are never shown to users; `/keys` only says whether a fallback exists.
+### Changing SECRET_KEY (rotation)
+
+1. Back up the database.
+2. Put the current value in `SECRET_KEY_OLD` and a new random value in `SECRET_KEY`. Restart.
+   The bot writes with the new key and still reads data written with the old one.
+3. Run `uv run python scripts/protect_data.py rotate` to re-encrypt everything with the new key.
+4. When `status` shows nothing on an old key, remove `SECRET_KEY_OLD`.
+
+`SECRET_KEY_OLD` accepts several values separated by commas.
+
+### The protect_data script
+
+```bash
+uv run python scripts/protect_data.py status            # counts per column; changes nothing
+uv run python scripts/protect_data.py encrypt --dry-run # how many old plain-text rows
+uv run python scripts/protect_data.py encrypt           # asks for confirmation (or --yes)
+uv run python scripts/protect_data.py rotate            # after changing SECRET_KEY
+```
+
+It works on SQLite and Postgres through the app's own database settings, in batches, and never
+prints user text. It is safe to run twice. Deploy the new version of the app **before** running
+`encrypt`: an older version would show `enc1:...` instead of the text. The undo is your backup.
 
 ## 5. How to protect the rest of the data (recommended order)
 
 1. **Disk / volume encryption** (BitLocker, LUKS, encrypted cloud volumes). Cheapest big win; covers
-   the database, backups and swap.
+   the plain-text columns, backups and swap.
 2. **Postgres in production** (docker-compose is provided) with TLS (`?sslmode=require`), a
    least-privilege user, a private network and encrypted backups. Never expose the DB port.
 3. **Secrets:** never commit `.env`, restrict its permissions, prefer your host's secret manager.
 4. **HTTPS only** behind a reverse proxy; explicit `TELEGRAM_WEBHOOK_SECRET`; dev endpoints off;
    `ALLOWED_CHAT_IDS` set for a personal bot.
-5. **Field-level encryption** of the most sensitive columns (chat message `content`, transaction
-   `description`, merchant names) with the same Fernet helper via a SQLAlchemy `TypeDecorator`.
-   Trade-off: no SQL search or aggregation on those columns. Balances and amounts are used in
-   `SUM`/comparisons, so they are not realistic targets. This protects against a stolen DB file, not
-   a compromised running server. Chat history is the biggest unencrypted exposure and the best first
-   target.
-6. **Retention:** limit how long `chat_messages` are kept, add a `/deleteme` command that deletes a
+5. **Retention:** limit how long `chat_messages` are kept, add a `/deleteme` command that deletes a
    user (the schema cascades), and avoid logging message bodies.
-7. **Per-user keys (strongest):** derive each user's key from a secret only they hold. Even you
-   cannot read their data, but the bot cannot work while they are offline and a lost secret means
-   lost data. A product decision, not a quick fix.
-8. **Monitoring:** alert on repeated 403s at the webhook; keep dependencies updated.
+6. **Monitoring:** alert on repeated 403s at the webhook; keep dependencies updated.
+
+### Private mode (NOT implemented)
+
+The only way to stop the operator from reading data is a key the server does not keep: each user
+sets a passphrase, the server derives that user's key from it (with a slow KDF like scrypt), keeps
+the key in memory only while the user is "unlocked", and forgets it after a timeout. Trade-offs: the
+bot cannot work for a locked user (no reminders, no background imports, no shared reports), a
+forgotten passphrase means the data is gone for good, every message would need an unlock step,
+amounts and names would still have to be readable to compute totals, and a malicious operator could
+still change the code to capture the passphrase the next time the user types it. It also does not
+hide anything from the AI provider. That is a product decision, not a quick fix, so it is not built.
 
 ## 6. Pre-deploy checklist
 
-- [ ] `SECRET_KEY` random 48+ chars, stored outside the repo
+- [ ] `SECRET_KEY` random 48+ chars, stored outside the repo, backed up separately from the database
+- [ ] `uv run python scripts/protect_data.py status` shows no `plaintext` rows (run `encrypt` once)
 - [ ] `TELEGRAM_WEBHOOK_SECRET` set (webhook mode only behind HTTPS)
 - [ ] `ENABLE_DEV_ENDPOINTS` unset or `false` while a bot token is configured
 - [ ] `ALLOWED_CHAT_IDS` set if the bot is personal/private

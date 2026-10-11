@@ -5,7 +5,8 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 
-from app.config import INSECURE_DEV_KEY, settings
+from app.config import settings
+from app.crypto import weak_secret_key
 from app.db import describe_database
 from app.services_ai import ai_gateway as gw
 from app.services_ai import model_catalog
@@ -67,9 +68,10 @@ def setup_problems() -> list[str]:
     problems = []
     if not settings.telegram_bot_token.strip():
         problems.append("TELEGRAM_BOT_TOKEN is empty, so the bot is off.")
-    if settings.secret_key == INSECURE_DEV_KEY or len(settings.secret_key) < 24:
+    if weak_secret_key():
         problems.append(
-            "SECRET_KEY is the public default or too short; saved AI keys are not safe."
+            "SECRET_KEY is the public default or too short; saved AI keys and encrypted chat "
+            "history are not safe."
         )
     if not settings.allowed_chat_ids.strip():
         problems.append("ALLOWED_CHAT_IDS is empty, so anyone who finds the bot can use it.")

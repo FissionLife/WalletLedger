@@ -61,8 +61,10 @@ class Settings(BaseSettings):
     # How long a dashboard link stays valid, in minutes.
     dashboard_link_minutes: int = 120
 
-    # Security key for encrypting user API keys
+    # Security key for encrypting user API keys, chat history and transaction notes (app/crypto.py)
     secret_key: str = INSECURE_DEV_KEY
+    # Previous SECRET_KEY values (comma-separated), still accepted for reading during a rotation.
+    secret_key_old: str = ""
 
     # Optional server-side AI keys, used only when a user has not added their own key.
     # *_API_KEYS accept several keys separated by commas (round-robin rotation).
