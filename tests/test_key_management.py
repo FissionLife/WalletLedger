@@ -2,6 +2,9 @@
 command hints. Offline: litellm and provider model lists are mocked."""
 
 import os
+
+os.environ["WALLETLEDGER_TESTING"] = "1"  # never read the real .env in tests
+os.environ["LITELLM_MODE"] = "PRODUCTION"  # litellm would otherwise load .env (real keys!)
 import tempfile
 
 _TMP_DIR = tempfile.mkdtemp(prefix="walletledger-keys-test-")
@@ -209,14 +212,16 @@ class FallbackTests(KeyTestCase):
 class CommandHintTests(KeyTestCase):
     def test_menu_covers_every_key_command(self):
         names = {name for name, _ in bot.COMMAND_MENU}
-        for cmd in ("setkey", "keys", "editkey", "delkey", "pausekey", "resumekey", "testkey"):
+        for cmd in ("setkey", "keys"):
             self.assertIn(cmd, names)
+        for cmd in ("editkey", "delkey", "pausekey", "resumekey", "testkey"):
+            self.assertIn("/" + cmd, bot.KNOWN_COMMANDS)  # hidden from the menu, still work
         self.assertTrue(all(desc and len(desc) <= 256 for _, desc in bot.COMMAND_MENU))
         self.assertLessEqual(len(bot.COMMAND_MENU), 100)
 
     def test_help_mentions_menu_and_keys(self):
         reply = self.say("/help")
-        for word in ("/setkey", "/editkey", "/delkey", "fall back"):
+        for word in ("/setkey", "/keys", "backup"):
             self.assertIn(word, reply)
 
     def test_unknown_command_suggests_close_matches(self):

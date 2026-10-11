@@ -1,3 +1,4 @@
+import os
 from typing import Literal
 from urllib.parse import quote_plus
 
@@ -15,7 +16,8 @@ class Settings(BaseSettings):
     """
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        # The test-suite sets WALLETLEDGER_TESTING so it never reads (or spends) a developer's real .env
+        env_file=None if os.environ.get("WALLETLEDGER_TESTING") else ".env",
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore",  # unknown lines in .env must not stop the app
@@ -52,6 +54,12 @@ class Settings(BaseSettings):
     # /bot/simulate_chat and the token-less /bot/webhook let the caller act as ANY chat id.
     # Unset = enabled only while no bot token is configured; true/false overrides.
     enable_dev_endpoints: bool | None = None
+
+    # Public address of this server (https://...), used for dashboard links and the Telegram Mini App.
+    # Empty = http://localhost:8000 (opens in a browser on this computer only).
+    public_url: str = ""
+    # How long a dashboard link stays valid, in minutes.
+    dashboard_link_minutes: int = 120
 
     # Security key for encrypting user API keys
     secret_key: str = INSECURE_DEV_KEY

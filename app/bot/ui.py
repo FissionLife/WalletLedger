@@ -1,0 +1,133 @@
+"""What the bot sends back: text, optionally with an image / file and tappable buttons.
+
+`Reply` is a plain description (no Telegram types), so the same logic serves Telegram, the dev
+endpoint and the tests. app/bot/telegram.py turns a Reply into real Telegram messages.
+
+Callback data (what a button sends back, max 64 bytes) is `<action>:<args>`:
+    go:<screen>            open a screen         (home, stats, balance, history, budgets, keys, help)
+    st:<period>[:<ctx>]    stats for a period    (7d, 30d, 90d, 1y, all, ...)
+    ch:<kind>:<period>[:<ctx>]   one chart
+    hi:<page>              history page
+    undo:<tx id prefix>    undo a transaction
+    ask:yes | ask:no       answer a pending confirmation
+    imp:yes | imp:no       confirm / skip a statement import
+    key:<test|pause|resume|del>:<n>   manage AI key number n
+    ex:<period>            export CSV
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+
+
+@dataclass(frozen=True)
+class Btn:
+    text: str
+    data: str | None = None  # callback data
+    url: str | None = None  # opens a link
+    web_app: str | None = None  # opens a Telegram Mini App (https only)
+
+
+@dataclass
+class Reply:
+    text: str = ""
+    photo: bytes | None = None
+    document: tuple[bytes, str] | None = None  # (file bytes, file name)
+    rows: list[list[Btn]] = field(default_factory=list)
+    edit: bool = False  # for button taps: update the message in place instead of sending a new one
+    notice: str = ""  # short pop-up shown when a button is tapped ("Undone")
+
+
+PERIODS = [("7d", "7 days"), ("30d", "30 days"), ("90d", "90 days"), ("1y", "1 year")]
+CHARTS = [
+    ("categories", "🍕 Categories"),
+    ("trend", "📈 Trend"),
+    ("merchants", "🏪 Merchants"),
+    ("pace", "⏱ Pace"),
+    ("budgets", "🎯 Budgets"),
+    ("weekdays", "📅 Weekdays"),
+    ("networth", "💰 Total money"),
+    ("heatmap", "🗓 Heatmap"),
+]
+
+
+def home_rows() -> list[list[Btn]]:
+    return [
+        [Btn("📊 Stats", "go:stats"), Btn("💰 Balance", "go:balance")],
+        [Btn("🧾 History", "go:history"), Btn("🎯 Budgets", "go:budgets")],
+        [Btn("🖥 Dashboard", "go:dashboard"), Btn("🔑 AI keys", "go:keys")],
+        [Btn("❓ Help", "go:help")],
+    ]
+
+
+def period_row(current: str, ctx: str = "") -> list[Btn]:
+    suffix = f":{ctx}" if ctx else ""
+    return [Btn(("• " if p == current else "") + label, f"st:{p}{suffix}") for p, label in PERIODS]
+
+
+def chart_rows(period: str, ctx: str = "", exclude: str = "") -> list[list[Btn]]:
+    suffix = f":{ctx}" if ctx else ""
+    buttons = [
+        Btn(label, f"ch:{kind}:{period}{suffix}") for kind, label in CHARTS if kind != exclude
+    ]
+    return [buttons[i : i + 3] for i in range(0, len(buttons), 3)]
+
+
+def stats_rows(period: str, ctx: str = "") -> list[list[Btn]]:
+    return [
+        period_row(period, ctx),
+        *chart_rows(period, ctx)[:2],
+        [Btn("📄 Export CSV", f"ex:{period}"), Btn("🖥 Dashboard", "go:dashboard")],
+    ]
+
+
+def chart_nav_rows(kind: str, period: str, ctx: str = "") -> list[list[Btn]]:
+    suffix = f":{ctx}" if ctx else ""
+    return [
+        [Btn("◀ Overview", f"st:{period}{suffix}"), Btn("📄 Export CSV", f"ex:{period}")],
+        *chart_rows(period, ctx, exclude=kind)[:2],
+    ]
+
+
+def confirm_rows() -> list[list[Btn]]:
+    return [[Btn("✅ Yes, do it", "ask:yes"), Btn("✖ Cancel", "ask:no")]]
+
+
+def import_rows() -> list[list[Btn]]:
+    return [[Btn("✅ Import", "imp:yes"), Btn("✖ Skip", "imp:no")]]
+
+
+def undo_row(tx_ids: list[str]) -> list[Btn]:
+    if len(tx_ids) == 1:
+        return [Btn("↩️ Undo", f"undo:{tx_ids[0][:12]}")]
+    return [Btn(f"↩️ Undo ({len(tx_ids)})", "undo:" + ",".join(t[:8] for t in tx_ids)[:55])]
+
+
+def history_rows(page: int, pages: int) -> list[list[Btn]]:
+    nav = []
+    if page > 0:
+        nav.append(Btn("◀ Newer", f"hi:{page - 1}"))
+    if page < pages - 1:
+        nav.append(Btn("Older ▶", f"hi:{page + 1}"))
+    rows = [nav] if nav else []
+    rows.append([Btn("↩️ Undo last", "undo:last"), Btn("📄 Export CSV", "ex:all")])
+    return rows
+
+
+def keys_rows(count: int) -> list[list[Btn]]:
+    rows = []
+    for n in range(1, min(count, 6) + 1):
+        rows.append(
+            [
+                Btn(f"🧪 {n}", f"key:test:{n}"),
+                Btn(f"⏸ {n}", f"key:pause:{n}"),
+                Btn(f"▶ {n}", f"key:resume:{n}"),
+                Btn(f"🗑 {n}", f"key:del:{n}"),
+            ]
+        )
+    rows.append([Btn("🧪 Test all", "key:test:all"), Btn("📊 Status", "go:status")])
+    return rows
+
+
+def back_home() -> list[list[Btn]]:
+    return [[Btn("🏠 Menu", "go:home")]]

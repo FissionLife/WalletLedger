@@ -129,6 +129,7 @@ class Transaction(Base):
 
     user: Mapped[User] = relationship("User", back_populates="transactions")
     category: Mapped[Category | None] = relationship("Category", foreign_keys=[category_id])
+    merchant: Mapped[Merchant | None] = relationship("Merchant", foreign_keys=[merchant_id])
 
 
 class ApiKey(Base):

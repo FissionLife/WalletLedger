@@ -1,178 +1,132 @@
 #!/usr/bin/env python3
-"""Create a repeatable demo profile with accounts and 50 realistic transactions."""
+"""Fill a Telegram chat with 3 months of realistic demo data, for showing the bot to someone.
+
+    uv run python scripts/seed_demo_data.py --chat-id 123456789   # your own Telegram id
+    uv run python scripts/seed_demo_data.py                       # a standalone "demo" user
+    uv run python scripts/seed_demo_data.py --chat-id 123456789 --reset   # wipe that user, re-seed
+
+Then message the bot: /balance, /stats, /dashboard. The data is the same every time (fixed seed).
+Use --reset only on a demo chat: it deletes that chat's existing data first.
+"""
 
 from __future__ import annotations
 
 import argparse
-from datetime import datetime, timedelta
+import random
+import sys
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
-from sqlalchemy import delete, select
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from app.db import SessionLocal, init_db
-from app.models import Account, Category, Merchant, Transaction, User
+from sqlalchemy import select  # noqa: E402
 
-DEMO_USER_ID = "demo-meet"
+from app.db import SessionLocal, init_db  # noqa: E402
+from app.models import Transaction, User  # noqa: E402
+from app.services import ledger  # noqa: E402
 
-# (days ago, kind, amount, account, category, merchant, description)
-EXPENSES = [
-    (1, "expense", 420, "UPI Wallet", "Food", "Swiggy", "Lunch order"),
-    (2, "expense", 180, "UPI Wallet", "Transport", "Uber", "Ride to office"),
-    (3, "expense", 1250, "Bank", "Groceries", "BigBasket", "Weekly groceries"),
-    (4, "expense", 250, "Cash", "Food", "Chai Point", "Coffee and snacks"),
-    (5, "expense", 899, "Bank", "Utilities", "Airtel", "Mobile and broadband"),
-    (6, "expense", 320, "UPI Wallet", "Food", "Zomato", "Dinner order"),
-    (8, "expense", 210, "UPI Wallet", "Transport", "Uber", "Ride home"),
-    (9, "expense", 2400, "Bank", "Shopping", "Myntra", "Clothing"),
-    (10, "expense", 540, "Cash", "Food", "Cafe Coffee Day", "Cafe"),
-    (11, "expense", 1600, "Bank", "Health", "Apollo Pharmacy", "Medicines"),
-    (12, "expense", 400, "UPI Wallet", "Food", "Swiggy", "Dinner order"),
-    (13, "expense", 190, "Cash", "Transport", "Metro", "Metro card recharge"),
-    (14, "expense", 2850, "Bank", "Groceries", "DMart", "Household supplies"),
-    (16, "expense", 650, "UPI Wallet", "Food", "Zomato", "Weekend meal"),
-    (17, "expense", 300, "Cash", "Personal", "Salon", "Haircut"),
-    (18, "expense", 540, "UPI Wallet", "Transport", "Uber", "Airport ride"),
-    (19, "expense", 499, "Bank", "Subscriptions", "Netflix", "Monthly subscription"),
-    (20, "expense", 3100, "Bank", "Utilities", "Electricity Board", "Electricity bill"),
-    (22, "expense", 380, "UPI Wallet", "Food", "Swiggy", "Lunch order"),
-    (23, "expense", 1700, "Bank", "Shopping", "Amazon", "Home supplies"),
-    (25, "expense", 220, "UPI Wallet", "Transport", "Uber", "Ride to station"),
-    (27, "expense", 1150, "Bank", "Groceries", "BigBasket", "Groceries"),
-    (29, "expense", 500, "Cash", "Food", "Local Restaurant", "Dinner with friends"),
-    (31, "expense", 410, "UPI Wallet", "Food", "Zomato", "Dinner order"),
-    (33, "expense", 185, "UPI Wallet", "Transport", "Uber", "Ride home"),
-    (35, "expense", 1350, "Bank", "Groceries", "DMart", "Monthly groceries"),
-    (37, "expense", 499, "Bank", "Subscriptions", "Netflix", "Monthly subscription"),
-    (39, "expense", 280, "Cash", "Food", "Chai Point", "Coffee"),
-    (41, "expense", 1500, "Bank", "Health", "Apollo Pharmacy", "Health supplies"),
-    (43, "expense", 360, "UPI Wallet", "Food", "Swiggy", "Lunch order"),
-    (45, "expense", 260, "UPI Wallet", "Transport", "Uber", "Ride to office"),
-    (47, "expense", 2200, "Bank", "Shopping", "Myntra", "Shoes"),
-    (49, "expense", 680, "Cash", "Food", "Local Restaurant", "Dinner"),
-    (51, "expense", 1250, "Bank", "Groceries", "BigBasket", "Groceries"),
-    (53, "expense", 499, "Bank", "Subscriptions", "Netflix", "Monthly subscription"),
-    (55, "expense", 310, "UPI Wallet", "Food", "Zomato", "Lunch order"),
-    (57, "expense", 260, "UPI Wallet", "Transport", "Uber", "Ride home"),
-    (59, "expense", 920, "Bank", "Utilities", "Airtel", "Mobile plan"),
-    (61, "expense", 480, "Cash", "Food", "Chai Point", "Cafe"),
-    (63, "expense", 1800, "Bank", "Shopping", "Amazon", "Kitchen items"),
-    (65, "expense", 330, "UPI Wallet", "Food", "Swiggy", "Dinner order"),
-    (67, "expense", 210, "UPI Wallet", "Transport", "Uber", "Ride to office"),
-    (69, "expense", 499, "Bank", "Subscriptions", "Netflix", "Monthly subscription"),
+DAYS = 90
+
+# (merchant, category, low, high, account, weight)
+EVERYDAY = [
+    ("Swiggy", "Food & Dining", 220, 680, "HDFC Bank", 5),
+    ("Zomato", "Food & Dining", 200, 720, "HDFC Bank", 4),
+    ("Starbucks", "Food & Dining", 180, 460, "Credit Card", 2),
+    ("Chai Point", "Food & Dining", 60, 220, "Cash", 4),
+    ("Blinkit", "Groceries", 250, 900, "HDFC Bank", 4),
+    ("BigBasket", "Groceries", 900, 2600, "HDFC Bank", 2),
+    ("Uber", "Transport", 110, 520, "HDFC Bank", 4),
+    ("Rapido", "Transport", 50, 190, "Cash", 3),
+    ("HP Petrol", "Transport", 600, 1800, "Credit Card", 1),
+    ("Amazon", "Shopping", 400, 4200, "Credit Card", 2),
+    ("Myntra", "Shopping", 700, 3200, "Credit Card", 1),
+    ("Apollo Pharmacy", "Health", 140, 950, "HDFC Bank", 1),
+    ("BookMyShow", "Entertainment", 300, 1100, "Credit Card", 1),
 ]
-
-INCOMES = [
-    (3, "income", 82000, "Bank", "Salary", "Acme Technologies", "Monthly salary"),
-    (15, "income", 2400, "Bank", "Freelance", "Design client", "Website design work"),
-    (32, "income", 82000, "Bank", "Salary", "Acme Technologies", "Monthly salary"),
-    (40, "income", 1800, "UPI Wallet", "Refund", "Amazon", "Order refund"),
-    (48, "income", 3500, "Bank", "Freelance", "Design client", "Logo design work"),
-    (62, "income", 82000, "Bank", "Salary", "Acme Technologies", "Monthly salary"),
-    (70, "income", 500, "Cash", "Other Income", "Cashback", "Card cashback"),
+# (merchant, category, amount, account, day of month)
+MONTHLY = [
+    ("Landlord", "Rent", 18000, "HDFC Bank", 3),
+    ("Netflix", "Entertainment", 649, "Credit Card", 7),
+    ("Spotify", "Entertainment", 119, "Credit Card", 9),
+    ("Cult Fit", "Health", 1500, "HDFC Bank", 12),
+    ("Airtel", "Bills & Utilities", 799, "HDFC Bank", 15),
+    ("BESCOM", "Bills & Utilities", 1650, "HDFC Bank", 18),
 ]
+BUDGETS = {"Food & Dining": 7000, "Shopping": 5000, "Entertainment": 2500, "Transport": 4000}
 
 
-def seed_demo_data(telegram_chat_id: str = DEMO_USER_ID) -> dict[str, int | str]:
+def seed(chat_id: str, reset: bool) -> None:
     init_db()
-    db = SessionLocal()
-    try:
-        user = db.scalar(select(User).where(User.telegram_chat_id == telegram_chat_id))
-        if user is None:
-            user = User(telegram_chat_id=telegram_chat_id)
-            db.add(user)
-            db.flush()
+    rng = random.Random(42)
+    now = datetime.now(UTC).replace(tzinfo=None)
+    with SessionLocal() as db:
+        existing = db.scalar(select(User).where(User.telegram_chat_id == chat_id))
+        if existing is not None:
+            has_data = db.scalar(select(Transaction.id).where(Transaction.user_id == existing.id))
+            if has_data and not reset:
+                print(f"Chat '{chat_id}' already has data. Use --reset to wipe and re-seed it.")
+                return
+            if reset:
+                db.delete(existing)
+                db.commit()
 
-        # Re-running the script refreshes its demo dataset without touching other users.
-        db.execute(delete(Transaction).where(Transaction.user_id == user.id))
-        db.execute(delete(Merchant).where(Merchant.user_id == user.id))
-        db.execute(delete(Category).where(Category.user_id == user.id))
-        db.execute(delete(Account).where(Account.user_id == user.id))
-        db.flush()
-
-        accounts = {
-            "Bank": Account(user_id=user.id, name="Bank", type="bank", balance=45000),
-            "Cash": Account(user_id=user.id, name="Cash", type="cash", balance=6000),
-            "UPI Wallet": Account(user_id=user.id, name="UPI Wallet", type="wallet", balance=2500),
-        }
-        categories: dict[str, Category] = {}
-        merchant_map: dict[str, Merchant] = {}
-        db.add_all(accounts.values())
-        db.flush()
-
-        now = datetime.utcnow()
-        items = sorted(EXPENSES + INCOMES, key=lambda item: item[0])
-        for (
-            days_ago,
-            kind,
-            amount,
-            account_name,
-            category_name,
-            merchant_name,
-            description,
-        ) in items:
-            cat_type = "income" if kind == "income" else "expense"
-            cat_key = f"{cat_type}:{category_name}"
-            if cat_key not in categories:
-                categories[cat_key] = Category(
-                    user_id=user.id,
-                    name=category_name,
-                    type=cat_type,
-                    budget_limit=(
-                        12000
-                        if category_name == "Food"
-                        else 10000
-                        if category_name == "Shopping"
-                        else None
-                    ),
-                )
-                db.add(categories[cat_key])
-                db.flush()
-            if merchant_name not in merchant_map:
-                merchant_map[merchant_name] = Merchant(
-                    user_id=user.id,
-                    name=merchant_name,
-                    default_category_id=categories[cat_key].id,
-                )
-                db.add(merchant_map[merchant_name])
-                db.flush()
-            account = accounts[account_name]
-            tx = Transaction(
-                user_id=user.id,
-                account_id=account.id,
-                category_id=categories[cat_key].id,
-                merchant_id=merchant_map[merchant_name].id,
-                amount=amount,
-                transaction_type=kind,
-                description=description,
-                source="demo",
-                created_at=now - timedelta(days=days_ago),
-            )
-            db.add(tx)
-            account.balance += amount if kind == "income" else -amount
-
+        user = ledger.get_or_create_user(db, chat_id)
+        uid = user.id
+        for name, kind in (("HDFC Bank", "bank"), ("Credit Card", "credit_card")):
+            ledger.get_or_create_account(db, uid, name, kind)
+        for cat, limit in BUDGETS.items():
+            ledger.get_or_create_category(db, uid, cat).budget_limit = float(limit)
         db.commit()
-        return {
-            "user_id": user.id,
-            "telegram_chat_id": telegram_chat_id,
-            "accounts": len(accounts),
-            "transactions": len(items),
-        }
-    except Exception:
-        db.rollback()
-        raise
-    finally:
-        db.close()
 
+        def tx(days_ago, amount, account, category, merchant, kind="expense", note=None, hour=None):
+            when = now - timedelta(days=days_ago)
+            when = when.replace(
+                hour=hour if hour is not None else rng.randint(8, 22), minute=rng.randint(0, 59)
+            )
+            ledger.record_transaction(
+                db, uid, amount, account, category, merchant, kind, note or merchant, "manual", when
+            )
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--telegram-chat-id", default=DEMO_USER_ID)
-    args = parser.parse_args()
-    result = seed_demo_data(args.telegram_chat_id)
-    print(
-        f"Seeded demo user {result['telegram_chat_id']}: "
-        f"{result['accounts']} accounts and {result['transactions']} transactions."
-    )
+        tx(DAYS, 60000, "HDFC Bank", "Opening Balance", None, "income", "Opening balance", 9)
+        # salary on the 1st of each month in range, recurring bills on their day
+        for months_back in range(3, -1, -1):
+            base = (now.replace(day=1) - timedelta(days=30 * months_back)).replace(day=1)
+            salary_day = base
+            if salary_day <= now:
+                tx(
+                    (now - salary_day).days,
+                    85000,
+                    "HDFC Bank",
+                    "Salary",
+                    "Acme Corp",
+                    "income",
+                    "Salary",
+                    10,
+                )
+            for merchant, cat, amount, account, dom in MONTHLY:
+                when = base.replace(day=dom)
+                if when <= now:
+                    tx((now - when).days, amount, account, cat, merchant)
+        # everyday spending: a few per day, weekends a bit heavier
+        weights = [w for *_, w in EVERYDAY]
+        for d in range(DAYS - 1, -1, -1):
+            day = now - timedelta(days=d)
+            for _ in range(rng.choice([0, 1, 1, 2, 2, 3]) + (1 if day.weekday() >= 5 else 0)):
+                merchant, cat, lo, hi, account, _w = rng.choices(EVERYDAY, weights)[0]
+                tx(d, round(rng.uniform(lo, hi), 2), account, cat, merchant)
+        # a one-off big purchase this month and moving cash around
+        tx(6, 24999, "Credit Card", "Shopping", "Croma", note="Headphones")
+        ledger.transfer_between_pipes(db, uid, "HDFC Bank", "Cash", 5000, "ATM withdrawal")
+
+        count = len(list(db.scalars(select(Transaction).where(Transaction.user_id == uid))))
+        print(f"Seeded chat '{chat_id}' with {count} transactions over {DAYS} days.")
 
 
 if __name__ == "__main__":
-    main()
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    ap.add_argument("--chat-id", default="demo", help="Telegram chat id to fill (default: demo)")
+    ap.add_argument("--reset", action="store_true", help="delete that chat's data first")
+    args = ap.parse_args()
+    seed(args.chat_id, args.reset)

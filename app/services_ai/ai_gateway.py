@@ -98,6 +98,7 @@ KEY_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
 RATE_LIMIT_COOLDOWN_SECONDS = 60
 AUTH_FAILURE_COOLDOWN_SECONDS = 15 * 60
 DEFAULT_TIMEOUT_SECONDS = 15
+FAST_ATTEMPT_SECONDS = 8  # per-model patience while other models are still available
 
 
 def normalize_provider(provider: str) -> str:
@@ -599,6 +600,44 @@ def _wants_default_model(model_preference: str | None) -> bool:
     return not pref or pref in PROVIDER_ALIASES
 
 
+def _is_model_problem(exc: Exception) -> bool:
+    """True when the MODEL (not the key) is the problem: retired, busy, slow or unknown."""
+    if isinstance(
+        exc,
+        (
+            litellm.NotFoundError,
+            litellm.Timeout,
+            litellm.ServiceUnavailableError,
+            litellm.InternalServerError,
+            litellm.BadGatewayError,
+        ),
+    ):
+        return True
+    text = str(exc).lower()
+    return any(
+        hint in text
+        for hint in (
+            "no longer available",
+            "high demand",
+            "overloaded",
+            "model not found",
+            "is not found",
+        )
+    )
+
+
+async def _candidate_models(
+    candidate: KeyCandidate, provider: str, model: str, dynamic: bool
+) -> list[str]:
+    """Models to try for this key, best first (one entry when the caller pinned a model)."""
+    if dynamic and settings.dynamic_models and not _env(f"AI_MODEL_{candidate.provider.upper()}"):
+        base = _env("OLLAMA_API_BASE") or "http://localhost:11434"
+        chain = await model_catalog.model_chain(candidate.provider, candidate.api_key, base)
+        if chain:
+            return chain
+    return [_model_for(candidate, provider, model)]
+
+
 async def _candidate_model(
     candidate: KeyCandidate, provider: str, model: str, dynamic: bool
 ) -> str:
@@ -648,7 +687,7 @@ async def complete(
 
     attempts: list[dict[str, str]] = []
     for candidate in candidates:
-        call_model = await _candidate_model(candidate, provider, model, dynamic)
+        models = await _candidate_models(candidate, provider, model, dynamic)
         call_kwargs = dict(kwargs)
         if candidate.provider == "ollama":
             call_kwargs.setdefault("api_base", _env("OLLAMA_API_BASE") or "http://localhost:11434")
@@ -659,37 +698,56 @@ async def complete(
             call_kwargs["tools"] = tools
             call_kwargs["tool_choice"] = "auto"
 
-        try:
-            response = await litellm.acompletion(
-                model=call_model, messages=messages, num_retries=0, **call_kwargs
-            )
-        except Exception as exc:
-            kind = _classify(exc)
-            if dynamic and isinstance(exc, litellm.NotFoundError):
-                model_catalog.invalidate(
-                    candidate.provider, candidate.api_key
-                )  # re-discover next time
-            if kind is None:
-                raise
-            masked = mask_key(candidate.api_key) if candidate.api_key else "local"
-            logger.warning(
-                "AI gateway: %s key %s failed (%s), trying next", candidate.provider, masked, kind
-            )
-            attempts.append(
-                {
-                    "provider": candidate.provider,
-                    "key": masked,
-                    "model": call_model,
-                    "error": _short_error(exc),
-                }
-            )
-            if kind == "rate_limit":
-                _rotation.cool_down(candidate.fingerprint, RATE_LIMIT_COOLDOWN_SECONDS)
-            elif kind == "auth":
-                _rotation.cool_down(candidate.fingerprint, AUTH_FAILURE_COOLDOWN_SECONDS)
-            continue
+        masked = mask_key(candidate.api_key) if candidate.api_key else "local"
+        for position, call_model in enumerate(models):
+            attempt_kwargs = dict(call_kwargs)
+            if position < len(models) - 1:  # a slow model should not stall the chat: try the next
+                attempt_kwargs["timeout"] = min(
+                    float(call_kwargs.get("timeout", DEFAULT_TIMEOUT_SECONDS)), FAST_ATTEMPT_SECONDS
+                )
+            try:
+                response = await litellm.acompletion(
+                    model=call_model, messages=messages, num_retries=0, **attempt_kwargs
+                )
+            except Exception as exc:
+                kind = _classify(exc)
+                attempts.append(
+                    {
+                        "provider": candidate.provider,
+                        "key": masked,
+                        "model": call_model,
+                        "error": _short_error(exc),
+                    }
+                )
+                if _is_model_problem(exc):
+                    # This model is retired for this key or busy right now: try the next model
+                    # on the SAME key before giving up on the key.
+                    model_catalog.forget_working(candidate.provider, candidate.api_key)
+                    if position < len(models) - 1:
+                        logger.info(
+                            "AI gateway: %s unavailable for key %s, next model", call_model, masked
+                        )
+                        continue
+                    kind = kind or "transient"
+                if kind is None:
+                    raise
+                logger.warning(
+                    "AI gateway: %s key %s failed (%s), trying next",
+                    candidate.provider,
+                    masked,
+                    kind,
+                )
+                if kind == "rate_limit":
+                    _rotation.cool_down(candidate.fingerprint, RATE_LIMIT_COOLDOWN_SECONDS)
+                elif kind == "auth":
+                    _rotation.cool_down(candidate.fingerprint, AUTH_FAILURE_COOLDOWN_SECONDS)
+                break  # next key
 
-        return response if tools else _extract_text(response)
+            if dynamic and candidate.provider != "ollama":
+                model_catalog.remember_working(
+                    candidate.provider, candidate.api_key, call_model.split("/", 1)[-1]
+                )
+            return response if tools else _extract_text(response)
 
     raise AllKeysExhaustedError(attempts)
 
@@ -743,33 +801,37 @@ async def validate_api_key(provider: str, api_key: str) -> KeyCheck:
     api_key = (api_key or "").strip()
     if not api_key:
         return KeyCheck("invalid", "empty key")
-    model = None
+    models = [default_model(provider)]
     if settings.dynamic_models and not _env(f"AI_MODEL_{provider.upper()}"):
-        model = await model_catalog.best_model(provider, api_key)
-    model = model or default_model(provider)
-    try:
-        await litellm.acompletion(
-            model=model,
-            messages=[{"role": "user", "content": "Reply with the single word OK."}],
-            api_key=api_key,
-            max_tokens=8,
-            timeout=15,
-            num_retries=0,
-        )
+        models = (await model_catalog.model_chain(provider, api_key))[:3] or models
+    last_exc: Exception | None = None
+    for model in models:
+        try:
+            await litellm.acompletion(
+                model=model,
+                messages=[{"role": "user", "content": "Reply with the single word OK."}],
+                api_key=api_key,
+                max_tokens=32,
+                timeout=12,
+                num_retries=0,
+            )
+        except Exception as exc:
+            kind = _classify(exc)
+            if kind == "rate_limit":
+                return KeyCheck("rate_limited", "quota or rate limit reached right now")
+            if kind == "auth":
+                return KeyCheck("invalid", _explain_rejection(provider, exc))
+            if _is_model_problem(exc):
+                last_exc = exc  # this model is busy/retired for this key: try the next one
+                continue
+            return KeyCheck("unverified", _short_error(exc))
+        model_catalog.remember_working(provider, api_key, model.split("/", 1)[-1])
         return KeyCheck("valid")
-    except Exception as exc:
-        kind = _classify(exc)
-        if kind == "rate_limit":
-            return KeyCheck("rate_limited", "quota or rate limit reached right now")
-        if kind == "auth":
-            return KeyCheck("invalid", _explain_rejection(provider, exc))
-        if isinstance(exc, litellm.NotFoundError):
-            # Key accepted but the model name is unknown: the model list tells us if the key works.
-            model_catalog.invalidate(provider, api_key)
-            if await model_catalog.list_models(provider, api_key):
-                return KeyCheck("valid", "key works (model list available)")
-            return KeyCheck("invalid", "no access to any model with this key")
-        return KeyCheck("unverified", _short_error(exc))
+    # Every model was busy or unavailable. If the provider still lets this key list its models,
+    # the key itself is genuine, so don't throw it away because of a temporary outage.
+    if await model_catalog.list_models(provider, api_key):
+        return KeyCheck("valid", "key accepted; the AI models are busy right now")
+    return KeyCheck("unverified", _short_error(last_exc) if last_exc else "no answer")
 
 
 async def add_validated_keys(user_id: str, text: str) -> list[dict[str, Any]]:

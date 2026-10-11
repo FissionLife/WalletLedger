@@ -5,6 +5,9 @@ Run with:  uv run python -m unittest discover -s tests -v
 """
 
 import os
+
+os.environ["WALLETLEDGER_TESTING"] = "1"  # never read the real .env in tests
+os.environ["LITELLM_MODE"] = "PRODUCTION"  # litellm would otherwise load .env (real keys!)
 import tempfile
 
 _TMP_DIR = tempfile.mkdtemp(prefix="walletledger-bot-test-")
@@ -104,11 +107,11 @@ class TestCommands(BotTestCase):
     def test_start_help_balance_report(self):
         self.assertIn("Welcome to WalletLedger", run(bot.handle_text(self.chat_id, "/start")))
         self.assertIn("/setkey", run(bot.handle_text(self.chat_id, "/help")))
-        self.assertIn("Total Net Worth", run(bot.handle_text(self.chat_id, "/balance")))
-        self.assertIn("30-Day Expense Summary", run(bot.handle_text(self.chat_id, "/report")))
+        self.assertIn("Total", run(bot.handle_text(self.chat_id, "/balance")))
+        self.assertIn("Last 30 days", run(bot.handle_text(self.chat_id, "/report")))
 
     def test_command_with_bot_suffix(self):
-        self.assertIn("Total Net Worth", run(bot.handle_text(self.chat_id, "/balance@MyBot")))
+        self.assertIn("Total", run(bot.handle_text(self.chat_id, "/balance@MyBot")))
 
     def test_setkey_saves_and_masks(self):
         with patch.object(gw, "validate_api_key", AsyncMock(return_value=gw.KeyCheck("valid"))):
@@ -154,7 +157,7 @@ class TestStatementImport(BotTestCase):
         finally:
             db.close()
         self.assertEqual(sources, {"pdf"})
-        self.assertIn("₹670.50", run(bot.handle_text(self.chat_id, "/report")))
+        self.assertIn("₹670", run(bot.handle_text(self.chat_id, "/report")))
 
     def test_no_cancels_import(self):
         run(bot.handle_document(self.chat_id, "s.pdf", make_pdf(STATEMENT_LINES)))
@@ -192,14 +195,14 @@ class TestHttpEndpoints(BotTestCase):
                 "/bot/simulate_chat", json={"chat_id": self.chat_id, "text": "/balance"}
             )
             self.assertEqual(res.status_code, 200)
-            self.assertIn("Total Net Worth", res.json()["reply"])
+            self.assertIn("Total", res.json()["reply"])
             self.assertEqual(client.get("/health").json()["telegram"], "off")
 
     def test_dev_webhook_returns_reply(self):
         update = {"update_id": 1, "message": {"chat": {"id": int(self.chat_id)}, "text": "/help"}}
         with self.client as client:
             res = client.post("/bot/webhook", json=update)
-        self.assertIn("WalletLedger Help", res.json()["reply"])
+        self.assertIn("just type", res.json()["reply"])
 
     def test_webhook_rejects_wrong_secret(self):
         with (

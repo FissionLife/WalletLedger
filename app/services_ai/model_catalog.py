@@ -44,6 +44,7 @@ def invalidate(provider: str, api_key: str = "") -> None:
 
 def clear_cache() -> None:
     _cache.clear()
+    _working.clear()
 
 
 # ----------------------------- listing endpoints ---------------------------------------
@@ -188,3 +189,92 @@ async def best_model(provider: str, api_key: str = "", base_url: str = "") -> st
     ids = await list_models(provider, api_key, base_url)
     best = pick_best(provider, ids)
     return f"{provider}/{best}" if best else None
+
+
+# ----------------------------- ranked chain + "what worked" memory ---------------------
+
+_WORKING_TTL_SECONDS = 6 * 3600
+_working: dict[tuple[str, str], tuple[float, str]] = {}
+
+
+def _newest_all(ids: list[str], include: str, exclude: str = "", limit: int = 3) -> list[str]:
+    inc = re.compile(include, re.I)
+    exc = re.compile(exclude, re.I) if exclude else None
+    pool = [
+        i
+        for i in ids
+        if inc.search(i) and not _EXCLUDE_COMMON.search(i) and not (exc and exc.search(i))
+    ]
+    return sorted(pool, key=_version_key, reverse=True)[:limit]
+
+
+def rank_models(provider: str, ids: list[str]) -> list[str]:
+    """Up to ~5 chat models in the order worth trying (the first that answers is used).
+
+    A model can be listed yet still fail for one key (retired for new projects, or overloaded), so
+    callers try down this list and remember the one that works.
+    """
+    out: list[str] = []
+
+    def add(*names: str) -> None:
+        for n in names:
+            if n and n in ids and n not in out:
+                out.append(n)
+
+    if provider == "gemini":
+        add("gemini-flash-latest")
+        add(*_newest_all(ids, r"^gemini-[\d.]+-flash$", limit=2))
+        add("gemini-flash-lite-latest")
+        add(*_newest_all(ids, r"^gemini-[\d.]+-flash-lite$", limit=1))
+        # previews are excluded by _EXCLUDE_COMMON; allow the newest as a last resort
+        previews = [i for i in ids if re.match(r"^gemini-[\d.]+-flash(-lite)?-preview", i)]
+        add(*sorted(previews, key=_version_key, reverse=True)[:1])
+    elif provider == "openai":
+        add(*_newest_all(ids, r"^gpt-[\d.]+-mini$", limit=2))
+        add(*_newest_all(ids, r"^gpt-[\d.]+o?-mini", limit=1))
+        add(*_newest_all(ids, r"^gpt-[\d.]+o?$", limit=1))
+    elif provider == "anthropic":
+        add(*_newest_all(ids, r"^claude-.*sonnet", limit=2))
+        add(*_newest_all(ids, r"^claude-.*haiku", limit=1))
+    elif provider == "groq":
+        add(*_newest_all(ids, r"llama.*versatile", r"distil", limit=2))
+        add(*_newest_all(ids, r"^llama.*instant", limit=1))
+    else:
+        best = pick_best(provider, ids)
+        add(best or "")
+    if not out:
+        best = pick_best(provider, ids)
+        if best:
+            out.append(best)
+    return out[:5]
+
+
+def remember_working(provider: str, api_key: str, model_id: str) -> None:
+    _working[(provider, _fingerprint(api_key))] = (
+        time.monotonic() + _WORKING_TTL_SECONDS,
+        model_id,
+    )
+
+
+def forget_working(provider: str, api_key: str) -> None:
+    _working.pop((provider, _fingerprint(api_key)), None)
+
+
+def _working_model(provider: str, api_key: str) -> str | None:
+    hit = _working.get((provider, _fingerprint(api_key)))
+    if hit and hit[0] > time.monotonic():
+        return hit[1]
+    return None
+
+
+async def model_chain(provider: str, api_key: str = "", base_url: str = "") -> list[str]:
+    """LiteLLM names (``provider/id``) to try for this key: the one that last worked, then the ranking."""
+    ids = await list_models(provider, api_key, base_url)
+    ranked = rank_models(provider, ids)
+    worked = _working_model(provider, api_key)
+    if worked and worked in ranked:
+        ranked.remove(worked)
+        ranked.insert(0, worked)
+    elif worked and worked not in ranked and ids and worked in ids:
+        ranked.insert(0, worked)
+    return [f"{provider}/{m}" for m in ranked]

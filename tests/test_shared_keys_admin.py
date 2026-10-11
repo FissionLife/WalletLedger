@@ -1,6 +1,9 @@
 """Shared (admin-managed) keys, /admin, /status and Gemini AQ. keys. Offline."""
 
 import os
+
+os.environ["WALLETLEDGER_TESTING"] = "1"  # never read the real .env in tests
+os.environ["LITELLM_MODE"] = "PRODUCTION"  # litellm would otherwise load .env (real keys!)
 import tempfile
 
 _TMP_DIR = tempfile.mkdtemp(prefix="walletledger-shared-test-")

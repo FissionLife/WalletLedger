@@ -24,16 +24,27 @@ from typing import Any
 from aiogram import Bot, Dispatcher, F, Router
 from aiogram.enums import ChatAction, ParseMode
 from aiogram.exceptions import TelegramBadRequest
-from aiogram.types import Message
+from aiogram.types import (
+    BufferedInputFile,
+    CallbackQuery,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    InputMediaPhoto,
+    Message,
+    ReactionTypeEmoji,
+    WebAppInfo,
+)
 
+from app.bot.callbacks import handle_callback
 from app.bot.main import (
     COMMAND_MENU,
-    handle_document,
-    handle_text,
+    handle_document_rich,
+    handle_incoming,
     should_delete_message,
     upload_type,
 )
 from app.bot.profile import apply_profile
+from app.bot.ui import Btn, Reply
 from app.config import settings
 
 logger = logging.getLogger(__name__)
@@ -77,15 +88,101 @@ def to_telegram_markdown(text: str) -> str:
     return re.sub(r"\*\*(.+?)\*\*", r"*\1*", text or "", flags=re.S)
 
 
-async def send_reply(message: Message, text: str) -> None:
-    """Send a (possibly long) Markdown reply; resend as plain text if Telegram rejects it."""
-    for chunk in split_message(text):
+def to_plain(text: str) -> str:
+    """Telegram captions and fallbacks: drop Markdown markers."""
+    return (text or "").replace("**", "").replace("`", "")
+
+
+def keyboard(rows: list[list[Btn]]) -> InlineKeyboardMarkup | None:
+    """Turn button rows (ui.Btn) into a Telegram inline keyboard."""
+    if not rows:
+        return None
+    out = []
+    for row in rows:
+        buttons = []
+        for b in row:
+            if b.web_app:
+                buttons.append(InlineKeyboardButton(text=b.text, web_app=WebAppInfo(url=b.web_app)))
+            elif b.url:
+                buttons.append(InlineKeyboardButton(text=b.text, url=b.url))
+            else:
+                buttons.append(
+                    InlineKeyboardButton(text=b.text, callback_data=(b.data or "noop")[:64])
+                )
+        out.append(buttons)
+    return InlineKeyboardMarkup(inline_keyboard=out)
+
+
+async def send_reply(
+    message: Message, text: str, reply_markup: InlineKeyboardMarkup | None = None
+) -> None:
+    """Send a (possibly long) Markdown reply; resend as plain text if Telegram rejects it.
+
+    Buttons (if any) are attached to the last chunk.
+    """
+    chunks = split_message(text)
+    for i, chunk in enumerate(chunks):
+        markup = reply_markup if i == len(chunks) - 1 else None
         try:
-            await message.answer(to_telegram_markdown(chunk), parse_mode=ParseMode.MARKDOWN)
+            await message.answer(
+                to_telegram_markdown(chunk), parse_mode=ParseMode.MARKDOWN, reply_markup=markup
+            )
         except TelegramBadRequest as e:
             logger.info("Markdown rejected by Telegram (%s); sending plain text.", e)
-            plain = chunk.replace("**", "").replace("`", "")
-            await message.answer(plain, parse_mode=None)
+            await message.answer(to_plain(chunk), parse_mode=None, reply_markup=markup)
+
+
+async def deliver(message: Message, reply: Reply) -> None:
+    """Send a Reply as new message(s): photo / file / text, with its buttons."""
+    markup = keyboard(reply.rows)
+    if reply.photo:
+        await message.answer_photo(
+            BufferedInputFile(reply.photo, "walletledger.png"),
+            caption=to_plain(reply.text)[:1000],
+            reply_markup=markup,
+        )
+    elif reply.document:
+        data, name = reply.document
+        await message.answer_document(
+            BufferedInputFile(data, name), caption=to_plain(reply.text)[:1000], reply_markup=markup
+        )
+    elif reply.text:
+        await send_reply(message, reply.text, markup)
+
+
+async def update_message(message: Message, reply: Reply) -> None:
+    """Show a Reply by editing the message a button was on (falls back to a new message)."""
+    markup = keyboard(reply.rows)
+    try:
+        if message.photo and reply.photo:
+            await message.edit_media(
+                InputMediaPhoto(
+                    media=BufferedInputFile(reply.photo, "walletledger.png"),
+                    caption=to_plain(reply.text)[:1000],
+                ),
+                reply_markup=markup,
+            )
+            return
+        if not message.photo and not message.document and not reply.photo and not reply.document:
+            try:
+                await message.edit_text(
+                    to_telegram_markdown(reply.text),
+                    parse_mode=ParseMode.MARKDOWN,
+                    reply_markup=markup,
+                )
+            except TelegramBadRequest as e:
+                if "not modified" in str(e).lower():
+                    return
+                await message.edit_text(to_plain(reply.text), parse_mode=None, reply_markup=markup)
+            return
+    except TelegramBadRequest as e:
+        if "not modified" in str(e).lower():
+            return
+        logger.info("Could not edit message (%s); sending a new one.", e)
+    # Different kind of message (text <-> photo): send a new one and clear the old buttons.
+    with contextlib.suppress(Exception):
+        await message.edit_reply_markup(reply_markup=None)
+    await deliver(message, reply)
 
 
 def webhook_secret() -> str:
@@ -124,8 +221,11 @@ async def on_document(message: Message, bot: Bot) -> None:
     await bot.send_chat_action(message.chat.id, ChatAction.TYPING)
     buffer = io.BytesIO()
     await bot.download(doc, destination=buffer)
-    reply = await handle_document(str(message.chat.id), file_name, buffer.getvalue())
-    await send_reply(message, reply)
+    reply = await handle_document_rich(str(message.chat.id), file_name, buffer.getvalue())
+    await deliver(message, reply)
+
+
+_PICTURE_COMMANDS = ("/stats", "/report", "/chart")
 
 
 async def on_text(message: Message, bot: Bot) -> None:
@@ -134,9 +234,48 @@ async def on_text(message: Message, bot: Bot) -> None:
         # Remove the user's message so the API key does not stay in the chat history.
         with contextlib.suppress(Exception):
             await message.delete()
-    await bot.send_chat_action(message.chat.id, ChatAction.TYPING)
-    reply = await handle_text(str(message.chat.id), text)
-    await send_reply(message, reply)
+    wants_picture = text.lower().startswith(_PICTURE_COMMANDS)
+    await bot.send_chat_action(
+        message.chat.id, ChatAction.UPLOAD_PHOTO if wants_picture else ChatAction.TYPING
+    )
+    reply = await handle_incoming(str(message.chat.id), text)
+    await deliver(message, reply)
+    if any(b.data and b.data.startswith("undo:") for row in reply.rows for b in row):
+        # A small tick on the user's message shows the entry was recorded.
+        with contextlib.suppress(Exception):
+            await bot.set_message_reaction(
+                message.chat.id, message.message_id, [ReactionTypeEmoji(emoji="👍")]
+            )
+
+
+async def on_callback(callback: CallbackQuery, bot: Bot) -> None:
+    """A tap on an inline button."""
+    message = callback.message
+    if message is None or not isinstance(message, Message):
+        await callback.answer()
+        return
+    chat_id = str(message.chat.id)
+    if message.chat.type == "private" and callback.from_user.id != message.chat.id:
+        await callback.answer()  # a stranger cannot press buttons in someone else's chat
+        return
+    data = callback.data or ""
+    try:
+        if data.startswith(("st:", "ch:", "go:stats", "ex:")):
+            with contextlib.suppress(Exception):
+                await bot.send_chat_action(message.chat.id, ChatAction.UPLOAD_PHOTO)
+        reply = await handle_callback(chat_id, data)
+    except Exception:
+        logger.exception("Callback failed: %s", data)
+        await callback.answer("Something went wrong", show_alert=False)
+        return
+    with contextlib.suppress(Exception):
+        await callback.answer(reply.notice or None)
+    if not (reply.text or reply.photo or reply.document):
+        return
+    if reply.edit:
+        await update_message(message, reply)
+    else:
+        await deliver(message, reply)
 
 
 async def on_other(message: Message) -> None:
@@ -153,6 +292,7 @@ def build_router() -> Router:
     router = Router(name="walletledger")
     router.message.register(on_document, F.document)
     router.message.register(on_text, F.text)
+    router.callback_query.register(on_callback, F.data)
     router.message.register(on_other)
     return router
 

@@ -4,6 +4,9 @@ Offline only: provider list endpoints and litellm.acompletion are mocked.
 """
 
 import os
+
+os.environ["WALLETLEDGER_TESTING"] = "1"  # never read the real .env in tests
+os.environ["LITELLM_MODE"] = "PRODUCTION"  # litellm would otherwise load .env (real keys!)
 import tempfile
 
 _TMP_DIR = tempfile.mkdtemp(prefix="walletledger-catalog-test-")

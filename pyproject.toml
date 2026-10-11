@@ -15,6 +15,7 @@ dependencies = [
     "langchain>=1.4.3",
     "langgraph>=1.2.12",
     "litellm>=1.104.0",
+    "matplotlib>=3.11.2",
     "mcp>=2.3.0",
     "pg8000>=1.31.5",
     "psycopg2-binary>=2.9.13",
@@ -33,6 +34,7 @@ dev = [
 
 [tool.ruff]
 line-length = 100
+extend-exclude = [".claude"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]

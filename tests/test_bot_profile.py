@@ -1,6 +1,9 @@
 """Bot profile (command menu, descriptions, menu button) and the setup script. Offline."""
 
 import os
+
+os.environ["WALLETLEDGER_TESTING"] = "1"  # never read the real .env in tests
+os.environ["LITELLM_MODE"] = "PRODUCTION"  # litellm would otherwise load .env (real keys!)
 import subprocess
 import sys
 import tempfile
@@ -61,7 +64,7 @@ class ValidationTests(unittest.TestCase):
     def test_menu_has_the_key_and_help_commands(self):
         names = [c.command for c in profile.commands()]
         self.assertEqual(names, [n for n, _ in COMMAND_MENU])
-        for must in ("help", "balance", "report", "setkey", "keys", "testkey"):
+        for must in ("help", "balance", "stats", "setkey", "keys"):
             self.assertIn(must, names)
 
 

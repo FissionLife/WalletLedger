@@ -20,12 +20,14 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
-from app.bot.agent import classify_reply, process_user_interaction
+from app.bot import ui, views
+from app.bot.agent import classify_reply, process_user_interaction_ex
 from app.bot.keys import KEY_COMMANDS, handle_admin_command, handle_key_command
+from app.bot.ui import Reply
 from app.config import dev_endpoints_enabled, is_chat_allowed
 from app.db import SessionLocal
 from app.health import user_status_text
-from app.services.ledger import get_account_balances, get_or_create_user, get_spending_summary
+from app.services.ledger import get_or_create_user
 from app.services_ai.ai_gateway import extract_api_keys
 from app.services_ai.mcp_server import execute_tool
 from app.services_ai.transaction_parser import parse_statement_file
@@ -43,51 +45,63 @@ SUPPORTED_UPLOADS = {".pdf": "pdf", ".txt": "text"}
 
 # (command, short description). This list drives BOTH Telegram's "/" menu hints and /help.
 COMMAND_MENU: list[tuple[str, str]] = [
-    ("start", "Welcome and quick tips"),
-    ("balance", "Your accounts and net worth"),
-    ("report", "30-day spending summary"),
-    ("coach", "Friendly savings coach"),
-    ("budgeter", "Strict budget mode"),
-    ("summary", "Quick emoji summary"),
-    ("keys", "List your AI keys"),
-    ("setkey", "Add an AI key (tested first)"),
-    ("testkey", "Test your AI keys now"),
-    ("editkey", "Replace a key: /editkey 1 <new key>"),
-    ("delkey", "Remove a key: /delkey 1"),
-    ("pausekey", "Pause a key: /pausekey 1"),
-    ("resumekey", "Resume a key: /resumekey 1"),
-    ("status", "AI, storage and key health"),
+    ("start", "Welcome and quick start"),
+    ("menu", "Open the quick menu"),
+    ("balance", "Your accounts and total money"),
+    ("stats", "Spending stats and charts"),
+    ("history", "Recent transactions"),
+    ("undo", "Undo the last entry"),
+    ("budget", "Monthly budgets: /budget food 6000"),
+    ("dashboard", "Open your web dashboard"),
+    ("export", "Download your data as CSV"),
+    ("coach", "Friendly savings advice"),
+    ("budgeter", "Strict budget advice"),
+    ("summary", "Quick summary"),
+    ("keys", "Manage your AI keys"),
+    ("setkey", "Add your AI key"),
+    ("status", "AI and storage health"),
     ("help", "How to use WalletLedger"),
 ]
-KNOWN_COMMANDS = {f"/{name}" for name, _ in COMMAND_MENU} | {"/start", "/key", "/admin"}
+# Commands that work but are not in the menu (the menu stays short; buttons cover most of these).
+HIDDEN_COMMANDS = (
+    "report",
+    "chart",
+    "testkey",
+    "editkey",
+    "delkey",
+    "pausekey",
+    "resumekey",
+    "key",
+    "admin",
+)
+KNOWN_COMMANDS = {f"/{name}" for name, _ in COMMAND_MENU} | {f"/{c}" for c in HIDDEN_COMMANDS}
 
 HELP_TEXT = (
-    "ℹ️ **WalletLedger Help**\n\n"
-    "💬 **Just talk to me**\n"
-    "• *Paid 150 to Starbucks for coffee*\n"
-    "• *Received 60000 salary in Bank*\n"
-    "• *Transferred 2000 from Bank to Cash*\n"
-    "• Send a PhonePe / GPay / bank **PDF** to import transactions\n\n"
-    "📊 **Views**\n"
-    "• /balance · /report\n\n"
-    "🎭 **Advice modes**\n"
-    "• /coach (encouraging) · /budgeter (strict) · /summary (short)\n\n"
-    "🔑 **AI keys** (I test a key before saving it)\n"
-    "• /setkey `<key>` · /keys · /testkey\n"
-    "• /editkey `1 <new key>` · /delkey `1` · /pausekey `1` · /resumekey `1`\n"
-    "• If your key fails, I fall back to the shared team keys.\n\n"
-    "Tip: type / to see the command menu."
+    "ℹ️ **WalletLedger**\n\n"
+    "**Add** (just type)\n"
+    "• Spent 450 on dinner via Bank\n"
+    "• Received 60000 salary in Bank\n"
+    "• Transferred 2000 from Bank to Cash\n"
+    "• Send a PhonePe / GPay / bank PDF\n\n"
+    "**See**\n"
+    "/balance · /stats · /history · /budget · /dashboard · /export\n"
+    "Try: /stats 90d food · /stats last month · /chart categories\n\n"
+    "**Fix**\n"
+    "/undo removes the last entry (or tap ↩️ Undo)\n\n"
+    "**Advice**\n"
+    "/coach · /budgeter · /summary\n\n"
+    "**AI**\n"
+    "/setkey <key> · /keys · /status\n"
+    "Your own key is used first; a shared key is the backup.\n\n"
+    "Tip: type / to see all commands."
 )
 
 START_TEXT = (
-    "👋 **Welcome to WalletLedger!** 🪙\n\n"
-    "Track money in plain language, import bank statements, and get savings advice.\n\n"
-    "🚀 **Try one now**\n"
-    "• *Spent 450 on dinner via Bank*\n"
-    "• /balance · /report\n"
-    "• Send a statement PDF\n\n"
-    "🔑 Add your own AI key with /setkey `<key>` (I'll test it first), or use the shared one.\n"
-    "Type /help for everything, or / for the command menu."
+    "👋 **Welcome to WalletLedger**\n"
+    "Tell me what you spend and earn, in plain words. I keep the books.\n\n"
+    "Try: *Spent 450 on dinner via Bank*\n"
+    "Or send a bank / PhonePe PDF to import it.\n\n"
+    "For smart answers, add your AI key: /setkey"
 )
 
 
@@ -136,49 +150,94 @@ def should_delete_message(text: str) -> bool:
     )
 
 
-async def handle_text(chat_id: str, text: str) -> str:
-    """Single entry point for a text message from any channel. Returns the reply text."""
+async def handle_incoming(chat_id: str, text: str) -> Reply:
+    """Single entry point for a text message from any channel: returns text plus optional buttons."""
     chat_id = str(chat_id)
     clean = (text or "").strip()
     if not is_chat_allowed(chat_id):
-        return PRIVATE_BOT_TEXT
+        return Reply(PRIVATE_BOT_TEXT)
 
     pending = _get_pending_import(chat_id)
     if pending:
         decision = classify_reply(clean)
         if decision:
-            return _finish_import(chat_id, decision)
+            return Reply(_finish_import(chat_id, decision))
         _pending_imports.pop(chat_id, None)  # unrelated message: drop the pending import
 
     if clean.startswith("/"):
         command, _, args = clean.partition(" ")
         command = command.split("@", 1)[0].lower()  # "/balance@MyBot" in groups
+        args = args.strip()
+        if command == "/keys":
+            from app.bot.callbacks import keys_screen
+
+            return await keys_screen(chat_id)
         if command in KEY_COMMANDS:
-            return await handle_key_command(chat_id, command, args.strip())
+            return Reply(await handle_key_command(chat_id, command, args))
         if command == "/status":
-            return await user_status_text(chat_id)
+            return Reply(await user_status_text(chat_id), rows=ui.back_home())
         if command == "/admin":
-            return await handle_admin_command(chat_id, args)
-        reply = _handle_command(chat_id, command, args.strip())
+            return Reply(await handle_admin_command(chat_id, args))
+        reply = await _view_command(chat_id, command, args)
         if reply is not None:
             return reply
         if command not in PERSONA_COMMANDS:
-            return unknown_command_text(command)
+            return Reply(unknown_command_text(command))
 
-    return await process_user_interaction(chat_id=chat_id, text=clean)
+    outcome = await process_user_interaction_ex(chat_id=chat_id, text=clean)
+    rows: list[list[ui.Btn]] = []
+    if outcome.needs_confirmation:
+        rows = ui.confirm_rows()
+    elif outcome.transaction_ids:
+        rows = [ui.undo_row(outcome.transaction_ids)]
+    return Reply(outcome.text, rows=rows)
 
 
-def _handle_command(chat_id: str, command: str, args: str) -> str | None:
-    """Fixed commands. Returns None for anything the agent should handle (e.g. /coach)."""
+async def handle_text(chat_id: str, text: str) -> str:
+    """Text-only wrapper (dev endpoint, tests): the reply text without buttons."""
+    return (await handle_incoming(chat_id, text)).text
+
+
+async def _view_command(chat_id: str, command: str, args: str) -> Reply | None:
+    """Commands that open a screen (stats, history, ...). None if `command` is not one of them."""
     if command == "/start":
         _ensure_user(chat_id)
-        return START_TEXT
+        return Reply(START_TEXT, rows=ui.home_rows())
+    if command == "/menu":
+        return views.home()
     if command == "/help":
-        return HELP_TEXT
+        return Reply(HELP_TEXT, rows=ui.back_home())
     if command == "/balance":
-        return _balance_text(chat_id)
-    if command == "/report":
-        return _report_text(chat_id)
+        return await views.balance(chat_id)
+    if command in ("/stats", "/report"):
+        return await views.stats(chat_id, args)
+    if command == "/chart":
+        kind, _, rest = args.partition(" ")
+        kind = kind.lower()
+        if kind not in dict(ui.CHARTS) | {
+            "monthly": "",
+            "stack": "",
+            "sizes": "",
+            "hours": "",
+            "accounts": "",
+        }:
+            names = ", ".join(k for k, _ in ui.CHARTS)
+            return Reply(f"Which chart? /chart <name> [period]\nNames: {names}")
+        period, words = views.parse_args(rest)
+        return await views.chart(chat_id, kind, period, views._remember(words))
+    if command == "/history":
+        return await views.history(
+            chat_id, int(args) - 1 if args.isdigit() and int(args) > 0 else 0
+        )
+    if command == "/undo":
+        return await views.undo(chat_id, "last")
+    if command == "/export":
+        period, _ = views.parse_args(args)
+        return await views.export_csv(chat_id, period)
+    if command == "/budget":
+        return await views.budgets(chat_id, args)
+    if command == "/dashboard":
+        return await views.dashboard(chat_id)
     return None
 
 
@@ -188,43 +247,6 @@ def _ensure_user(chat_id: str) -> str:
         return get_or_create_user(db, telegram_chat_id=chat_id).id
     finally:
         db.close()
-
-
-def _balance_text(chat_id: str) -> str:
-    db = SessionLocal()
-    try:
-        user = get_or_create_user(db, telegram_chat_id=chat_id)
-        balances = get_account_balances(db, user.id)
-    finally:
-        db.close()
-    accounts_txt = "\n".join(
-        f"  • **{acc['name']}** ({acc['type']}): ₹{acc['balance']:,.2f}"
-        for acc in balances["accounts"]
-    )
-    return (
-        f"🏦 **Your WalletLedger Tank:**\n"
-        f"💰 **Total Net Worth:** ₹{balances['total_net_worth']:,.2f}\n\n"
-        f"**Pipes In:**\n{accounts_txt or '  No accounts yet.'}"
-    )
-
-
-def _report_text(chat_id: str) -> str:
-    db = SessionLocal()
-    try:
-        user = get_or_create_user(db, telegram_chat_id=chat_id)
-        summary = get_spending_summary(db, user.id, days=30)
-    finally:
-        db.close()
-    cats_txt = (
-        "\n".join(f"  • {cat}: ₹{amt:,.2f}" for cat, amt in summary["category_breakdown"].items())
-        or "  No expenses recorded yet."
-    )
-    return (
-        f"📊 **30-Day Expense Summary:**\n"
-        f"💸 **Total Spent:** ₹{summary['total_expenses']:,.2f}\n"
-        f"🧾 **Transactions:** {summary['transaction_count']}\n\n"
-        f"**Category Breakdown:**\n{cats_txt}"
-    )
 
 
 # ---------------------------------------------------------------------------
@@ -267,6 +289,13 @@ async def handle_document(chat_id: str, file_name: str, file_bytes: bytes) -> st
 
     _pending_imports[chat_id] = PendingImport(file_name=file_name, rows=rows)
     return _import_preview(file_name, rows)
+
+
+async def handle_document_rich(chat_id: str, file_name: str, file_bytes: bytes) -> Reply:
+    """Like handle_document, plus Import / Skip buttons when a preview is waiting for an answer."""
+    text = await handle_document(chat_id, file_name, file_bytes)
+    rows = ui.import_rows() if _get_pending_import(str(chat_id)) else []
+    return Reply(text, rows=rows)
 
 
 def _import_preview(file_name: str, rows: list[dict[str, Any]]) -> str:

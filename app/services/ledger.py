@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import func, select
@@ -8,6 +8,37 @@ from app.models import Account, Category, Merchant, Transaction, User
 
 VALID_TX_TYPES = {"expense", "income"}
 MAX_AMOUNT = 10_000_000_000.0
+
+
+def _now() -> datetime:
+    return datetime.now(UTC).replace(tzinfo=None)
+
+
+def parse_when(value: Any) -> datetime | None:
+    """Accepts a datetime, an ISO date/datetime string, or None. Raises LedgerError if unreadable."""
+    if value is None or value == "":
+        return None
+    if isinstance(value, datetime):
+        return value
+    text = str(value).strip().replace("Z", "")
+    for fmt in ("%Y-%m-%d", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M"):
+        try:
+            return datetime.strptime(text, fmt)
+        except ValueError:
+            continue
+    raise LedgerError(f"Invalid date: {value!r} (use YYYY-MM-DD)")
+
+
+def _validate_date(value: Any) -> datetime | None:
+    when = parse_when(value)
+    if when is None:
+        return None
+    when = when.replace(tzinfo=None)
+    if when.year < 2000:
+        raise LedgerError("Date is too far in the past")
+    if when > _now() + timedelta(days=1):
+        raise LedgerError("Date is in the future")
+    return when
 
 
 class LedgerError(ValueError):
@@ -134,10 +165,14 @@ def record_transaction(
     tx_type: str = "expense",
     description: str | None = None,
     source: str = "chat",
+    created_at: datetime | None = None,
 ) -> dict[str, Any]:
     """
     Logs an expense or income and updates the corresponding account balance atomically.
+
+    ``created_at`` backdates the transaction (statement imports, "yesterday I spent...").
     """
+    when = _validate_date(created_at)
     if tx_type not in VALID_TX_TYPES:
         raise LedgerError(f"Invalid transaction type {tx_type!r}; use 'expense' or 'income'")
     amount = validate_amount(amount)
@@ -170,6 +205,7 @@ def record_transaction(
         transaction_type=tx_type,
         description=description,
         source=source,
+        **({"created_at": when} if when else {}),
     )
     db.add(tx)
     try:
@@ -288,3 +324,85 @@ def get_spending_summary(db: Session, user_id: str, days: int = 30) -> dict[str,
         "transaction_count": len(txs),
         "category_breakdown": {k: round(v, 2) for k, v in cat_totals.items()},
     }
+
+
+def undo_transaction(db: Session, user_id: str, transaction_id: str) -> dict[str, Any]:
+    """Delete one of the user's transactions and put the balances back as they were.
+
+    ``transaction_id`` may be the full id or its first 8 or more characters (as shown in buttons).
+    """
+    ident = (transaction_id or "").strip()
+    if len(ident) < 6:
+        raise LedgerError("Transaction id is too short")
+    stmt = select(Transaction).where(Transaction.user_id == user_id)
+    stmt = (
+        stmt.where(Transaction.id == ident)
+        if len(ident) >= 36
+        else stmt.where(Transaction.id.like(f"{ident}%"))
+    )
+    matches = list(db.scalars(stmt.limit(2)))
+    if not matches:
+        raise LedgerError("That transaction was not found (maybe it was already undone)")
+    if len(matches) > 1:
+        raise LedgerError("That id matches more than one transaction; use a longer id")
+    tx = matches[0]
+    src = db.get(Account, tx.account_id) if tx.account_id else None
+    dst = db.get(Account, tx.to_account_id) if tx.to_account_id else None
+    if tx.transaction_type == "expense" and src:
+        src.balance = round(src.balance + tx.amount, 2)
+    elif tx.transaction_type == "income" and src:
+        src.balance = round(src.balance - tx.amount, 2)
+    elif tx.transaction_type == "transfer":
+        if src:
+            src.balance = round(src.balance + tx.amount, 2)
+        if dst:
+            dst.balance = round(dst.balance - tx.amount, 2)
+    summary = {
+        "status": "success",
+        "transaction_id": tx.id,
+        "type": tx.transaction_type,
+        "amount": tx.amount,
+        "account": src.name if src else None,
+        "to_account": dst.name if dst else None,
+        "new_balance": round(src.balance, 2) if src else None,
+        "when": tx.created_at.date().isoformat(),
+    }
+    try:
+        db.delete(tx)
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    return summary
+
+
+def recent_transactions(
+    db: Session, user_id: str, limit: int = 10, offset: int = 0, kind: str | None = None
+) -> tuple[list[dict[str, Any]], int]:
+    """Newest first, with human-readable names. Returns (rows, total count)."""
+    base = select(Transaction).where(Transaction.user_id == user_id)
+    if kind:
+        base = base.where(Transaction.transaction_type == kind)
+    total = db.scalar(select(func.count()).select_from(base.subquery())) or 0
+    stmt = (
+        base.options(joinedload(Transaction.category), joinedload(Transaction.merchant))
+        .order_by(Transaction.created_at.desc(), Transaction.id)
+        .offset(offset)
+        .limit(limit)
+    )
+    names = {a.id: a.name for a in db.scalars(select(Account).where(Account.user_id == user_id))}
+    rows = [
+        {
+            "id": t.id,
+            "date": t.created_at.date().isoformat(),
+            "type": t.transaction_type,
+            "amount": t.amount,
+            "category": t.category.name if t.category else "",
+            "merchant": t.merchant.name if t.merchant else "",
+            "account": names.get(t.account_id, ""),
+            "to_account": names.get(t.to_account_id, "") if t.to_account_id else "",
+            "note": t.description or "",
+        }
+        for t in db.scalars(stmt).unique()
+    ]
+    return rows, total

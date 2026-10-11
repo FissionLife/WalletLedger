@@ -57,8 +57,12 @@ def log_expense(
     account_name: str = "Cash",
     description: str | None = None,
     source: str = "chat",
+    date: str | None = None,
 ) -> dict[str, Any]:
-    """Record an expense and debit its payment account (``source``: chat, pdf, sms...)."""
+    """Record an expense and debit its payment account (``source``: chat, pdf, sms...).
+
+    ``date`` (YYYY-MM-DD) backdates it; leave empty for now.
+    """
 
     def run(db: Session, **values: Any) -> dict[str, Any]:
         user = _resolve_user(db, values.pop("user_id"))
@@ -75,6 +79,7 @@ def log_expense(
         account_name=account_name,
         description=description,
         source=source,
+        created_at=date,
     )
 
 
@@ -85,8 +90,12 @@ def log_income(
     category: str = "Income",
     description: str | None = None,
     source: str = "chat",
+    date: str | None = None,
 ) -> dict[str, Any]:
-    """Record income and credit its destination account (``source``: chat, pdf, sms...)."""
+    """Record income and credit its destination account (``source``: chat, pdf, sms...).
+
+    ``date`` (YYYY-MM-DD) backdates it; leave empty for now.
+    """
 
     def run(db: Session, **values: Any) -> dict[str, Any]:
         user = _resolve_user(db, values.pop("user_id"))
@@ -102,6 +111,7 @@ def log_income(
         category_name=category,
         description=description,
         source=source,
+        created_at=date,
     )
 
 

@@ -1,6 +1,9 @@
 """The .env editor and the setup helpers. Offline; never touches a real .env."""
 
 import os
+
+os.environ["WALLETLEDGER_TESTING"] = "1"  # never read the real .env in tests
+os.environ["LITELLM_MODE"] = "PRODUCTION"  # litellm would otherwise load .env (real keys!)
 import subprocess
 import sys
 import tempfile

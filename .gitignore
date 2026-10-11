@@ -35,3 +35,7 @@ htmlcov/
 # Local tooling / agent state
 .remember/
 .claude/settings.local.json
+.claude/
+out_charts/
+*.png
+!site/**/*.png

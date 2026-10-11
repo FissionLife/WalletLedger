@@ -180,6 +180,10 @@ TOOLS_SCHEMA: list[dict[str, Any]] = [
                         "type": "string",
                         "description": "Brief description of the expense item.",
                     },
+                    "date": {
+                        "type": "string",
+                        "description": "YYYY-MM-DD, only when the user says it happened on another day (e.g. yesterday). Omit for today.",
+                    },
                 },
                 "required": ["amount", "category"],
             },
@@ -1667,9 +1671,25 @@ agent_app = build_agent_graph()
 # ---------------------------------------------------------------------------
 
 
+@dataclass
+class Outcome:
+    """What the agent did, for the UI: the reply plus facts used to add buttons."""
+
+    text: str
+    transaction_ids: list[str] = field(default_factory=list)
+    needs_confirmation: bool = False
+
+
 async def process_user_interaction(
     chat_id: str, text: str, attachments: list[Any] | None = None
 ) -> str:
+    """Text-only entry point (kept for the dev endpoint and older callers)."""
+    return (await process_user_interaction_ex(chat_id, text, attachments)).text
+
+
+async def process_user_interaction_ex(
+    chat_id: str, text: str, attachments: list[Any] | None = None
+) -> Outcome:
     """
     Contract 1: Primary entrypoint for Telegram Bot (Krishna) to interact with LangGraph agent.
     Loads the recent conversation history, runs the graph, and persists both messages.
@@ -1694,17 +1714,19 @@ async def process_user_interaction(
         # Run StateGraph
         final_state = await agent_app.ainvoke(initial_state)
         reply = final_state.get("response_text", "Done.")
+        tx_ids = [
+            str(r["result"]["transaction_id"])
+            for r in (final_state.get("tool_results") or [])
+            if isinstance(r.get("result"), dict) and r["result"].get("transaction_id")
+        ]
 
         # Save assistant reply to database
         save_db_chat_message(chat_id, "assistant", reply)
 
-        return reply
+        return Outcome(reply, tx_ids, bool(final_state.get("requires_confirmation")))
     except Exception as e:
         logger.error(f"Error executing LLM Agent StateGraph: {e}", exc_info=True)
-        return (
-            f"⚠️ **Agent Error:** Something unexpected occurred while processing your message.\n"
-            f"*Details:* {e}"
-        )
+        return Outcome("⚠️ Something went wrong on my side. Please try again in a moment.")
 
 
 def process_message(chat_id: str, text: str) -> str:
