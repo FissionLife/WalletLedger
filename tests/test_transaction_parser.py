@@ -14,21 +14,28 @@ from app.services_ai.transaction_parser import (
 
 
 class TransactionParserTests(unittest.TestCase):
-    def test_parses_debit_sms_without_guessing_a_new_merchant_category(self):
+    def test_parses_debit_sms_with_clean_merchant_and_known_brand_category(self):
         rows = parse_receipt_text(
             "02/10/2026 Your A/c XX1234 debited Rs. 450.50 to UPI-SWIGGY-182390@upi ref 123456"
         )
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0]["amount"], 450.50)
         self.assertEqual(rows[0]["type"], "expense")
-        self.assertEqual(rows[0]["category"], "Uncategorized")
+        self.assertEqual(rows[0]["merchant"], "Swiggy")
+        self.assertEqual(rows[0]["category"], "Food & Dining")  # known Indian brand
         self.assertEqual(rows[0]["date"], "2026-10-02")
+        # A merchant nobody knows is still never guessed.
+        self.assertEqual(
+            parse_receipt_text("Your A/c XX1234 debited Rs. 99 to Zqx Traders")[0]["category"],
+            "Uncategorized",
+        )
 
     def test_parses_chat_expense(self):
         row = parse_chat_expense("Spent Rs 200 at Uber on 02-10-2026")
         self.assertIsNotNone(row)
         self.assertEqual(row["amount"], 200.0)
-        self.assertEqual(row["category"], "Uncategorized")
+        self.assertEqual(row["merchant"], "Uber")
+        self.assertEqual(row["category"], "Transport")
 
     def test_income_and_unknown_category_are_safe(self):
         rows = parse_receipt_text("Salary credited INR 100000 from Acme Corp")
