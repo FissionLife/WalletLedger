@@ -25,7 +25,6 @@ Default models can be overridden with ``AI_MODEL_<PROVIDER>``, e.g. ``AI_MODEL_G
 from __future__ import annotations
 
 import asyncio
-import base64
 import hashlib
 import logging
 import os
@@ -36,10 +35,11 @@ from dataclasses import dataclass, field
 from typing import Any
 
 import litellm
-from cryptography.fernet import Fernet, InvalidToken
+from cryptography.fernet import InvalidToken, MultiFernet
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app import crypto
 from app.config import settings
 from app.models import ApiKey, User
 from app.services_ai import model_catalog
@@ -185,10 +185,9 @@ def mask_key(api_key: str) -> str:
 # --------------------------------------------------------------------------------------
 
 
-def _fernet() -> Fernet:
-    # Same derivation as mcp_server.save_user_api_key -> keys are interchangeable.
-    secret = hashlib.sha256(settings.secret_key.encode("utf-8")).digest()
-    return Fernet(base64.urlsafe_b64encode(secret))
+def _fernet() -> MultiFernet:
+    # HKDF-derived vault key (app/crypto.py): writes use SECRET_KEY, reads also SECRET_KEY_OLD.
+    return crypto.vault_fernet()
 
 
 def encrypt_api_key(api_key: str) -> str:
@@ -196,7 +195,8 @@ def encrypt_api_key(api_key: str) -> str:
 
 
 def decrypt_api_key(encrypted_key: str) -> str:
-    return _fernet().decrypt(encrypted_key.encode("utf-8")).decode("utf-8")
+    # New format first, then the legacy sha256(SECRET_KEY) format. Raises InvalidToken.
+    return crypto.decrypt_vault(encrypted_key)
 
 
 # --------------------------------------------------------------------------------------

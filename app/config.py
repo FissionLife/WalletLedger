@@ -53,8 +53,10 @@ class Settings(BaseSettings):
     # Unset = enabled only while no bot token is configured; true/false overrides.
     enable_dev_endpoints: bool | None = None
 
-    # Security key for encrypting user API keys
+    # Security key for encrypting user API keys, chat history and transaction notes (app/crypto.py)
     secret_key: str = INSECURE_DEV_KEY
+    # Previous SECRET_KEY values (comma-separated), still accepted for reading during a rotation.
+    secret_key_old: str = ""
 
     # Optional server-side AI keys, used only when a user has not added their own key.
     # *_API_KEYS accept several keys separated by commas (round-robin rotation).

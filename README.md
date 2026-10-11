@@ -73,8 +73,15 @@ The ones you will actually touch:
 | `TELEGRAM_BOT_TOKEN` | from @BotFather |
 | `ALLOWED_CHAT_IDS` | who may use the bot (empty = anyone: set this) |
 | `ADMIN_CHAT_IDS` | who may use `/admin` |
-| `SECRET_KEY` | encrypts saved AI keys (the wizard generates it) |
+| `SECRET_KEY` | encrypts saved AI keys, chat history and notes (the wizard generates it) |
 | `DB_MODE` | `sqlite` (default, a single file) or `postgres` (`docker compose up -d`) |
+
+## Protect your data
+
+Chat history, transaction notes and AI keys are encrypted in the database with `SECRET_KEY`.
+After upgrading, back up the database, then run `uv run python scripts/protect_data.py encrypt`
+once to encrypt older rows (`status` shows progress). The server can still read your data (it has
+to, to answer you). What this does and does not protect: [SECURITY.md](docs/SECURITY.md).
 
 ## For developers
 
