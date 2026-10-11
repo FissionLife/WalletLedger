@@ -1,101 +1,106 @@
 /*
-  WalletLedger landing page styles
-  ================================
+  ==========================================================================================
+  WALLETLEDGER COLOUR TOKENS  (copy these verbatim into the dashboard / charts)
+  ==========================================================================================
+  Role                     Light       Dark        Used for
+  -----------------------  ----------  ----------  -----------------------------------------
+  surface                  #ffffff     #121212     page background, cards in light mode
+  surface-variant          #f5f5f5     #1e1e1e     alternate sections, code areas, chips
+  outline                  #737373     #8f8f8f     outlined buttons, input borders (>= 3:1)
+  on-surface               #18181b     #ececec     main text
+  on-surface-variant       #525252     #b3b3b3     secondary text
+  primary                  #056dff     #045ede     filled buttons, icons, user chat bubbles
+  primary-container        #e5efff     #2b2b2b     small highlights (icon tiles, info badges)
+  success                  #006045     #86efac     success text / icons
+  warning                  #8a4b00     #ffc46b     warning text / icons
+  error                    #b3261e     #ffb4ab     error text / icons
 
-  Visual language: Cloudflare "Kumo" design system, with its BLUE brand colour as the accent.
-  Kumo is MIT-licensed. No Kumo code, logos or assets are copied here; only its colour values and
-  sizing conventions are re-used as plain CSS variables.
+  Companion values (also safe to reuse):
+  on-primary               #ffffff     #ffffff     text on primary
+  on-primary-container     #0041a8     #8cc2ff     text/icons on primary-container
+  link                     #0057d9     #6aafff     blue TEXT on any surface (primary itself is
+                                                   only 4.1:1 on surface-variant, so text uses this)
+  outline-variant          #e5e5e5     #333333     dividers, card hairlines (decorative)
+  surface-raised           #ffffff     #262626     cards that sit on surface-variant
+  success-container        #dcfce7     #1f2e25
+  warning-container        #fff3d6     #33291a
+  error-container          #fde7e7     #3a2121
 
-  Sources (read 2026-10-11):
-    - Tokens:   https://github.com/cloudflare/kumo/blob/main/packages/kumo/src/styles/theme-kumo.css
-    - Button:   https://github.com/cloudflare/kumo/blob/main/packages/kumo/src/components/button/button.tsx
-    - Badge:    https://github.com/cloudflare/kumo/blob/main/packages/kumo/src/components/badge/badge.tsx
-    - Docs:     https://kumo-ui.com
+  Contrast (WCAG 2.x), checked with a script: every text pair above is >= 4.5:1, e.g.
+  on-primary/primary 4.53 (light) and 5.74 (dark); on-surface-variant/surface-variant 7.17 / 7.95;
+  link/surface-variant 5.72 / 7.29; outline/surface 4.74 / 5.79.
+  ==========================================================================================
 
-  Kumo defines its tokens in OKLCH. The hex values below are conversions of those exact values
-  (rounded to the nearest sRGB hex), so they work in every browser.
-
-    Token (Kumo name)            Light                                 Dark
-    --color-kumo-brand           oklch(0.5772 0.2324 260)  = #056dff   same mixed with 10% black = #045ede
-    --color-kumo-brand-hover     blue-700 oklch(48.8% .243 264.4) = #1447e6 (both themes)
-    --text-color-kumo-link       blue-800 = #193cb8                    blue-400 = #51a2ff
-    --text-color-kumo-default    neutral-900 = #18181b                 neutral-100 = #f5f5f5
-    --text-color-kumo-strong     neutral-950 = #0a0a0a                 neutral-50  = #fafafa
-    --text-color-kumo-subtle     neutral-500 = #737373                 neutral-400 = #a1a1a1
-    --color-kumo-base            white #ffffff                         neutral-925 oklch(17%) = #0f0f0f
-    --color-kumo-elevated        oklch(98%) = #f8f8f8                  oklch(12%) = #060606
-    --color-kumo-recessed        oklch(96%) = #f2f2f2                  oklch(15%) = #0b0b0b
-    --color-kumo-tint            neutral-100 = #f5f5f5                 oklch(26.9%) = #262626
-    --color-kumo-fill            neutral-200 = #e5e5e5                 oklch(26.9%) = #262626
-    --color-kumo-line            oklch(14.5% 0 0 / .1)                 oklch(32%) = #333333
-    --color-kumo-hairline        oklch(93.5%) = #e9e9e9                oklch(26.9%) = #262626
-    --text-color-kumo-success    emerald-800 = #006045                 emerald-200 = #a4f4cf
-    --color-kumo-success-tint    oklch(96.2% .043 156.7 / .57)         oklch(39.3% .096 152.3 / .2)
-    --color-kumo-info-tint       oklch(93.2% .032 255.6 / .45)         oklch(38% .145 265.5 / .22)
-    badge-orange-subtle text     orange-800 = #9f2d00                  orange-200 = #ffd6a7
-    --color-kumo-warning-tint    oklch(93.1% .107 94.6 / .2)           oklch(35.3% .079 65 / .37)
-
-  Component conventions taken from Kumo's source:
-    - Buttons: font-weight 500, height 36px (base) / 40px (large), radius 8px ("rounded-lg"),
-      1px ring instead of a border, tiny shadow ("shadow-xs"). Primary = brand blue with a subtle
-      top-to-bottom gradient from (brand + 15% white) to brand, ring = brand + 10% black, white text.
-      Secondary = base surface, default text, 1px ring in the "line" colour, hover = "tint".
-      Focus-visible = 2px brand ring.
-    - Badges: pill ("rounded-full"), 12px text, weight 500, padding 2px 8px, tinted background.
-    - Surfaces: base / elevated / recessed layers separated by 1px "line" / "hairline" rings.
-    - Kumo's own type scale is compact (12/13/14/16px). A landing page needs larger headings, so the
-      heading sizes below are our own; body copy uses Kumo's 16px "lg" step.
-
-  Our additions (not Kumo tokens): --muted (Kumo neutral-600 #525252 in light) is used for longer
-  secondary paragraphs, because neutral-500 is only just AA on off-white surfaces.
-  Fonts: system font stack only (no web fonts are downloaded).
+  DESIGN APPROACH: Material Design 3 structure + Cloudflare Kumo blue
+  -------------------------------------------------------------------
+  - Accent: Kumo's brand blue is the ONLY accent colour.
+      Source: https://github.com/cloudflare/kumo/blob/main/packages/kumo/src/styles/theme-kumo.css
+      --color-kumo-brand: light-dark(oklch(0.5772 0.2324 260), <same mixed with 10% black>)
+      = #056dff (light) and #045ede (dark). Hover: Kumo blue-700 #1447e6.
+      Light-mode link #0057d9 is a slightly deeper step of the same blue, chosen for contrast.
+      Dark-mode link #6aafff sits next to Kumo's blue-400 (#51a2ff) and is a bit lighter for contrast.
+  - Neutrals: Kumo's neutral scale (white, neutral-100 #f5f5f5, neutral-200 #e5e5e5,
+    neutral-500 #737373, neutral-600 #525252, neutral-800 #262626, neutral-900 #18181b).
+    Dark mode uses Material's neutral dark surfaces (#121212, #1e1e1e). No surface is tinted
+    blue, and there is no navy anywhere: in dark mode even primary-container is neutral grey
+    and the blue lives only in text, icons, buttons and the user's chat bubbles.
+  - Material 3 shape: pill buttons (full radius), 8px chips, 16-20px cards, 28px large containers.
+  - Material 3 elevation: soft two-layer shadows (levels 1-3 below). In dark mode the raised
+    surfaces are also lighter greys (tonal elevation).
+  - Material 3 states: a "state layer" (a currentColor overlay) at 8% on hover, 10% on focus and
+    12% on press, plus a 2px blue focus ring for keyboard users.
+  - Kumo conventions kept: weight-500 button labels, pill badges with 12px text, 1px hairlines.
+  - Motion: 150-250ms, Material "standard" easing; all of it is switched off for people who ask
+    their system for reduced motion.
+  - Theme: LIGHT by default. The moon/sun button switches to dark and the choice is remembered
+    in this browser (localStorage).
+  - Fonts: the system font stack only (nothing is downloaded).
 */
 
 :root {
-  --brand: #056dff;
-  --brand-hover: #1447e6;
-  --brand-ring: #045ede;
-  --brand-grad-start: #3c86ff;
-  --on-brand: #ffffff;
-  --link: #193cb8;
+  /* the tokens from the table above */
+  --surface: #ffffff;
+  --surface-variant: #f5f5f5;
+  --surface-raised: #ffffff;
+  --outline: #737373;
+  --outline-variant: #e5e5e5;
+  --on-surface: #18181b;
+  --on-surface-variant: #525252;
+  --primary: #056dff;
+  --primary-hover: #1447e6;
+  --on-primary: #ffffff;
+  --primary-container: #e5efff;
+  --on-primary-container: #0041a8;
+  --link: #0057d9;
+  --success: #006045;
+  --success-container: #dcfce7;
+  --warning: #8a4b00;
+  --warning-container: #fff3d6;
+  --error: #b3261e;
+  --error-container: #fde7e7;
 
-  --text: #18181b;
-  --text-strong: #0a0a0a;
-  --subtle: #737373;
-  --muted: #525252;
+  /* Material 3 elevation, softened */
+  --elev-1: 0 1px 2px rgba(0, 0, 0, 0.08), 0 1px 3px 1px rgba(0, 0, 0, 0.05);
+  --elev-2: 0 1px 2px rgba(0, 0, 0, 0.08), 0 2px 6px 2px rgba(0, 0, 0, 0.06);
+  --elev-3: 0 2px 4px rgba(0, 0, 0, 0.06), 0 8px 24px 4px rgba(0, 0, 0, 0.08);
+  --elev-phone: 0 2px 6px rgba(0, 0, 0, 0.1), 0 30px 60px -18px rgba(0, 0, 0, 0.28);
 
-  --canvas: #fbfbfb;
-  --base: #ffffff;
-  --elevated: #f8f8f8;
-  --recessed: #f2f2f2;
-  --tint: #f5f5f5;
-  --fill: #e5e5e5;
-  --line: rgba(10, 10, 10, 0.1);
-  --hairline: #e9e9e9;
-
-  --success-text: #006045;
-  --success-tint: rgba(220, 252, 231, 0.9);
-  --info-text: #193cb8;
-  --info-tint: rgba(219, 234, 254, 0.7);
-  --warn-text: #9f2d00;
-  --warn-tint: rgba(255, 232, 148, 0.45);
-
-  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.05);
-  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.04), 0 8px 24px rgba(0, 0, 0, 0.06);
-  --shadow-phone: 0 1px 0 rgba(0, 0, 0, 0.12), 0 30px 60px -20px rgba(5, 40, 110, 0.35);
-
-  /* Telegram-like chat colours used only inside the phone illustration. */
-  --chat-bg: #e7eef7;
+  /* phone illustration (neutral greys + the primary blue for the user's bubbles) */
+  --chat-bg: #eeeeee;
   --chat-in: #ffffff;
-  --chat-out: #dcebff;
-  --chat-meta: #5f6b7a;
-  --chat-btn: #4a6a8c;
-  --chat-cmd: #193cb8;
+  --chat-meta: #6b6b6b;
+  --phone-frame: #1c1c1c;
 
-  --radius-sm: 6px;
-  --radius: 8px;
-  --radius-lg: 12px;
-  --radius-xl: 16px;
+  --radius-chip: 8px;
+  --radius-sm: 12px;
+  --radius-card: 16px;
+  --radius-lg: 20px;
+  --radius-xl: 28px;
+  --radius-full: 999px;
+
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --fast: 150ms;
+  --medium: 250ms;
 
   --font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans",
     sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
@@ -103,83 +108,43 @@
 
   --max: 1120px;
   --gutter: 16px;
+  --header-h: 64px;
 
   color-scheme: light;
 }
 
-/* Dark theme: follows the operating system unless the visitor picked "light" with the toggle. */
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --brand: #045ede;
-    --brand-hover: #1447e6;
-    --brand-ring: #0a4fc0;
-    --brand-grad-start: #2f78f0;
-    --link: #51a2ff;
-    --text: #f5f5f5;
-    --text-strong: #fafafa;
-    --subtle: #a1a1a1;
-    --muted: #b5b5b5;
-    --canvas: #030303;
-    --base: #0f0f0f;
-    --elevated: #060606;
-    --recessed: #0b0b0b;
-    --tint: #262626;
-    --fill: #262626;
-    --line: #333333;
-    --hairline: #262626;
-    --success-text: #a4f4cf;
-    --success-tint: rgba(12, 84, 43, 0.45);
-    --info-text: #51a2ff;
-    --info-tint: rgba(28, 57, 142, 0.35);
-    --warn-text: #ffd6a7;
-    --warn-tint: rgba(87, 49, 0, 0.6);
-    --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.4);
-    --shadow-card: 0 1px 0 rgba(255, 255, 255, 0.04), 0 8px 24px rgba(0, 0, 0, 0.4);
-    --shadow-phone: 0 0 0 1px rgba(255, 255, 255, 0.08), 0 30px 60px -20px rgba(0, 0, 0, 0.8);
-    --chat-bg: #0e1621;
-    --chat-in: #182533;
-    --chat-out: #2b5278;
-    --chat-meta: #8b9bb0;
-    --chat-btn: #2b4561;
-    --chat-cmd: #b9dcff;
-    color-scheme: dark;
-  }
-}
-
-/* Same values, applied when the visitor chose "dark" with the toggle. Keep in sync with the block above. */
+/* Dark theme: only when the visitor picks it with the toggle (light is the default). */
 :root[data-theme="dark"] {
-  --brand: #045ede;
-  --brand-hover: #1447e6;
-  --brand-ring: #0a4fc0;
-  --brand-grad-start: #2f78f0;
-  --link: #51a2ff;
-  --text: #f5f5f5;
-  --text-strong: #fafafa;
-  --subtle: #a1a1a1;
-  --muted: #b5b5b5;
-  --canvas: #030303;
-  --base: #0f0f0f;
-  --elevated: #060606;
-  --recessed: #0b0b0b;
-  --tint: #262626;
-  --fill: #262626;
-  --line: #333333;
-  --hairline: #262626;
-  --success-text: #a4f4cf;
-  --success-tint: rgba(12, 84, 43, 0.45);
-  --info-text: #51a2ff;
-  --info-tint: rgba(28, 57, 142, 0.35);
-  --warn-text: #ffd6a7;
-  --warn-tint: rgba(87, 49, 0, 0.6);
-  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.4);
-  --shadow-card: 0 1px 0 rgba(255, 255, 255, 0.04), 0 8px 24px rgba(0, 0, 0, 0.4);
-  --shadow-phone: 0 0 0 1px rgba(255, 255, 255, 0.08), 0 30px 60px -20px rgba(0, 0, 0, 0.8);
-  --chat-bg: #0e1621;
-  --chat-in: #182533;
-  --chat-out: #2b5278;
-  --chat-meta: #8b9bb0;
-  --chat-btn: #2b4561;
-  --chat-cmd: #b9dcff;
+  --surface: #121212;
+  --surface-variant: #1e1e1e;
+  --surface-raised: #262626;
+  --outline: #8f8f8f;
+  --outline-variant: #333333;
+  --on-surface: #ececec;
+  --on-surface-variant: #b3b3b3;
+  --primary: #045ede;
+  --primary-hover: #1447e6;
+  --on-primary: #ffffff;
+  --primary-container: #2b2b2b;
+  --on-primary-container: #8cc2ff;
+  --link: #6aafff;
+  --success: #86efac;
+  --success-container: #1f2e25;
+  --warning: #ffc46b;
+  --warning-container: #33291a;
+  --error: #ffb4ab;
+  --error-container: #3a2121;
+
+  --elev-1: 0 1px 2px rgba(0, 0, 0, 0.5), 0 1px 3px 1px rgba(0, 0, 0, 0.3);
+  --elev-2: 0 1px 2px rgba(0, 0, 0, 0.5), 0 2px 6px 2px rgba(0, 0, 0, 0.35);
+  --elev-3: 0 2px 4px rgba(0, 0, 0, 0.5), 0 8px 24px 4px rgba(0, 0, 0, 0.4);
+  --elev-phone: 0 0 0 1px #333333, 0 30px 60px -18px rgba(0, 0, 0, 0.7);
+
+  --chat-bg: #121212;
+  --chat-in: #2a2a2a;
+  --chat-meta: #a3a3a3;
+  --phone-frame: #2a2a2a;
+
   color-scheme: dark;
 }
 
@@ -194,7 +159,7 @@
 html {
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
-  scroll-padding-top: 76px;
+  scroll-padding-top: calc(var(--header-h) + 12px);
 }
 
 @media (prefers-reduced-motion: no-preference) {
@@ -208,8 +173,8 @@ body {
   font-family: var(--font);
   font-size: 16px;
   line-height: 1.6;
-  color: var(--text);
-  background: var(--base);
+  color: var(--on-surface);
+  background: var(--surface);
   -webkit-font-smoothing: antialiased;
   overflow-x: hidden;
 }
@@ -223,7 +188,7 @@ svg {
 h1,
 h2,
 h3 {
-  color: var(--text-strong);
+  color: var(--on-surface);
   line-height: 1.15;
   letter-spacing: -0.02em;
   margin: 0;
@@ -249,17 +214,16 @@ kbd {
 }
 
 :not(pre) > code {
-  background: var(--tint);
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-sm);
+  background: var(--surface-variant);
+  border: 1px solid var(--outline-variant);
+  border-radius: 6px;
   padding: 0.05em 0.35em;
   white-space: nowrap;
 }
 
 :focus-visible {
-  outline: 2px solid var(--brand);
+  outline: 2px solid var(--primary);
   outline-offset: 2px;
-  border-radius: 4px;
 }
 
 .visually-hidden {
@@ -279,12 +243,13 @@ kbd {
   left: var(--gutter);
   top: -100px;
   z-index: 100;
-  background: var(--brand);
-  color: var(--on-brand);
-  padding: 8px 14px;
-  border-radius: var(--radius);
+  background: var(--primary);
+  color: var(--on-primary);
+  padding: 10px 18px;
+  border-radius: var(--radius-full);
   font-weight: 500;
   text-decoration: none;
+  box-shadow: var(--elev-2);
 }
 
 .skip-link:focus {
@@ -304,34 +269,76 @@ kbd {
   }
 }
 
-/* ---------- Buttons (Kumo button) ---------- */
+/* ---------- State layer (Material 3): hover 8%, focus 10%, pressed 12% ---------- */
+
+.state {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+}
+
+.state::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: currentColor;
+  opacity: 0;
+  transition: opacity var(--fast) var(--ease);
+  pointer-events: none;
+}
+
+.state:hover::after {
+  opacity: 0.08;
+}
+
+.state:focus-visible::after {
+  opacity: 0.1;
+}
+
+.state:active::after {
+  opacity: 0.12;
+}
+
+/* ---------- Buttons: filled, tonal, outlined, text, icon (all pill-shaped) ---------- */
 
 .btn {
-  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
   height: 40px;
-  padding: 0 16px;
+  padding: 0 24px;
   border: 0;
-  border-radius: var(--radius);
+  border-radius: var(--radius-full);
   font: inherit;
   font-size: 15px;
   font-weight: 500;
   line-height: 1;
+  letter-spacing: 0.01em;
   white-space: nowrap;
   text-decoration: none;
   cursor: pointer;
-  box-shadow: var(--shadow-xs);
-  transition: background-color 0.15s, color 0.15s, box-shadow 0.15s;
+  transition: box-shadow var(--fast) var(--ease), background-color var(--fast) var(--ease),
+    transform var(--fast) var(--ease);
   -webkit-user-select: none;
   user-select: none;
 }
 
+.btn:hover {
+  text-decoration: none;
+}
+
 .btn:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 2px var(--base), 0 0 0 4px var(--brand);
+  outline: 2px solid var(--primary);
+  outline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .btn:active {
+    transform: scale(0.98);
+  }
 }
 
 .btn svg {
@@ -340,96 +347,92 @@ kbd {
   flex: none;
 }
 
-.btn-primary {
-  color: var(--on-brand);
-  background: linear-gradient(to bottom, var(--brand-grad-start), var(--brand));
-  box-shadow: inset 0 0 0 1px var(--brand-ring), inset 0 1px 0 rgba(255, 255, 255, 0.25),
-    var(--shadow-xs);
-}
-
-.btn-primary:hover {
-  background: var(--brand-hover);
-  text-decoration: none;
-}
-
-.btn-secondary {
-  color: var(--text);
-  background: var(--base);
-  box-shadow: inset 0 0 0 1px var(--line), var(--shadow-xs);
-}
-
-.btn-secondary:hover {
-  background: var(--tint);
-  text-decoration: none;
-}
-
-.btn-ghost {
-  color: var(--text);
-  background: transparent;
+.btn-filled {
+  color: var(--on-primary);
+  background: var(--primary);
   box-shadow: none;
 }
 
-.btn-ghost:hover {
-  background: var(--tint);
+.btn-filled:hover {
+  background: var(--primary-hover);
+  box-shadow: var(--elev-1);
+}
+
+.btn-tonal {
+  color: var(--on-surface);
+  background: var(--surface-variant);
+}
+
+:root[data-theme="dark"] .btn-tonal {
+  background: #2b2b2b; /* one tonal step above surface-variant so it reads on #121212 */
+}
+
+.btn-outlined {
+  color: var(--link);
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--outline);
+}
+
+.btn-text {
+  color: var(--link);
+  background: transparent;
+  padding: 0 12px;
+}
+
+.btn-icon {
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  color: var(--on-surface-variant);
+  background: transparent;
 }
 
 .btn-sm {
   height: 36px;
-  padding: 0 12px;
+  padding: 0 16px;
   font-size: 14px;
 }
 
-.btn-icon {
-  width: 36px;
-  height: 36px;
-  padding: 0;
-}
-
 .btn-lg {
-  height: 44px;
-  padding: 0 20px;
+  height: 48px;
+  padding: 0 28px;
   font-size: 16px;
 }
 
-/* ---------- Badges (Kumo badge) ---------- */
+/* ---------- Badges (Kumo pill badge) and chips (Material assist chip) ---------- */
 
 .badge {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   width: fit-content;
-  padding: 2px 8px;
-  border-radius: 999px;
+  padding: 2px 10px;
+  border-radius: var(--radius-full);
   font-size: 12px;
   font-weight: 500;
-  line-height: 1.5;
+  line-height: 1.6;
   white-space: nowrap;
 }
 
 .badge-info {
-  color: var(--info-text);
-  background: var(--info-tint);
+  color: var(--on-primary-container);
+  background: var(--primary-container);
 }
 
 .badge-success {
-  color: var(--success-text);
-  background: var(--success-tint);
+  color: var(--success);
+  background: var(--success-container);
 }
 
 .badge-warning {
-  color: var(--warn-text);
-  background: var(--warn-tint);
+  color: var(--warning);
+  background: var(--warning-container);
 }
 
 .badge-neutral {
-  color: var(--text);
-  background: var(--fill);
-}
-
-.badge-outline {
-  color: var(--text);
-  background: var(--base);
-  box-shadow: inset 0 0 0 1px var(--hairline);
+  color: var(--on-surface-variant);
+  background: var(--surface-variant);
+  box-shadow: inset 0 0 0 1px var(--outline-variant);
 }
 
 .dot {
@@ -439,32 +442,64 @@ kbd {
   background: currentColor;
 }
 
-/* ---------- Header / nav ---------- */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: var(--radius-chip);
+  box-shadow: inset 0 0 0 1px var(--outline-variant);
+  background: var(--surface);
+  color: var(--on-surface-variant);
+  font-size: 14px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.chip svg {
+  width: 18px;
+  height: 18px;
+  color: var(--link);
+}
+
+.chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* ---------- Top app bar ---------- */
 
 .site-header {
   position: sticky;
   top: 0;
   z-index: 50;
-  background: color-mix(in srgb, var(--base) 86%, transparent);
-  -webkit-backdrop-filter: saturate(1.4) blur(10px);
-  backdrop-filter: saturate(1.4) blur(10px);
-  border-bottom: 1px solid var(--hairline);
+  background: var(--surface);
+  transition: box-shadow var(--medium) var(--ease);
+}
+
+.site-header.is-scrolled {
+  box-shadow: var(--elev-2);
 }
 
 .nav {
   display: flex;
   align-items: center;
-  gap: 12px;
-  height: 60px;
+  gap: 8px;
+  height: var(--header-h);
 }
 
 .logo {
   display: inline-flex;
   align-items: center;
   gap: 10px;
-  color: var(--text-strong);
+  color: var(--on-surface);
   font-weight: 650;
-  font-size: 17px;
+  font-size: 18px;
   letter-spacing: -0.01em;
   text-decoration: none;
   margin-right: auto;
@@ -475,8 +510,8 @@ kbd {
 }
 
 .logo img {
-  width: 28px;
-  height: 28px;
+  width: 30px;
+  height: 30px;
 }
 
 .nav-links {
@@ -488,30 +523,43 @@ kbd {
 
 .nav-links a {
   display: block;
-  padding: 6px 10px;
-  border-radius: var(--radius);
-  color: var(--muted);
+  padding: 8px 14px;
+  border-radius: var(--radius-full);
+  color: var(--on-surface-variant);
   font-size: 15px;
   font-weight: 500;
   text-decoration: none;
 }
 
 .nav-links a:hover {
-  color: var(--text-strong);
-  background: var(--tint);
+  color: var(--on-surface);
 }
 
 .nav-actions {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
 }
 
 .nav-github-label {
   display: none;
 }
 
-.theme-toggle .icon-sun {
+.nav-github {
+  width: 40px;
+  height: 40px;
+  padding: 0;
+}
+
+@media (min-width: 900px) {
+  .nav-github {
+    width: auto;
+    padding: 0 16px;
+  }
+}
+
+.theme-toggle .icon-sun,
+:root[data-theme="dark"] .theme-toggle .icon-moon {
   display: none;
 }
 
@@ -519,20 +567,8 @@ kbd {
   display: block;
 }
 
-:root[data-theme="dark"] .theme-toggle .icon-moon {
-  display: none;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) .theme-toggle .icon-sun {
-    display: block;
-  }
-  :root:not([data-theme="light"]) .theme-toggle .icon-moon {
-    display: none;
-  }
-}
-
-.menu-toggle .icon-close {
+.menu-toggle .icon-close,
+.menu-toggle[aria-expanded="true"] .icon-menu {
   display: none;
 }
 
@@ -540,15 +576,11 @@ kbd {
   display: block;
 }
 
-.menu-toggle[aria-expanded="true"] .icon-menu {
-  display: none;
-}
-
-/* Mobile menu panel */
+/* Mobile menu (a Material-style sheet under the app bar) */
 .mobile-nav {
-  border-top: 1px solid var(--hairline);
-  background: var(--base);
-  overflow: hidden;
+  background: var(--surface);
+  border-top: 1px solid var(--outline-variant);
+  box-shadow: var(--elev-2);
 }
 
 .mobile-nav[hidden] {
@@ -558,32 +590,28 @@ kbd {
 .mobile-nav ul {
   list-style: none;
   margin: 0;
-  padding: 8px var(--gutter) 16px;
+  padding: 8px 8px 12px;
 }
 
 .mobile-nav a {
   display: block;
-  padding: 12px 8px;
-  border-bottom: 1px solid var(--hairline);
-  color: var(--text);
+  padding: 14px 16px;
+  border-radius: var(--radius-full);
+  color: var(--on-surface);
   font-weight: 500;
   text-decoration: none;
 }
 
-.mobile-nav li:last-child a {
-  border-bottom: 0;
-}
-
 @media (prefers-reduced-motion: no-preference) {
   .mobile-nav.is-open {
-    animation: slide-down 0.18s ease-out;
+    animation: sheet-in var(--medium) var(--ease);
   }
 }
 
 /* Transform only (no opacity), so the menu is always readable even if the animation is skipped. */
-@keyframes slide-down {
+@keyframes sheet-in {
   from {
-    transform: translateY(-6px);
+    transform: translateY(-8px);
   }
   to {
     transform: none;
@@ -594,6 +622,7 @@ kbd {
   .nav-links {
     display: flex;
     gap: 2px;
+    margin-right: auto;
   }
   .menu-toggle,
   .mobile-nav {
@@ -604,9 +633,6 @@ kbd {
   }
   .logo {
     margin-right: 16px;
-  }
-  .nav-links {
-    margin-right: auto;
   }
 }
 
@@ -623,9 +649,7 @@ section {
 }
 
 .section-alt {
-  background: var(--elevated);
-  border-top: 1px solid var(--hairline);
-  border-bottom: 1px solid var(--hairline);
+  background: var(--surface-variant);
 }
 
 .section-head {
@@ -637,10 +661,9 @@ section {
   display: inline-block;
   margin-bottom: 12px;
   color: var(--link);
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  letter-spacing: 0.02em;
 }
 
 .section-head h2 {
@@ -649,7 +672,7 @@ section {
 }
 
 .section-head p {
-  color: var(--muted);
+  color: var(--on-surface-variant);
   font-size: 17px;
 }
 
@@ -657,19 +680,19 @@ section {
 
 .hero {
   position: relative;
-  padding: 48px 0 64px;
+  padding: 40px 0 64px;
   overflow: hidden;
 }
 
 .hero::before {
-  /* soft dotted grid in the background */
+  /* faint neutral dot grid */
   content: "";
   position: absolute;
   inset: 0;
-  background-image: radial-gradient(var(--hairline) 1px, transparent 1px);
+  background-image: radial-gradient(var(--outline-variant) 1px, transparent 1px);
   background-size: 22px 22px;
-  -webkit-mask-image: linear-gradient(to bottom, #000 0%, transparent 85%);
-  mask-image: linear-gradient(to bottom, #000 0%, transparent 85%);
+  -webkit-mask-image: linear-gradient(to bottom, #000 0%, transparent 80%);
+  mask-image: linear-gradient(to bottom, #000 0%, transparent 80%);
   pointer-events: none;
 }
 
@@ -685,29 +708,19 @@ section {
 }
 
 .hero h1 {
-  font-size: clamp(40px, 8vw, 64px);
+  font-size: clamp(40px, 8vw, 60px);
   letter-spacing: -0.035em;
   margin-bottom: 20px;
 }
 
 .hero h1 .accent {
-  color: var(--brand);
-  white-space: nowrap;
-}
-
-:root[data-theme="dark"] .hero h1 .accent {
   color: var(--link);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) .hero h1 .accent {
-    color: var(--link);
-  }
+  white-space: nowrap;
 }
 
 .lede {
   max-width: 560px;
-  color: var(--muted);
+  color: var(--on-surface-variant);
   font-size: 18px;
   margin-bottom: 28px;
 }
@@ -726,22 +739,17 @@ section {
 
 .hero-note {
   margin-top: 18px;
-  color: var(--subtle);
+  color: var(--on-surface-variant);
   font-size: 14px;
 }
 
-.hero-points {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin: 28px 0 0;
-  padding: 0;
-  list-style: none;
+.hero .chip-list {
+  margin-top: 28px;
 }
 
 @media (min-width: 960px) {
   .hero {
-    padding: 80px 0 96px;
+    padding: 72px 0 96px;
   }
   .hero-grid {
     grid-template-columns: 1.1fr 0.9fr;
@@ -761,16 +769,15 @@ section {
   width: 100%;
   max-width: 340px;
   padding: 10px;
-  border-radius: 44px;
-  background: #111214;
-  box-shadow: var(--shadow-phone);
+  border-radius: 46px;
+  background: var(--phone-frame);
+  box-shadow: var(--elev-phone);
 }
 
 .phone-screen {
-  position: relative;
   display: flex;
   flex-direction: column;
-  border-radius: 34px;
+  border-radius: 36px;
   overflow: hidden;
   background: var(--chat-bg);
   font-size: 13.5px;
@@ -784,15 +791,15 @@ section {
   padding: 10px 22px 4px;
   font-size: 12px;
   font-weight: 600;
-  color: var(--text);
-  background: var(--base);
+  color: var(--on-surface);
+  background: var(--surface);
 }
 
 .phone-notch {
   width: 80px;
   height: 20px;
   border-radius: 20px;
-  background: #111214;
+  background: var(--phone-frame);
 }
 
 .chat-header {
@@ -800,13 +807,13 @@ section {
   align-items: center;
   gap: 10px;
   padding: 6px 14px 10px;
-  background: var(--base);
-  border-bottom: 1px solid var(--hairline);
+  background: var(--surface);
+  box-shadow: 0 1px 0 var(--outline-variant);
 }
 
 .chat-back {
   color: var(--link);
-  font-size: 20px;
+  font-size: 22px;
   line-height: 1;
 }
 
@@ -816,8 +823,8 @@ section {
   width: 34px;
   height: 34px;
   border-radius: 50%;
-  background: linear-gradient(135deg, var(--brand-grad-start), var(--brand));
-  color: #fff;
+  background: var(--primary);
+  color: var(--on-primary);
   font-weight: 700;
   font-size: 15px;
 }
@@ -829,12 +836,12 @@ section {
 }
 
 .chat-title strong {
-  color: var(--text-strong);
+  color: var(--on-surface);
   font-size: 14px;
 }
 
 .chat-title span {
-  color: var(--subtle);
+  color: var(--on-surface-variant);
   font-size: 12px;
 }
 
@@ -848,25 +855,25 @@ section {
 }
 
 .msg {
-  position: relative;
   max-width: 86%;
-  padding: 7px 10px 6px;
-  border-radius: 14px;
-  color: var(--text);
-  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.08);
+  padding: 8px 12px 6px;
+  border-radius: 18px;
+  color: var(--on-surface);
+  box-shadow: var(--elev-1);
   overflow-wrap: anywhere;
 }
 
 .msg-in {
   align-self: flex-start;
   background: var(--chat-in);
-  border-bottom-left-radius: 4px;
+  border-bottom-left-radius: 6px;
 }
 
 .msg-out {
   align-self: flex-end;
-  background: var(--chat-out);
-  border-bottom-right-radius: 4px;
+  background: var(--primary);
+  color: var(--on-primary);
+  border-bottom-right-radius: 6px;
 }
 
 .msg time {
@@ -877,8 +884,11 @@ section {
   font-size: 11px;
 }
 
+.msg-out time {
+  color: var(--on-primary);
+}
+
 .msg .cmd {
-  color: var(--chat-cmd);
   font-weight: 600;
 }
 
@@ -900,8 +910,8 @@ section {
   width: 38px;
   height: 38px;
   border-radius: 50%;
-  background: var(--brand);
-  color: #fff;
+  background: var(--on-primary);
+  color: #045ede;
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.02em;
@@ -919,7 +929,6 @@ section {
 }
 
 .file-meta span {
-  color: var(--chat-meta);
   font-size: 12px;
 }
 
@@ -927,20 +936,21 @@ section {
   align-self: flex-start;
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 4px;
+  gap: 6px;
   width: 86%;
-  margin-top: -4px;
+  margin-top: -2px;
 }
 
 .inline-buttons span {
   display: block;
-  padding: 7px 8px;
-  border-radius: 8px;
+  padding: 8px;
+  border-radius: var(--radius-full);
   text-align: center;
   font-weight: 600;
   font-size: 13px;
-  color: #fff;
-  background: var(--chat-btn);
+  color: var(--link);
+  background: var(--chat-in);
+  box-shadow: var(--elev-1);
 }
 
 .chat-input {
@@ -948,16 +958,16 @@ section {
   align-items: center;
   gap: 8px;
   padding: 8px 10px 14px;
-  background: var(--base);
-  border-top: 1px solid var(--hairline);
+  background: var(--surface);
+  box-shadow: 0 -1px 0 var(--outline-variant);
 }
 
 .chat-input .field {
   flex: 1;
-  padding: 8px 12px;
-  border-radius: 18px;
-  background: var(--tint);
-  color: var(--subtle);
+  padding: 8px 14px;
+  border-radius: var(--radius-full);
+  background: var(--surface-variant);
+  color: var(--on-surface-variant);
   font-size: 13px;
 }
 
@@ -967,13 +977,54 @@ section {
   width: 32px;
   height: 32px;
   border-radius: 50%;
-  background: var(--brand);
-  color: #fff;
+  background: var(--primary);
+  color: var(--on-primary);
 }
 
 .chat-input .send svg {
   width: 16px;
   height: 16px;
+}
+
+/* ---------- Cards (Material elevated / outlined / filled) ---------- */
+
+.card {
+  background: var(--surface-raised);
+  border-radius: var(--radius-lg);
+  padding: 24px;
+  box-shadow: var(--elev-1);
+  transition: box-shadow var(--medium) var(--ease), transform var(--medium) var(--ease);
+}
+
+.card-outlined {
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1px var(--outline-variant);
+}
+
+.card-filled {
+  background: var(--surface-variant);
+  box-shadow: none;
+}
+
+@media (prefers-reduced-motion: no-preference) and (hover: hover) {
+  .card-hover:hover {
+    box-shadow: var(--elev-3);
+    transform: translateY(-2px);
+  }
+}
+
+.card h3 {
+  font-size: 18px;
+  margin-bottom: 8px;
+  letter-spacing: -0.01em;
+}
+
+.card p {
+  color: var(--on-surface-variant);
+}
+
+.card p + p {
+  margin-top: 10px;
 }
 
 /* ---------- Steps ---------- */
@@ -984,7 +1035,6 @@ section {
   margin: 0;
   padding: 0;
   list-style: none;
-  counter-reset: step;
 }
 
 @media (min-width: 820px) {
@@ -994,51 +1044,25 @@ section {
   }
 }
 
-.card {
-  background: var(--base);
-  border-radius: var(--radius-lg);
-  box-shadow: inset 0 0 0 1px var(--line), var(--shadow-xs);
-  padding: 24px;
-}
-
-.step {
-  counter-increment: step;
-}
-
 .step-num {
   display: grid;
   place-items: center;
-  width: 32px;
-  height: 32px;
+  width: 40px;
+  height: 40px;
   margin-bottom: 16px;
-  border-radius: var(--radius);
-  background: var(--info-tint);
-  color: var(--info-text);
+  border-radius: 50%;
+  background: var(--primary);
+  color: var(--on-primary);
   font-weight: 700;
-  font-size: 15px;
-}
-
-.card h3 {
-  font-size: 18px;
-  margin-bottom: 8px;
-  letter-spacing: -0.01em;
-}
-
-.card p {
-  color: var(--muted);
-}
-
-.card p + p {
-  margin-top: 10px;
+  font-size: 16px;
 }
 
 .example {
   margin-top: 14px;
-  padding: 10px 12px;
-  border-radius: var(--radius);
-  background: var(--recessed);
-  box-shadow: inset 0 0 0 1px var(--hairline);
-  color: var(--text);
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-variant);
+  color: var(--on-surface);
   font-size: 14px;
 }
 
@@ -1056,6 +1080,9 @@ section {
   .feature-grid {
     grid-template-columns: repeat(2, 1fr);
   }
+  .span-2 {
+    grid-column: span 2;
+  }
 }
 
 @media (min-width: 1000px) {
@@ -1065,18 +1092,18 @@ section {
   }
 }
 
-.feature .icon {
+.icon-tile {
   display: grid;
   place-items: center;
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
   margin-bottom: 16px;
-  border-radius: 10px;
-  background: var(--info-tint);
-  color: var(--info-text);
+  border-radius: var(--radius-sm);
+  background: var(--primary-container);
+  color: var(--on-primary-container);
 }
 
-.feature .icon svg {
+.icon-tile svg {
   width: 22px;
   height: 22px;
 }
@@ -1093,20 +1120,84 @@ section {
   margin: 0;
 }
 
-.feature-wide {
-  background: linear-gradient(135deg, var(--info-tint), transparent 70%), var(--base);
+/* Segmented button (Material 3) built from real radio buttons: works without JavaScript. */
+.segmented-group {
+  margin: 16px 0 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
 }
 
-@media (min-width: 1000px) {
-  .feature-wide {
-    grid-column: span 3;
-    display: grid;
-    grid-template-columns: auto 1fr;
-    gap: 20px;
-    align-items: start;
-  }
-  .feature-wide .icon {
-    margin-bottom: 0;
+.segmented {
+  display: inline-flex;
+  max-width: 100%;
+  border-radius: var(--radius-full);
+  box-shadow: inset 0 0 0 1px var(--outline);
+  overflow: hidden;
+}
+
+.segmented label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 40px;
+  padding: 0 16px;
+  color: var(--on-surface);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color var(--fast) var(--ease);
+}
+
+.segmented label + label {
+  box-shadow: inset 1px 0 0 var(--outline);
+}
+
+.segmented label:hover {
+  background: color-mix(in srgb, var(--on-surface) 8%, transparent);
+}
+
+.segmented .tick {
+  display: none;
+  width: 16px;
+  height: 16px;
+}
+
+#tone-coach:checked ~ .segmented label[for="tone-coach"],
+#tone-budgeter:checked ~ .segmented label[for="tone-budgeter"],
+#tone-summary:checked ~ .segmented label[for="tone-summary"] {
+  background: var(--primary-container);
+  color: var(--on-primary-container);
+}
+
+#tone-coach:checked ~ .segmented label[for="tone-coach"] .tick,
+#tone-budgeter:checked ~ .segmented label[for="tone-budgeter"] .tick,
+#tone-summary:checked ~ .segmented label[for="tone-summary"] .tick {
+  display: block;
+}
+
+#tone-coach:focus-visible ~ .segmented label[for="tone-coach"],
+#tone-budgeter:focus-visible ~ .segmented label[for="tone-budgeter"],
+#tone-summary:focus-visible ~ .segmented label[for="tone-summary"] {
+  outline: 2px solid var(--primary);
+  outline-offset: -4px;
+  border-radius: var(--radius-full);
+}
+
+.tone {
+  display: none;
+  margin-top: 12px;
+}
+
+#tone-coach:checked ~ .tone-panels .tone-coach,
+#tone-budgeter:checked ~ .tone-panels .tone-budgeter,
+#tone-summary:checked ~ .tone-panels .tone-summary {
+  display: block;
+}
+
+@media (max-width: 400px) {
+  .segmented label {
+    padding: 0 12px;
   }
 }
 
@@ -1127,7 +1218,7 @@ section {
 
 .check-list {
   display: grid;
-  gap: 14px;
+  gap: 16px;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -1144,55 +1235,41 @@ section {
   width: 22px;
   height: 22px;
   margin-top: 2px;
-  color: var(--brand);
-}
-
-:root[data-theme="dark"] .check-list svg {
   color: var(--link);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) .check-list svg {
-    color: var(--link);
-  }
-}
-
 .check-list strong {
-  color: var(--text-strong);
+  color: var(--on-surface);
 }
 
 .check-list p {
-  color: var(--muted);
+  color: var(--on-surface-variant);
 }
 
 .providers {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
   margin-top: 24px;
+}
+
+.chain-title {
+  margin-bottom: 20px;
+  color: var(--on-surface);
+  font-size: 17px;
+  font-weight: 600;
 }
 
 .chain {
   display: grid;
-  gap: 0;
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
-.chain-title {
-  margin-bottom: 16px;
-  color: var(--text-strong);
-  font-size: 16px;
-  font-weight: 600;
-}
-
 .chain li {
   position: relative;
   display: grid;
-  grid-template-columns: 32px 1fr;
+  grid-template-columns: 36px 1fr;
   gap: 14px;
-  padding-bottom: 20px;
+  padding-bottom: 22px;
 }
 
 .chain li:last-child {
@@ -1200,14 +1277,13 @@ section {
 }
 
 .chain li::before {
-  /* connecting line between steps */
   content: "";
   position: absolute;
-  left: 15px;
-  top: 32px;
+  left: 17px;
+  top: 36px;
   bottom: 0;
   width: 2px;
-  background: var(--hairline);
+  background: var(--outline-variant);
 }
 
 .chain li:last-child::before {
@@ -1217,29 +1293,27 @@ section {
 .chain .n {
   display: grid;
   place-items: center;
-  width: 32px;
-  height: 32px;
+  width: 36px;
+  height: 36px;
   border-radius: 50%;
-  background: var(--base);
-  box-shadow: inset 0 0 0 1px var(--line);
-  color: var(--text-strong);
+  background: var(--surface-variant);
+  color: var(--on-surface);
   font-weight: 600;
   font-size: 14px;
 }
 
-.chain .n.is-brand {
-  background: var(--brand);
-  box-shadow: none;
-  color: #fff;
+.chain .n.is-primary {
+  background: var(--primary);
+  color: var(--on-primary);
 }
 
 .chain strong {
   display: block;
-  color: var(--text-strong);
+  color: var(--on-surface);
 }
 
 .chain span {
-  color: var(--muted);
+  color: var(--on-surface-variant);
   font-size: 15px;
 }
 
@@ -1275,16 +1349,15 @@ section {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  margin-top: 24px;
-  padding: 18px 20px;
+  margin-top: 20px;
+  padding: 20px 24px;
   border-radius: var(--radius-lg);
-  background: var(--recessed);
-  box-shadow: inset 0 0 0 1px var(--hairline);
+  background: var(--surface-variant);
 }
 
 .callout p {
   max-width: 640px;
-  color: var(--muted);
+  color: var(--on-surface-variant);
 }
 
 /* ---------- Setup / code ---------- */
@@ -1303,7 +1376,7 @@ section {
 }
 
 .prereq {
-  margin: 20px 0 0;
+  margin: 16px 0 0;
   padding: 0;
   list-style: none;
   display: grid;
@@ -1312,26 +1385,25 @@ section {
 
 .prereq li {
   display: flex;
-  gap: 10px;
-  color: var(--muted);
+  gap: 12px;
+  color: var(--on-surface-variant);
 }
 
 .prereq li::before {
   content: "";
   flex: none;
-  width: 6px;
-  height: 6px;
-  margin-top: 10px;
+  width: 8px;
+  height: 8px;
+  margin-top: 9px;
   border-radius: 50%;
-  background: var(--brand);
+  background: var(--primary);
 }
 
 .terminal {
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-xl);
   overflow: hidden;
-  background: #0b0d12;
-  color: #e6e8ee;
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.06), var(--shadow-card);
+  background: var(--surface-raised);
+  box-shadow: var(--elev-2);
 }
 
 .terminal-bar {
@@ -1339,115 +1411,107 @@ section {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 10px 12px 10px 16px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  font-size: 13px;
-  color: #a1a6b3;
-}
-
-.terminal-bar .lights {
-  display: flex;
-  gap: 6px;
-}
-
-.terminal-bar .lights i {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: #3a3f4b;
+  padding: 12px 12px 12px 20px;
+  border-bottom: 1px solid var(--outline-variant);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--on-surface-variant);
 }
 
 .cmd-list {
   margin: 0;
-  padding: 8px 0;
+  padding: 8px;
   list-style: none;
 }
 
 .cmd-row {
   display: grid;
-  grid-template-columns: 1fr auto;
-  align-items: center;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
   gap: 12px;
-  padding: 12px 12px 12px 16px;
-}
-
-.cmd-row + .cmd-row {
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  padding: 12px;
 }
 
 .cmd-label {
   display: block;
-  margin-bottom: 4px;
-  color: #8b93a5;
-  font-size: 12px;
+  margin-bottom: 6px;
+  color: var(--on-surface-variant);
+  font-size: 13px;
   font-weight: 500;
 }
 
 .cmd-row pre {
   margin: 0;
-  overflow-x: auto;
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-variant);
+  color: var(--on-surface);
   font-family: var(--mono);
   font-size: 14px;
   line-height: 1.5;
-  white-space: pre;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .cmd-row pre code::before {
   content: "$ ";
-  color: #6b7385;
+  color: var(--on-surface-variant);
 }
 
 .copy-btn {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  height: 30px;
-  padding: 0 10px;
+  height: 36px;
+  padding: 0 14px;
   border: 0;
-  border-radius: var(--radius-sm);
-  background: rgba(255, 255, 255, 0.08);
-  color: #e6e8ee;
+  border-radius: var(--radius-full);
+  background: var(--primary-container);
+  color: var(--on-primary-container);
   font: inherit;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 500;
+  white-space: nowrap;
   cursor: pointer;
 }
 
-.copy-btn:hover {
-  background: rgba(255, 255, 255, 0.14);
-}
-
 .copy-btn:focus-visible {
-  outline: 2px solid #51a2ff;
+  outline: 2px solid var(--primary);
   outline-offset: 2px;
 }
 
 .copy-btn svg {
-  width: 14px;
-  height: 14px;
+  width: 16px;
+  height: 16px;
 }
 
 .copy-btn.is-copied {
-  background: rgba(16, 185, 129, 0.25);
-  color: #a4f4cf;
+  background: var(--success-container);
+  color: var(--success);
 }
 
 .after-setup {
   margin-top: 16px;
-  color: var(--muted);
+  color: var(--on-surface-variant);
   font-size: 15px;
 }
 
-/* ---------- FAQ ---------- */
+/* ---------- FAQ (expansion panels) ---------- */
 
 .faq {
   max-width: 820px;
 }
 
 .faq details {
-  border-radius: var(--radius-lg);
-  background: var(--base);
-  box-shadow: inset 0 0 0 1px var(--line);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1px var(--outline-variant);
+  transition: box-shadow var(--medium) var(--ease), background-color var(--medium) var(--ease);
+}
+
+.faq details[open] {
+  background: var(--surface-raised);
+  box-shadow: var(--elev-2);
 }
 
 .faq details + details {
@@ -1459,41 +1523,41 @@ section {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 18px 20px;
-  color: var(--text-strong);
+  min-height: 56px;
+  padding: 16px 20px;
+  color: var(--on-surface);
   font-weight: 600;
   font-size: 17px;
   cursor: pointer;
   list-style: none;
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-card);
 }
 
 .faq summary::-webkit-details-marker {
   display: none;
 }
 
-.faq summary::after {
+.faq summary::before {
+  /* chevron, drawn with borders; sits on the right because of order */
   content: "";
+  order: 2;
   flex: none;
-  width: 10px;
-  height: 10px;
-  border-right: 2px solid var(--subtle);
-  border-bottom: 2px solid var(--subtle);
-  transform: rotate(45deg) translate(-2px, -2px);
-  transition: transform 0.15s;
+  width: 9px;
+  height: 9px;
+  margin-right: 4px;
+  border-right: 2px solid var(--on-surface-variant);
+  border-bottom: 2px solid var(--on-surface-variant);
+  transform: translateY(-2px) rotate(45deg);
+  transition: transform var(--medium) var(--ease);
 }
 
-.faq details[open] summary::after {
-  transform: rotate(-135deg) translate(-2px, -2px);
-}
-
-.faq summary:hover {
-  background: var(--tint);
+.faq details[open] summary::before {
+  transform: translateY(2px) rotate(225deg);
 }
 
 .faq .answer {
   padding: 0 20px 20px;
-  color: var(--muted);
+  color: var(--on-surface-variant);
 }
 
 .faq .answer p + p {
@@ -1515,10 +1579,10 @@ section {
 }
 
 .site-footer {
-  padding: 32px 0 40px;
-  border-top: 1px solid var(--hairline);
-  background: var(--elevated);
-  color: var(--muted);
+  padding: 28px 0 36px;
+  border-top: 1px solid var(--outline-variant);
+  background: var(--surface);
+  color: var(--on-surface-variant);
   font-size: 14px;
 }
 
@@ -1540,11 +1604,11 @@ section {
 }
 
 .footer-links a {
-  color: var(--muted);
+  color: var(--on-surface-variant);
 }
 
 .footer-links a:hover {
-  color: var(--text-strong);
+  color: var(--on-surface);
 }
 
 @media (prefers-reduced-motion: reduce) {

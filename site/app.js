@@ -26,19 +26,16 @@ const SITE = {
     a.href = SITE.repoUrl + "/blob/" + SITE.branch + "/" + a.getAttribute("data-repo-path");
   });
 
-  // 2. Light / dark theme toggle. The choice is remembered in this browser only.
+  // 2. Light / dark theme toggle. Light is the default; the choice is remembered in this browser only.
   var root = document.documentElement;
-  var media = window.matchMedia ? window.matchMedia("(prefers-color-scheme: dark)") : null;
 
   function currentTheme() {
-    var set = root.getAttribute("data-theme");
-    if (set === "light" || set === "dark") return set;
-    return media && media.matches ? "dark" : "light";
+    return root.getAttribute("data-theme") === "dark" ? "dark" : "light";
   }
 
   function syncThemeColor() {
-    // Keep the mobile browser bar colour in step with a manual choice.
-    var colour = currentTheme() === "dark" ? "#0f0f0f" : "#ffffff";
+    // Keep the mobile browser bar colour in step with the theme (surface token).
+    var colour = currentTheme() === "dark" ? "#121212" : "#ffffff";
     document.querySelectorAll('meta[name="theme-color"]').forEach(function (m) {
       m.setAttribute("content", colour);
     });
@@ -58,6 +55,14 @@ const SITE = {
     });
   }
   if (root.hasAttribute("data-theme")) syncThemeColor();
+
+  // Top app bar gets a soft shadow once the page is scrolled (Material "on scroll" elevation).
+  var header = document.querySelector(".site-header");
+  function onScroll() {
+    if (header) header.classList.toggle("is-scrolled", window.scrollY > 4);
+  }
+  window.addEventListener("scroll", onScroll, { passive: true });
+  onScroll();
 
   // 3. Mobile menu.
   var menuButton = document.querySelector(".menu-toggle");

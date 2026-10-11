@@ -20,10 +20,12 @@ The links in `index.html` also have the URLs written in their `href`, only as a 
 with JavaScript turned off. If you change a URL, a find-and-replace in `index.html` keeps the fallback
 in step.
 
-The look follows Cloudflare's open-source design system **Kumo** (blue brand colour, neutral greys,
-8px rounded buttons, pill badges). The exact token values and their source are listed in the comment
-at the top of `styles.css`. Light and dark themes follow the visitor's system setting; the moon/sun
-button overrides it and remembers the choice in the browser.
+The look is Material Design 3 (neutral white/grey surfaces, soft shadows, rounded cards, pill
+buttons, chips, a segmented button) with Cloudflare Kumo's blue as the only accent. The colour
+tokens (light and dark) are listed at the very top of `styles.css`; reuse them verbatim in the
+dashboard and charts. The page opens in light mode; the moon/sun button switches to a neutral dark
+grey theme and remembers the choice in the browser. Never use navy or blue-tinted backgrounds:
+blue is only for buttons, links, icons and small highlights.
 
 Keep it honest: only describe features the bot actually has (see the main `README.md`).
 

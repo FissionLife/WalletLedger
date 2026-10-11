@@ -5,9 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>WalletLedger: your money, in a chat</title>
   <meta name="description" content="WalletLedger is a free, open-source personal-finance assistant that lives in Telegram. Tell it what you spent in plain words and it keeps your books.">
-  <meta name="color-scheme" content="light dark">
-  <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
-  <meta name="theme-color" content="#0f0f0f" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#ffffff">
 
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="WalletLedger">
@@ -18,11 +16,10 @@
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="styles.css">
 
-  <!-- Apply the saved light/dark choice before the page paints, so it never flashes. -->
+  <!-- Light is the default. Apply a saved "dark" choice before the page paints, so it never flashes. -->
   <script>
     try {
-      var t = localStorage.getItem("wl-theme");
-      if (t === "light" || t === "dark") document.documentElement.setAttribute("data-theme", t);
+      if (localStorage.getItem("wl-theme") === "dark") document.documentElement.setAttribute("data-theme", "dark");
     } catch (e) {}
   </script>
   <script src="app.js" defer></script>
@@ -33,31 +30,31 @@
   <header class="site-header">
     <div class="container nav">
       <a class="logo" href="#top" aria-label="WalletLedger, back to top">
-        <img src="favicon.svg" alt="" width="28" height="28">
+        <img src="favicon.svg" alt="" width="30" height="30">
         <span>WalletLedger</span>
       </a>
 
       <nav aria-label="Main">
         <ul class="nav-links">
-          <li><a href="#how">How it works</a></li>
-          <li><a href="#features">Features</a></li>
-          <li><a href="#keys">AI keys</a></li>
-          <li><a href="#data">Your data</a></li>
-          <li><a href="#setup">Set up</a></li>
-          <li><a href="#faq">FAQ</a></li>
+          <li><a class="state" href="#how">How it works</a></li>
+          <li><a class="state" href="#features">Features</a></li>
+          <li><a class="state" href="#keys">AI keys</a></li>
+          <li><a class="state" href="#data">Your data</a></li>
+          <li><a class="state" href="#setup">Set up</a></li>
+          <li><a class="state" href="#faq">FAQ</a></li>
         </ul>
       </nav>
 
       <div class="nav-actions">
-        <a class="btn btn-secondary btn-sm" data-link="repo" href="https://github.com/FissionLife/WalletLedger" aria-label="WalletLedger on GitHub">
+        <a class="btn btn-tonal btn-sm nav-github state" data-link="repo" href="https://github.com/FissionLife/WalletLedger" aria-label="WalletLedger on GitHub">
           <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
           <span class="nav-github-label">GitHub</span>
         </a>
-        <button class="btn btn-ghost btn-icon theme-toggle" type="button" aria-label="Switch between light and dark theme" title="Switch theme">
+        <button class="btn btn-icon theme-toggle state" type="button" aria-label="Switch between light and dark theme" title="Switch theme">
           <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1111.2 3a7 7 0 009.8 9.8z"/></svg>
           <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
         </button>
-        <button class="btn btn-ghost btn-icon menu-toggle" type="button" aria-expanded="false" aria-controls="mobile-nav" aria-label="Open menu">
+        <button class="btn btn-icon menu-toggle state" type="button" aria-expanded="false" aria-controls="mobile-nav" aria-label="Open menu">
           <svg class="icon-menu" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
           <svg class="icon-close" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
         </button>
@@ -66,12 +63,12 @@
 
     <nav id="mobile-nav" class="mobile-nav" aria-label="Main (mobile)" hidden>
       <ul>
-        <li><a href="#how">How it works</a></li>
-        <li><a href="#features">Features</a></li>
-        <li><a href="#keys">AI keys</a></li>
-        <li><a href="#data">Your data</a></li>
-        <li><a href="#setup">Set up</a></li>
-        <li><a href="#faq">FAQ</a></li>
+        <li><a class="state" href="#how">How it works</a></li>
+        <li><a class="state" href="#features">Features</a></li>
+        <li><a class="state" href="#keys">AI keys</a></li>
+        <li><a class="state" href="#data">Your data</a></li>
+        <li><a class="state" href="#setup">Set up</a></li>
+        <li><a class="state" href="#faq">FAQ</a></li>
       </ul>
     </nav>
   </header>
@@ -86,17 +83,17 @@
           <h1 id="hero-title">Your money, <span class="accent">in a chat.</span></h1>
           <p class="lede">WalletLedger is a personal-finance assistant that lives in Telegram: tell it what you spent in plain words, and it keeps your books.</p>
           <div class="cta-row">
-            <a class="btn btn-primary btn-lg" data-link="bot" href="https://t.me/Fissionlabsbot">
+            <a class="btn btn-filled btn-lg state" data-link="bot" href="https://t.me/Fissionlabsbot">
               <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M21.4 4.3L2.9 11.4c-1 .4-1 1.6.1 1.9l4.6 1.4 1.8 5.6c.2.7 1.1.9 1.6.4l2.6-2.4 4.7 3.5c.6.4 1.4.1 1.6-.6l3.1-14.9c.2-.9-.7-1.6-1.5-1.3zM9.8 14.4l-.4 3.9-1.3-4.2 9.9-6.3-8.2 6.6z"/></svg>
               Open the bot on Telegram
             </a>
-            <a class="btn btn-secondary btn-lg" data-link="repo" href="https://github.com/FissionLife/WalletLedger">View on GitHub</a>
+            <a class="btn btn-outlined btn-lg state" data-link="repo" href="https://github.com/FissionLife/WalletLedger">View on GitHub</a>
           </div>
           <p class="hero-note">Prefer your own copy? <a href="#setup">Run it yourself in three commands.</a></p>
-          <ul class="hero-points" aria-label="Highlights">
-            <li class="badge badge-outline">Works without an AI key</li>
-            <li class="badge badge-outline">PDF statement import</li>
-            <li class="badge badge-outline">SQLite or Postgres</li>
+          <ul class="chip-list" aria-label="Highlights">
+            <li class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5 9-10"/></svg>Works without an AI key</li>
+            <li class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5 9-10"/></svg>PDF statement import</li>
+            <li class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5 9-10"/></svg>SQLite or Postgres</li>
           </ul>
         </div>
 
@@ -155,18 +152,18 @@
         </div>
 
         <ol class="steps">
-          <li class="card step">
+          <li class="card">
             <span class="step-num" aria-hidden="true">1</span>
             <h3>You say it</h3>
             <p>Type a message the way you would to a friend, or send a statement PDF.</p>
             <p class="example">&ldquo;Received 60000 salary in Bank&rdquo;</p>
           </li>
-          <li class="card step">
+          <li class="card">
             <span class="step-num" aria-hidden="true">2</span>
             <h3>It works out what you meant</h3>
             <p>With an AI key, an AI model reads your message. Without one, built-in rules understand common phrasing. Either way it picks the right action: expense, income or transfer.</p>
           </li>
-          <li class="card step">
+          <li class="card">
             <span class="step-num" aria-hidden="true">3</span>
             <h3>Your books update</h3>
             <p>The balance changes and the transaction is saved in one safe step, then the bot replies with your new balance. Big amounts (&#8377;50,000 and up) ask &ldquo;are you sure?&rdquo; first.</p>
@@ -185,42 +182,56 @@
         </div>
 
         <ul class="feature-grid">
-          <li class="card feature">
-            <span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a8 8 0 01-11.6 7.1L4 20l1-4.6A8 8 0 1121 12z"/><path d="M8.5 11h7M8.5 14h4"/></svg></span>
+          <li class="card card-outlined card-hover">
+            <span class="icon-tile" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a8 8 0 01-11.6 7.1L4 20l1-4.6A8 8 0 1121 12z"/><path d="M8.5 11h7M8.5 14h4"/></svg></span>
             <h3>Log by chatting</h3>
             <p>Spending, income and transfers in plain words. Moving money from Bank to Cash is a transfer, so it never inflates your spending.</p>
           </li>
-          <li class="card feature">
-            <span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h6"/></svg></span>
+          <li class="card card-outlined card-hover">
+            <span class="icon-tile" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h6"/></svg></span>
             <h3>PDF statement import</h3>
             <p>Send a PhonePe, GPay, Paytm, BHIM or bank statement. You see a preview of what was found before anything is saved.</p>
           </li>
-          <li class="card feature">
-            <span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18M16 15h2"/></svg></span>
+          <li class="card card-outlined card-hover">
+            <span class="icon-tile" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18M16 15h2"/></svg></span>
             <h3>Balances and reports</h3>
             <p><code>/balance</code> shows every account and your total. <code>/report</code> shows the last 30 days of spending by category.</p>
           </li>
-          <li class="card feature">
-            <span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg></span>
+          <li class="card card-outlined card-hover">
+            <span class="icon-tile" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg></span>
             <h3>Charts and a web dashboard</h3>
             <p>See where your money goes at a glance, in charts and on a simple web dashboard.</p>
           </li>
-          <li class="card feature">
-            <span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.4l-5.2 2.7 1-5.8L3.5 9.2l5.9-.9z"/></svg></span>
+          <li class="card card-outlined card-hover span-2">
+            <span class="icon-tile" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.4l-5.2 2.7 1-5.8L3.5 9.2l5.9-.9z"/></svg></span>
             <div class="feature-head"><h3>Savings advice in 3 tones</h3><span class="badge badge-neutral">needs an AI key</span></div>
-            <p><code>/coach</code> is warm and encouraging, <code>/budgeter</code> is blunt about what to cut, <code>/summary</code> is a few quick bullet points. All based on your real numbers.</p>
+            <p>Advice based on your real numbers, in the tone you prefer. Pick one to see what it does:</p>
+            <fieldset class="segmented-group">
+              <legend class="visually-hidden">Advice tone</legend>
+              <input class="visually-hidden" type="radio" name="tone" id="tone-coach" checked>
+              <input class="visually-hidden" type="radio" name="tone" id="tone-budgeter">
+              <input class="visually-hidden" type="radio" name="tone" id="tone-summary">
+              <div class="segmented">
+                <label for="tone-coach"><svg class="tick" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5 9-10"/></svg>Coach</label>
+                <label for="tone-budgeter"><svg class="tick" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5 9-10"/></svg>Budgeter</label>
+                <label for="tone-summary"><svg class="tick" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5 9-10"/></svg>Summary</label>
+              </div>
+              <div class="tone-panels" aria-live="polite">
+                <p class="tone tone-coach"><code>/coach</code> is warm and encouraging: it starts with what is going well, points out the biggest savings opportunities with real amounts, and ends with one small next step.</p>
+                <p class="tone tone-budgeter"><code>/budgeter</code> is blunt: it leads with what is costing you the most, separates needs from wants, and gives a numbered list of cuts with the monthly saving for each.</p>
+                <p class="tone tone-summary"><code>/summary</code> is a few quick bullet points, one line each, with the key number in bold. Made for reading on a phone.</p>
+              </div>
+            </fieldset>
           </li>
-          <li class="card feature">
-            <span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14L4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 010 11H11"/></svg></span>
+          <li class="card card-outlined card-hover">
+            <span class="icon-tile" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14L4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 010 11H11"/></svg></span>
             <h3>Undo and confirmations</h3>
             <p>Made a mistake? Undo it. Large amounts and statement imports ask you to confirm first, so a typo can&rsquo;t move a fortune.</p>
           </li>
-          <li class="card feature feature-wide">
-            <span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l8 3v6c0 5-3.5 9-8 11-4.5-2-8-6-8-11V5z"/><path d="M9 12l2 2 4-4"/></svg></span>
-            <div>
-              <div class="feature-head"><h3>Works without an AI key</h3><span class="badge badge-success">offline mode</span></div>
-              <p>The AI is optional. Without a key, or if every key fails, WalletLedger carries on with built-in rules for logging, balances and reports, so it never just stops. <code>/status</code> tells you which mode you are in.</p>
-            </div>
+          <li class="card card-outlined card-hover span-2">
+            <span class="icon-tile" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l8 3v6c0 5-3.5 9-8 11-4.5-2-8-6-8-11V5z"/><path d="M9 12l2 2 4-4"/></svg></span>
+            <div class="feature-head"><h3>Works without an AI key</h3><span class="badge badge-success">offline mode</span></div>
+            <p>The AI is optional. Without a key, or if every key fails, WalletLedger carries on with built-in rules for logging, balances and reports, so it never just stops. <code>/status</code> tells you which mode you are in.</p>
           </li>
         </ul>
       </div>
@@ -249,18 +260,18 @@
               <div><strong>Nothing to update by hand.</strong><p>Model names are discovered automatically from each provider. <code>/keys</code>, <code>/testkey</code>, <code>/pausekey</code> and friends manage the rest.</p></div>
             </li>
           </ul>
-          <div class="providers" aria-label="Supported AI providers">
-            <span class="badge badge-outline">Gemini (AIza&hellip; and AQ.&hellip; keys)</span>
-            <span class="badge badge-outline">OpenAI</span>
-            <span class="badge badge-outline">Claude</span>
-            <span class="badge badge-outline">Groq</span>
-          </div>
+          <ul class="chip-list providers" aria-label="Supported AI providers">
+            <li class="chip">Gemini (AIza&hellip; and AQ.&hellip; keys)</li>
+            <li class="chip">OpenAI</li>
+            <li class="chip">Claude</li>
+            <li class="chip">Groq</li>
+          </ul>
         </div>
 
         <div class="card">
           <p class="chain-title">If one key fails, the next takes over automatically</p>
           <ol class="chain">
-            <li><span class="n is-brand" aria-hidden="true">1</span><div><strong>Your own key</strong><span>Added with <code>/setkey</code>. Tried first.</span></div></li>
+            <li><span class="n is-primary" aria-hidden="true">1</span><div><strong>Your own key</strong><span>Added with <code>/setkey</code>. Tried first.</span></div></li>
             <li><span class="n" aria-hidden="true">2</span><div><strong>Shared key from the admin</strong><span>Used if you have no key, or yours is out of quota.</span></div></li>
             <li><span class="n" aria-hidden="true">3</span><div><strong>Key in the server&rsquo;s settings file</strong><span>For people who prefer files (<code>.env</code>).</span></div></li>
             <li><span class="n" aria-hidden="true">4</span><div><strong>Offline mode</strong><span>No keys left? Built-in rules keep the bot working.</span></div></li>
@@ -279,22 +290,22 @@
         </div>
 
         <ul class="data-grid">
-          <li class="card">
+          <li class="card card-outlined">
             <span class="badge badge-success"><span class="dot" aria-hidden="true"></span>Encrypted</span>
             <h3>AI keys</h3>
             <p>Saved AI keys are encrypted in the database. Someone who copies the database file cannot read them without the server&rsquo;s secret key.</p>
           </li>
-          <li class="card">
+          <li class="card card-outlined">
             <span class="badge badge-warning"><span class="dot" aria-hidden="true"></span>Being added</span>
             <h3>Chat history</h3>
             <p>Encryption of chat history at rest is being added. Until it ships, your past conversations are stored as plain text in the database.</p>
           </li>
-          <li class="card">
+          <li class="card card-outlined">
             <span class="badge badge-info"><span class="dot" aria-hidden="true"></span>You control it</span>
             <h3>One database you own</h3>
             <p>Everything lives in one place: a single SQLite file by default, or a PostgreSQL database you run. Accounts, transactions and balances are stored in plain text, so keep that file private and use disk encryption.</p>
           </li>
-          <li class="card">
+          <li class="card card-outlined">
             <span class="badge badge-neutral"><span class="dot" aria-hidden="true"></span>Good to know</span>
             <h3>Not zero-knowledge</h3>
             <p>Whoever runs the server can read the data. If you use an AI key, the AI provider receives recent messages and spending summaries to answer you.</p>
@@ -303,7 +314,7 @@
 
         <div class="callout">
           <p>The full list of what is stored, who can see it and how to harden it is in the security document.</p>
-          <a class="btn btn-secondary" data-repo-path="docs/SECURITY.md" href="https://github.com/FissionLife/WalletLedger/blob/main/docs/SECURITY.md">Read SECURITY.md</a>
+          <a class="btn btn-outlined state" data-repo-path="docs/SECURITY.md" href="https://github.com/FissionLife/WalletLedger/blob/main/docs/SECURITY.md">Read SECURITY.md</a>
         </div>
       </div>
     </section>
@@ -328,9 +339,8 @@
         <div>
           <div class="terminal">
             <div class="terminal-bar">
-              <span class="lights" aria-hidden="true"><i></i><i></i><i></i></span>
-              <span>Terminal, in the project folder</span>
-              <button class="copy-btn" type="button" data-copy-all>
+              <span>In a terminal, inside the project folder</span>
+              <button class="copy-btn state" type="button" data-copy-all>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 012-2h10"/></svg>
                 <span>Copy all</span>
               </button>
@@ -338,15 +348,15 @@
             <ol class="cmd-list">
               <li class="cmd-row">
                 <div><span class="cmd-label">1. Install</span><pre><code>uv sync</code></pre></div>
-                <button class="copy-btn" type="button" aria-label="Copy command 1: install"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 012-2h10"/></svg><span>Copy</span></button>
+                <button class="copy-btn state" type="button" aria-label="Copy command 1: install"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 012-2h10"/></svg><span>Copy</span></button>
               </li>
               <li class="cmd-row">
                 <div><span class="cmd-label">2. Answer a few questions (bot token, your id, optional AI key)</span><pre><code>uv run python scripts/setup.py</code></pre></div>
-                <button class="copy-btn" type="button" aria-label="Copy command 2: setup wizard"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 012-2h10"/></svg><span>Copy</span></button>
+                <button class="copy-btn state" type="button" aria-label="Copy command 2: setup wizard"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 012-2h10"/></svg><span>Copy</span></button>
               </li>
               <li class="cmd-row">
                 <div><span class="cmd-label">3. Start the bot</span><pre><code>uv run uvicorn main:app --port 8000</code></pre></div>
-                <button class="copy-btn" type="button" aria-label="Copy command 3: start the bot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 012-2h10"/></svg><span>Copy</span></button>
+                <button class="copy-btn state" type="button" aria-label="Copy command 3: start the bot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 012-2h10"/></svg><span>Copy</span></button>
               </li>
             </ol>
           </div>
@@ -410,8 +420,8 @@
           <p>Try the bot on Telegram, or read the code and run your own.</p>
         </div>
         <div class="cta-row">
-          <a class="btn btn-primary btn-lg" data-link="bot" href="https://t.me/Fissionlabsbot">Open the bot on Telegram</a>
-          <a class="btn btn-secondary btn-lg" data-link="repo" href="https://github.com/FissionLife/WalletLedger">View on GitHub</a>
+          <a class="btn btn-filled btn-lg state" data-link="bot" href="https://t.me/Fissionlabsbot">Open the bot on Telegram</a>
+          <a class="btn btn-outlined btn-lg state" data-link="repo" href="https://github.com/FissionLife/WalletLedger">View on GitHub</a>
         </div>
       </div>
     </section>
