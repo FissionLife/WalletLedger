@@ -535,7 +535,36 @@ def log_expense_tool(customer_id: str, amount: float, category: str) -> dict[str
     return log_expense(customer_id, amount, category)
 
 
+def get_financial_snapshot(user_id: str, days: int = 30) -> dict[str, Any]:
+    """Compact summary of the user's money for a period (numbers for reasoning, not for display)."""
+    from app.services import analytics
+
+    days = max(1, min(int(days), 365))
+
+    def run(db: Session, user_id: str) -> dict[str, Any]:
+        uid = _resolve_user(db, user_id).id
+        return {"status": "success", **analytics.financial_snapshot(db, uid, days)}
+
+    return _with_db(run, user_id=user_id)
+
+
+def savings_plan(user_id: str, target_amount: float, months: int) -> dict[str, Any]:
+    """Can the user save `target_amount` in `months`? Uses their last 90 days; suggests trims."""
+    from app.services import analytics
+
+    def run(db: Session, user_id: str) -> dict[str, Any]:
+        uid = _resolve_user(db, user_id).id
+        return {
+            "status": "success",
+            **analytics.savings_plan(db, uid, float(target_amount), int(months)),
+        }
+
+    return _with_db(run, user_id=user_id)
+
+
 TOOL_REGISTRY: dict[str, Callable[..., dict[str, Any]]] = {
+    "get_financial_snapshot": get_financial_snapshot,
+    "savings_plan": savings_plan,
     "log_expense": log_expense,
     "log_income": log_income,
     "transfer_between_pipes": transfer_funds,

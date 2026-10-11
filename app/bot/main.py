@@ -55,6 +55,7 @@ COMMAND_MENU: list[tuple[str, str]] = [
     ("history", "Recent transactions"),
     ("undo", "Undo the last entry"),
     ("budget", "Monthly budgets: /budget food 6000"),
+    ("plan", "Savings goal: /plan 50000 6"),
     ("dashboard", "Open your web dashboard"),
     ("export", "Download your data as CSV"),
     ("coach", "Friendly savings advice"),
@@ -87,7 +88,7 @@ HELP_TEXT = (
     "• Transferred 2000 from Bank to Cash\n"
     "• Send a PhonePe / GPay / bank PDF\n\n"
     "**See**\n"
-    "/balance · /stats · /history · /budget · /dashboard · /export\n"
+    "/balance · /stats · /history · /budget · /plan · /dashboard · /export\n"
     "Try: /stats 90d food · /stats last month · /chart categories\n\n"
     "**Fix**\n"
     "/undo removes the last entry (or tap ↩️ Undo)\n\n"
@@ -251,6 +252,8 @@ async def _view_command(chat_id: str, command: str, args: str) -> Reply | None:
         return await views.budgets(chat_id, args)
     if command == "/dashboard":
         return await views.dashboard(chat_id)
+    if command == "/plan":
+        return await views.plan(chat_id, args)
     return None
 
 

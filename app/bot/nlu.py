@@ -549,11 +549,26 @@ def split_clauses(text: str) -> list[str]:
     return [piece for clause in clauses for piece in _split_multi(clause)]
 
 
+_QUESTION_START = re.compile(
+    r"^(?:so\s+|and\s+|but\s+|also\s+)?(?:is|are|was|were|am|can|could|should|would|will|shall|do|does|did|"
+    r"what|whats|what's|why|how|which|who|whether|any)\b",
+    re.I,
+)
+
+
+def is_question(text: str) -> bool:
+    """ "is 640 too much for dinner?" asks something; it must never be logged as spending."""
+    text = (text or "").strip()
+    if "?" in text:
+        return True
+    return any(_QUESTION_START.match(c.strip()) for c in split_clauses(text))
+
+
 def parse_entries(text: str, ctx: Context | None = None) -> list[Entry]:
     """All transactions in the message, or [] if it does not clearly describe any."""
     ctx = ctx or Context()
     text = (text or "").strip()
-    if not text or len(text) > 3000:
+    if not text or len(text) > 3000 or is_question(text):
         return []
     clauses = split_clauses(text)
     if not clauses or len(clauses) > 40:
@@ -631,12 +646,51 @@ def _period_args(low: str) -> str:
     return mapping.get(p, p)
 
 
+_MONTHS_WORD = re.compile(r"(\d+(?:\.\d+)?)\s*(months?|mos?|years?|yrs?|weeks?)\b", re.I)
+
+
+def parse_goal(text: str) -> tuple[float, int] | None:
+    """ "50000 in 6 months", "50k 6", "2 lakh in 1 year" -> (amount, months). None if unclear."""
+    low = (text or "").lower()
+    span = _MONTHS_WORD.search(low)
+    if span:
+        n = float(span.group(1))
+        unit = span.group(2)[0]
+        months = n * 12 if unit == "y" else n / 4.345 if unit == "w" else n
+        rest = low[: span.start()] + " " + low[span.end() :]
+    else:
+        rest, months = low, 0.0
+    amounts = [
+        (m, _to_amount(m.group(1), m.group(2))) for m in _MONEY.finditer(rest) if _plausible(m)
+    ]
+    if not amounts:
+        return None
+    if not span:  # "50000 6": the small trailing number is the months
+        if len(amounts) < 2 or not 0 < amounts[-1][1] <= 120:
+            return None
+        months = amounts[-1][1]
+        amounts = amounts[:-1]
+    amount = max(a for _, a in amounts)
+    months = round(months)
+    if amount <= 0 or not 1 <= months <= 600:
+        return None
+    return amount, months
+
+
 def detect_screen(text: str) -> Screen | None:
     """Questions that should open a screen (stats, balance, history...) instead of logging."""
     t = (text or "").strip()
     low = t.lower().rstrip("?!. ")
     if not low or len(low) > 160:
         return None
+    if re.search(r"\b(save|saving|savings|set aside|put aside)\b", low) and not _EXPENSE.search(
+        low
+    ):
+        goal = parse_goal(low)
+        if goal and _MONTHS_WORD.search(low):
+            return Screen(
+                "/plan", f"{int(goal[0]) if goal[0] == int(goal[0]) else goal[0]} {goal[1]}"
+            )
     if re.fullmatch(
         r"(undo|revert|undo (?:that|it|last|the last(?: one| entry| transaction)?)|(?:delete|remove|cancel) (?:the )?last(?: one| entry| transaction)?)",
         low,

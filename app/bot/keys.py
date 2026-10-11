@@ -35,10 +35,12 @@ KEY_COMMANDS = {
 }
 
 SETKEY_USAGE = (
-    "🔑 **Add an AI key** (I test it first, and only save it if it works):\n"
+    "🔑 **Add your AI key** (tested first, saved encrypted)\n"
     "`/setkey <your key>`\n\n"
-    "Supported: Gemini (AIza… or AQ.…), OpenAI (sk-…), Claude (sk-ant-…), Groq (gsk_…).\n"
-    "Several keys separated by spaces are fine."
+    "Free Gemini key: aistudio.google.com/apikey\n"
+    "Also works with OpenAI, Claude, Groq, OpenRouter, Grok and DeepSeek.\n"
+    "No recognisable start (for example Mistral)? Say the provider first:\n"
+    "`/setkey mistral <key>`"
 )
 
 _STATUS_ICON = {"valid": "✅", "rate_limited": "⏳", "invalid": "❌", "unverified": "❔"}
@@ -79,7 +81,7 @@ def keys_text(chat_id: str) -> str:
             f"Add one with `/setkey <key>`.\n\n{_fallback_line()}"
         )
     lines = "\n".join(
-        f"{n}. {k['provider'].title()}  `{k['masked_key']}`  "
+        f"{n}. {gw.label(k['provider'])}  `{k['masked_key']}`  "
         f"{'✅ active' if k['is_active'] else '⏸️ paused'}"
         for n, k in enumerate(keys, start=1)
     )
@@ -104,7 +106,7 @@ async def save_keys(chat_id: str, text: str) -> str:
 
     lines, saved = [], 0
     for r in results:
-        name = r["provider"].title()
+        name = gw.label(r["provider"])
         check = r["check"]
         if r["status"] == "rejected":
             if check.status == "invalid":
@@ -153,14 +155,14 @@ async def edit_key(chat_id: str, args: str) -> str:
     check = await gw.validate_api_key(provider, new_key)
     if not check.usable:
         return (
-            f"❌ The new {provider.title()} key didn't pass the test "
+            f"❌ The new {gw.label(provider)} key didn't pass the test "
             f"({check.detail or 'not verified'}). Your existing key was **not** changed."
         )
     ok = await asyncio.to_thread(gw.replace_api_key, chat_id, record["key_id"], provider, new_key)
     if not ok:
         return "⚠️ Could not update that key. Please try again."
     return (
-        f"✅ Key {parts[0]} replaced with {provider.title()} `{gw.mask_key(new_key)}` (tested, stored "
+        f"✅ Key {parts[0]} replaced with {gw.label(provider)} `{gw.mask_key(new_key)}` (tested, stored "
         "encrypted).\n🧹 I removed your message so the key doesn't stay in the chat."
     )
 
@@ -171,7 +173,7 @@ def _simple(chat_id: str, args: str, usage: str, action, done: str) -> str:
         return _bad_number(chat_id, usage)
     if not action(chat_id, record["key_id"]):
         return "⚠️ Could not change that key. Please try again."
-    return done.format(n=args.strip().split()[0], name=record["provider"].title())
+    return done.format(n=args.strip().split()[0], name=gw.label(record["provider"]))
 
 
 async def test_keys(chat_id: str, args: str) -> str:
@@ -199,7 +201,7 @@ async def test_keys(chat_id: str, args: str) -> str:
         any_bad = any_bad or res.status == "invalid"
         detail = f" — {res.detail}" if res.detail else ""
         lines.append(
-            f"{_STATUS_ICON[res.status]} {n}. {rec['provider'].title()} `{rec['masked_key']}`: "
+            f"{_STATUS_ICON[res.status]} {n}. {gw.label(rec['provider'])} `{rec['masked_key']}`: "
             f"{res.status.replace('_', ' ')}{detail}"
         )
     bad = any(r.endswith("") and ("invalid" in ln) for ln in lines for r in [ln])

@@ -297,6 +297,57 @@ async def budgets(chat_id: str, args: str = "") -> Reply:
     return Reply("\n".join(lines), rows=kb)
 
 
+# ------------------------------------------------------------------------------------------ plan
+
+PLAN_USAGE = "🎯 Savings plan\nTry: /plan 50000 6   (save ₹50,000 in 6 months)\nOr just say: I want to save 50k in 6 months"
+
+
+def _plan(chat_id: str, target: float, months: int) -> dict:
+    with SessionLocal() as db:
+        return analytics.savings_plan(db, _user_id(db, chat_id), target, months)
+
+
+def plan_text(p: dict) -> str:
+    months = f"{p['months']} month{'s' if p['months'] != 1 else ''}"
+    lines = [
+        f"🎯 Save {fmt.inr(p['target'])} in {months}",
+        f"Needed: {fmt.inr(p['needed_per_month'])} a month",
+    ]
+    if not p["has_income_data"]:
+        lines.append(
+            "I don't see income in your last 90 days, so I can't tell yet. Log your salary and ask again."
+        )
+        return "\n".join(lines)
+    sign = "+" if p["avg_surplus"] >= 0 else "−"
+    lines.append(
+        f"You keep about {sign}{fmt.inr(abs(p['avg_surplus']))} a month "
+        f"({fmt.short(p['avg_income'])} in, {fmt.short(p['avg_spend'])} out)"
+    )
+    if p["on_track"]:
+        lines.append("✅ On track at your current pace.")
+        return "\n".join(lines)
+    lines.append(f"⚠️ Short by {fmt.inr(p['gap_per_month'])} a month. You could trim:")
+    for c in p["suggested_cuts"]:
+        lines.append(f"• {c['category']}  −{fmt.inr(c['cut'])} ({c['percent']:.0f}%)")
+    if not p["suggested_cuts"]:
+        lines.append("• nothing flexible enough to cut")
+    if p["still_short"] > 0:
+        lines.append(f"Still {fmt.inr(p['still_short'])} short: try more months or a lower target.")
+    return "\n".join(lines)
+
+
+async def plan(chat_id: str, args: str = "") -> Reply:
+    from app.bot import nlu
+
+    goal = nlu.parse_goal(args)
+    if goal is None:
+        return Reply(PLAN_USAGE, rows=ui.back_home())
+    result = await asyncio.to_thread(_plan, chat_id, *goal)
+    return Reply(
+        plan_text(result), rows=[[Btn("📊 Stats", "go:stats"), Btn("🎯 Budgets", "go:budgets")]]
+    )
+
+
 # ------------------------------------------------------------------------------------------ undo
 
 

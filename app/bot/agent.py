@@ -25,7 +25,7 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from langgraph.graph import END, START, StateGraph
 from sqlalchemy import select
 
-from app.bot import nlu, replies
+from app.bot import nlu, orchestrator, replies
 from app.bot.keys import save_keys
 from app.db import SessionLocal
 from app.models import ChatMessage, User
@@ -36,6 +36,7 @@ from app.services_ai.ai_gateway import (
     ask_persona,
     extract_api_keys,
     get_user_api_keys,
+    has_server_keys,
     mask_key,
 )
 from app.services_ai.mcp_server import execute_tool
@@ -416,6 +417,37 @@ TOOLS_SCHEMA: list[dict[str, Any]] = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_financial_snapshot",
+            "description": "Plain summary of the user's finances for a period: income, spending, top categories and merchants, budgets, recurring bills, month-end projection, money now. Call this before giving advice or answering 'how am I doing'.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "days": {
+                        "type": "integer",
+                        "description": "How many recent days to cover (default 30, max 365).",
+                    }
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "savings_plan",
+            "description": "Work out whether the user can save a target amount within some months, using their last 90 days of income and spending, and which discretionary categories to trim if not.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "target_amount": {"type": "number", "description": "Rupees to save in total."},
+                    "months": {"type": "integer", "description": "Months available."},
+                },
+                "required": ["target_amount", "months"],
+            },
+        },
+    },
 ]
 
 SYSTEM_AGENT_PROMPT = """You are WalletLedger's Financial AI Agent Brain modeled on the 'Tank & Pipes' architecture.
@@ -709,6 +741,10 @@ def _dynamic_llm_json_reasoning(message: str) -> dict[str, Any]:
     """Pure dynamic agent fallback reasoning: extracts structured entities and operations from user messages."""
     clean = message.strip()
     lower = clean.lower()
+
+    # 0. A question that mentions an amount ("is 640 too much for dinner?") is not an expense.
+    if nlu.is_question(clean) and re.search(r"\d", clean):
+        return {"type": "direct_text", "content": replies.QUESTION_NEEDS_AI}
 
     # 1. Multi-line or Multi-item Batch Ingestion
     lines = [line.strip() for line in clean.splitlines() if line.strip()]
@@ -1123,6 +1159,58 @@ async def _nlu_analysis(chat_id: str, message: str) -> dict[str, Any] | None:
     return {"type": "tool_calls", "tool_calls": calls}
 
 
+async def _orchestrate(
+    chat_id: str, message: str, history: list[dict[str, str]]
+) -> dict[str, Any] | None:
+    """Multi-step answer for goals and questions. None -> use the simple one-shot path."""
+    try:
+        res = await orchestrator.run(
+            chat_id,
+            message,
+            history,
+            tools=TOOLS_SCHEMA,
+            system_prompt=SYSTEM_AGENT_PROMPT,
+            transfer_threshold=CONFIRMATION_TRANSFER_THRESHOLD,
+        )
+    except Exception as exc:
+        logger.warning("Multi-step helper unavailable for chat %s: %s", chat_id, exc)
+        return None
+
+    if res.pending:
+        args = res.pending["tool_args"]
+        amount = float(args.get("amount", 0))
+        action: PendingAction = {
+            "tool_name": res.pending["tool_name"],
+            "tool_args": args,
+            "description": (
+                f"Transfer ₹{amount:,.2f} from {args.get('from_account', 'Source')} "
+                f"to {args.get('to_account', 'Destination')}"
+            ),
+            "created_at": _utc_now().isoformat(),
+        }
+        session_store.set_pending(chat_id, action)
+        return {
+            "requires_confirmation": True,
+            "confirmation_action": action,
+            "tool_name": action["tool_name"],
+            "tool_args": args,
+            "tool_calls": [{"tool_name": action["tool_name"], "tool_args": args}],
+        }
+
+    logged = replies.compact({"tool_results": [r for r in res.tool_results if r["result"]]})
+    parts = [p for p in (logged, res.text) if p]
+    if not parts:
+        return None
+    return {
+        "response_text": "\n\n".join(parts),
+        "tool_results": res.tool_results,
+        "tool_name": None,
+        "tool_args": None,
+        "tool_calls": None,
+        "requires_confirmation": False,
+    }
+
+
 async def llm_reasoning_node(state: AgentState) -> dict[str, Any]:
     """Node 1: LLM analyzes intent, resolves entities, and chooses tools dynamically."""
     chat_id = state.get("chat_id", "")
@@ -1165,6 +1253,14 @@ async def llm_reasoning_node(state: AgentState) -> dict[str, Any]:
         for m in state.get("messages", [])
     ]
     analysis = await _nlu_analysis(chat_id, user_message)
+    if (
+        analysis is None
+        and orchestrator.looks_complex(user_message)
+        and (get_user_api_keys(chat_id) or has_server_keys())
+    ):
+        multi = await _orchestrate(chat_id, user_message, history)
+        if multi is not None:
+            return multi
     if analysis is None:
         analysis = await _run_llm_analysis(chat_id, user_message, history)
     offline = (
@@ -1215,8 +1311,11 @@ async def llm_reasoning_node(state: AgentState) -> dict[str, Any]:
             **offline,
         }
 
+    text = analysis.get("content", "")
+    if text == replies.GREETING and not get_user_api_keys(chat_id):
+        text += "\n\n" + replies.NO_AI_HINT  # bring-your-own-key: tell them how, once
     return {
-        "response_text": analysis.get("content", ""),
+        "response_text": text,
         "tool_name": None,
         "tool_args": None,
         "tool_calls": None,

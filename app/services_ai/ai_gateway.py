@@ -63,7 +63,24 @@ PROVIDERS: dict[str, tuple[str, str | None]] = {
     "openai": ("openai/gpt-4o-mini", "OPENAI_API_KEYS"),
     "anthropic": ("anthropic/claude-3-5-sonnet-20241022", "ANTHROPIC_API_KEYS"),
     "groq": ("groq/llama-3.3-70b-versatile", "GROQ_API_KEYS"),
+    "openrouter": ("openrouter/openai/gpt-4o-mini", "OPENROUTER_API_KEYS"),
+    "xai": ("xai/grok-3-mini", "XAI_API_KEYS"),
+    "deepseek": ("deepseek/deepseek-chat", "DEEPSEEK_API_KEYS"),
+    "mistral": ("mistral/mistral-small-latest", "MISTRAL_API_KEYS"),
     "ollama": ("ollama/llama3.1", None),
+}
+
+# Names shown to users (in /keys, /status and key tests)
+PROVIDER_LABELS = {
+    "gemini": "Gemini",
+    "openai": "OpenAI",
+    "anthropic": "Claude",
+    "groq": "Groq",
+    "openrouter": "OpenRouter",
+    "xai": "xAI Grok",
+    "deepseek": "DeepSeek",
+    "mistral": "Mistral",
+    "ollama": "Ollama",
 }
 
 # provider -> standard single-key env var (used after the *_API_KEYS list for that provider)
@@ -72,9 +89,19 @@ SINGLE_KEY_ENV: dict[str, str] = {
     "openai": "OPENAI_API_KEY",
     "anthropic": "ANTHROPIC_API_KEY",
     "groq": "GROQ_API_KEY",
+    "openrouter": "OPENROUTER_API_KEY",
+    "xai": "XAI_API_KEY",
+    "deepseek": "DEEPSEEK_API_KEY",
+    "mistral": "MISTRAL_API_KEY",
 }
 
 PROVIDER_ALIASES = {
+    "openrouter": "openrouter",
+    "xai": "xai",
+    "grok": "xai",
+    "deepseek": "deepseek",
+    "mistral": "mistral",
+    "mistralai": "mistral",
     "google": "gemini",
     "gemini": "gemini",
     "openai": "openai",
@@ -90,7 +117,10 @@ PROVIDER_ALIASES = {
 KEY_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     ("anthropic", re.compile(r"sk-ant-[A-Za-z0-9_\-]{20,}")),
     ("groq", re.compile(r"gsk_[A-Za-z0-9]{20,}")),
-    ("openai", re.compile(r"sk-(?!ant-)[A-Za-z0-9_\-]{20,}")),
+    ("openrouter", re.compile(r"sk-or-(?:v1-)?[A-Za-z0-9_\-]{20,}")),
+    ("xai", re.compile(r"xai-[A-Za-z0-9]{20,}")),
+    ("deepseek", re.compile(r"sk-[a-f0-9]{32}(?![A-Za-z0-9_\-])")),
+    ("openai", re.compile(r"sk-(?!ant-|or-)[A-Za-z0-9_\-]{20,}")),
     ("gemini", re.compile(r"AIza[0-9A-Za-z_\-]{35}")),
     ("gemini", re.compile(r"AQ\.[0-9A-Za-z_\-.]{20,}")),
 ]
@@ -99,6 +129,11 @@ RATE_LIMIT_COOLDOWN_SECONDS = 60
 AUTH_FAILURE_COOLDOWN_SECONDS = 15 * 60
 DEFAULT_TIMEOUT_SECONDS = 15
 FAST_ATTEMPT_SECONDS = 8  # per-model patience while other models are still available
+
+
+def label(provider: str) -> str:
+    """Friendly provider name for messages ("anthropic" -> "Claude")."""
+    return PROVIDER_LABELS.get(provider, (provider or "").title())
 
 
 def normalize_provider(provider: str) -> str:
@@ -174,6 +209,16 @@ def extract_api_keys(text: str) -> list[tuple[str, str]]:
             taken.append(span)
             found.append((span[0], provider, match.group(0)))
     return [(provider, key) for _, provider, key in sorted(found)]
+
+
+def parse_provider_and_key(text: str) -> tuple[str, str] | None:
+    """'/setkey mistral abc123...' style: a provider name followed by a key with no known prefix."""
+    tokens = (text or "").split()
+    if len(tokens) >= 2 and tokens[0].lower() in PROVIDER_ALIASES:
+        key = tokens[1].strip()
+        if len(key) >= 16 and not re.search(r"\s", key):
+            return PROVIDER_ALIASES[tokens[0].lower()], key
+    return None
 
 
 def mask_key(api_key: str) -> str:
@@ -839,7 +884,8 @@ async def add_validated_keys(user_id: str, text: str) -> list[dict[str, Any]]:
 
     Each result has ``status``: added | exists | rejected, plus provider, masked_key, check.
     """
-    found = list(dict.fromkeys(extract_api_keys(text)))
+    explicit = parse_provider_and_key(text)
+    found = list(dict.fromkeys(([explicit] if explicit else []) + extract_api_keys(text)))
     checks = await asyncio.gather(*(validate_api_key(p, k) for p, k in found))
     results: list[dict[str, Any]] = []
     for (provider, key), check in zip(found, checks, strict=True):

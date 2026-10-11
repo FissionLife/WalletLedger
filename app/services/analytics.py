@@ -835,3 +835,109 @@ def report(
     }
     rep["insights"] = insights(rep)
     return rep
+
+
+# =============================================================================== planning
+
+_ESSENTIAL = {
+    "rent",
+    "bills & utilities",
+    "health",
+    "education",
+    "insurance",
+    "loan",
+    "emi",
+    "groceries",
+}
+
+
+def savings_plan(db: Session, user_id: str, target: float, months: int) -> dict[str, Any]:
+    """Can the user save `target` rupees in `months` months, and where could the money come from?
+
+    Uses the last 90 days: average monthly income and spending, so the answer rests on real numbers.
+    Suggestions only trim discretionary categories (never rent, bills, health, groceries).
+    """
+    if target <= 0 or months <= 0:
+        raise ValueError("target and months must both be greater than zero")
+    q = default_query(90)
+    rows = load_rows(db, user_id, q)
+    income = sum(r.amount for r in _income(rows)) / 3
+    spend = sum(r.amount for r in _expenses(rows)) / 3
+    surplus = income - spend
+    needed = target / months
+    gap = max(0.0, needed - max(0.0, surplus))
+    cats = sorted(category_breakdown(rows, None, top_n=20), key=lambda c: -c["amount"])
+    trim = []
+    remaining = gap
+    for c in cats:
+        if remaining <= 0.5:
+            break
+        if c["category"].lower() in _ESSENTIAL or c["category"] in (UNCATEGORIZED, "Other"):
+            continue
+        monthly = c["amount"] / 3
+        cut = min(monthly * 0.4, remaining)  # never ask for more than 40% of one category
+        if cut >= 50:
+            trim.append(
+                {
+                    "category": c["category"],
+                    "monthly_spend": _r(monthly),
+                    "cut": _r(cut),
+                    "percent": _r(cut / monthly * 100),
+                }
+            )
+            remaining -= cut
+    return {
+        "target": _r(target),
+        "months": months,
+        "needed_per_month": _r(needed),
+        "avg_income": _r(income),
+        "avg_spend": _r(spend),
+        "avg_surplus": _r(surplus),
+        "has_income_data": income > 0,
+        "on_track": surplus >= needed,
+        "gap_per_month": _r(gap),
+        "suggested_cuts": trim,
+        "still_short": _r(max(0.0, remaining)),
+    }
+
+
+def financial_snapshot(db: Session, user_id: str, days: int = 30) -> dict[str, Any]:
+    """A compact, plain summary (for the AI to reason over): numbers only, no charts."""
+    rep = report(db, user_id, default_query(days))
+    s = rep["summary"]
+    return {
+        "period": rep["query"]["label"],
+        "spent": s["spent"],
+        "earned": s["earned"],
+        "net": s["net"],
+        "savings_rate_percent": s["savings_rate"],
+        "spent_change_percent": s.get("spent_change_pct"),
+        "top_categories": [
+            {
+                "name": c["category"],
+                "amount": c["amount"],
+                "share_percent": c["share_pct"],
+                "change_percent": c["change_pct"],
+            }
+            for c in rep["categories"][:6]
+        ],
+        "top_merchants": [
+            {"name": m["merchant"], "amount": m["amount"]} for m in rep["merchants"][:5]
+        ],
+        "budgets": [
+            {
+                "category": b["category"],
+                "spent": b["spent"],
+                "budget": b["budget"],
+                "level": b["level"],
+            }
+            for b in rep["budgets"]
+        ],
+        "recurring": [
+            {"name": r["merchant"], "monthly": r["amount"]} for r in rep["recurring"][:6]
+        ],
+        "month_end_projection": rep["pace"]["projected"],
+        "money_now": rep["balances"]["total"],
+        "months_of_runway": rep["runway"]["months"],
+        "insights": rep["insights"],
+    }

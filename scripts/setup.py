@@ -160,7 +160,7 @@ def step_ai_key() -> None:
         say("  That doesn't look like a Gemini/OpenAI/Claude/Groq key. Skipped.")
         return
     provider, clean = found[0]
-    say(f"  Testing your {provider.title()} key...")
+    say(f"  Testing your {gw.label(provider)} key...")
     check = asyncio.run(gw.validate_api_key(provider, clean))
     if not check.usable:
         say(f"  Not saved: {check.detail or check.status}")
@@ -168,7 +168,7 @@ def step_ai_key() -> None:
     init_db()
     result = gw.add_api_key(gw.SHARED_OWNER, provider, clean)
     say(
-        f"  Saved ({result['status']}): {provider.title()} {result['masked_key']} (stored encrypted)"
+        f"  Saved ({result['status']}): {gw.label(provider)} {result['masked_key']} (stored encrypted)"
     )
 
 

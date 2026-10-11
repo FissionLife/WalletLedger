@@ -113,4 +113,12 @@ GREETING = (
     "Try: Spent 450 on dinner, or Received 50000 salary.\n"
     "Then /stats, /balance, /history. More: /help"
 )
-NO_AI_HINT = "For free-form questions and advice, add your Gemini key with /setkey."
+QUESTION_NEEDS_AI = (
+    "That sounds like a question, so I didn't record anything.\n"
+    "To answer questions like this I need an AI key: /setkey\n"
+    "To log something, say it plainly: Spent 640 on dinner."
+)
+NO_AI_HINT = (
+    "💡 For free-form questions and advice, add your own AI key: /setkey\n"
+    "(a free Gemini key takes a minute: aistudio.google.com/apikey)"
+)

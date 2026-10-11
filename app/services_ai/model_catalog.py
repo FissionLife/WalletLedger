@@ -82,6 +82,18 @@ async def _fetch_groq(api_key: str, _base: str) -> list[str]:
     return await _fetch_openai_style("https://api.groq.com/openai/v1/models", api_key)
 
 
+async def _fetch_xai(api_key: str, _base: str) -> list[str]:
+    return await _fetch_openai_style("https://api.x.ai/v1/models", api_key)
+
+
+async def _fetch_deepseek(api_key: str, _base: str) -> list[str]:
+    return await _fetch_openai_style("https://api.deepseek.com/models", api_key)
+
+
+async def _fetch_mistral(api_key: str, _base: str) -> list[str]:
+    return await _fetch_openai_style("https://api.mistral.ai/v1/models", api_key)
+
+
 async def _fetch_anthropic(api_key: str, _base: str) -> list[str]:
     data = await _get_json(
         "https://api.anthropic.com/v1/models?limit=1000",
@@ -100,6 +112,9 @@ _FETCHERS: dict[str, Callable] = {
     "openai": _fetch_openai,
     "anthropic": _fetch_anthropic,
     "groq": _fetch_groq,
+    "xai": _fetch_xai,
+    "deepseek": _fetch_deepseek,
+    "mistral": _fetch_mistral,
     "ollama": _fetch_ollama,
 }
 
@@ -147,7 +162,25 @@ def _pick_ollama(ids: list[str]) -> str | None:
     return max(llama, key=_version_key) if llama else (ids[0] if ids else None)
 
 
+def _pick_xai(ids: list[str]) -> str | None:
+    return _newest(ids, r"^grok-[\d.]+-mini$") or _newest(ids, r"^grok-[\d.]+$")
+
+
+def _pick_deepseek(ids: list[str]) -> str | None:
+    return "deepseek-chat" if "deepseek-chat" in ids else None
+
+
+def _pick_mistral(ids: list[str]) -> str | None:
+    for name in ("mistral-small-latest", "mistral-medium-latest", "mistral-large-latest"):
+        if name in ids:
+            return name
+    return None
+
+
 _RULES: dict[str, Callable[[list[str]], str | None]] = {
+    "xai": _pick_xai,
+    "deepseek": _pick_deepseek,
+    "mistral": _pick_mistral,
     "gemini": _pick_gemini,
     "openai": _pick_openai,
     "anthropic": _pick_anthropic,

@@ -124,7 +124,7 @@ class TestCommands(BotTestCase):
         self.assertIn(gw.mask_key(AQ_KEY), keys)
 
     def test_setkey_usage_and_invalid(self):
-        self.assertIn("Add an AI key", run(bot.handle_text(self.chat_id, "/setkey")))
+        self.assertIn("Add your AI key", run(bot.handle_text(self.chat_id, "/setkey")))
         self.assertIn(
             "couldn't find a supported API key", run(bot.handle_text(self.chat_id, "/setkey hello"))
         )
