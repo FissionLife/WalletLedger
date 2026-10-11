@@ -1,7 +1,7 @@
 # 🧠 Role 2: LangGraph Agent Brain — Implementation & Hand-off Summary
-**Assignee:** Gopal (Role 2)  
-**Component:** `app/bot/agent.py`, `app/models.py`, `app/services_ai/ai_gateway.py`  
-**Feature Branch:** `feature/role-2-langgraph-agent`  
+**Assignee:** Gopal (Role 2)
+**Component:** `app/bot/agent.py`, `app/models.py`, `app/services_ai/ai_gateway.py`
+**Feature Branch:** `feature/role-2-langgraph-agent`
 
 ---
 
@@ -21,7 +21,7 @@ The agent workflow is implemented as a compiled `langgraph.graph.StateGraph` in 
 flowchart TD
     Start([Telegram User Message]) --> LoadHistory[Load Full Chat History from DB]
     LoadHistory --> Node1["Node 1: LLM Reasoning & Intent Classification"]
-    
+
     Node1 -->|Confirmation Reply yes/no| Node2["Node 2: Confirmation Handler (HITL)"]
     Node1 -->|High-Value Transfer >= ₹5,000| Node3_Prompt["Node 3: Tool Executor (HITL Prompt)"]
     Node1 -->|Standard Tool Operation| Node3["Node 3: Tool Executor (MCP Dispatch)"]
@@ -31,7 +31,7 @@ flowchart TD
     Node2 -->|Cancelled| Node4
     Node3 --> Node4
     Node3_Prompt --> Node4
-    
+
     Node4 --> SaveHistory[Save User & Agent Messages to DB]
     SaveHistory --> End([Telegram Markdown Reply])
 ```
@@ -146,4 +146,3 @@ uv run python scripts/test_agent_scenarios.py
 - **`SDLC_AND_SCHEMA.md`**: Documented `chat_messages` table and contract specifications.
 - **`scripts/test_agent_scenarios.py`**: End-to-end automated integration test suite for Role 2.
 - **`ROLE_2_IMPLEMENTATION_SUMMARY.md`**: Team hand-off and architectural documentation.
-

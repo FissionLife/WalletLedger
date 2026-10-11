@@ -21,9 +21,10 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
 from app.bot.agent import classify_reply, process_user_interaction
-from app.bot.keys import KEY_COMMANDS, handle_key_command
+from app.bot.keys import KEY_COMMANDS, handle_admin_command, handle_key_command
 from app.config import dev_endpoints_enabled, is_chat_allowed
 from app.db import SessionLocal
+from app.health import user_status_text
 from app.services.ledger import get_account_balances, get_or_create_user, get_spending_summary
 from app.services_ai.ai_gateway import extract_api_keys
 from app.services_ai.mcp_server import execute_tool
@@ -55,9 +56,10 @@ COMMAND_MENU: list[tuple[str, str]] = [
     ("delkey", "Remove a key: /delkey 1"),
     ("pausekey", "Pause a key: /pausekey 1"),
     ("resumekey", "Resume a key: /resumekey 1"),
+    ("status", "AI, storage and key health"),
     ("help", "How to use WalletLedger"),
 ]
-KNOWN_COMMANDS = {f"/{name}" for name, _ in COMMAND_MENU} | {"/start", "/key"}
+KNOWN_COMMANDS = {f"/{name}" for name, _ in COMMAND_MENU} | {"/start", "/key", "/admin"}
 
 HELP_TEXT = (
     "ℹ️ **WalletLedger Help**\n\n"
@@ -153,6 +155,10 @@ async def handle_text(chat_id: str, text: str) -> str:
         command = command.split("@", 1)[0].lower()  # "/balance@MyBot" in groups
         if command in KEY_COMMANDS:
             return await handle_key_command(chat_id, command, args.strip())
+        if command == "/status":
+            return await user_status_text(chat_id)
+        if command == "/admin":
+            return await handle_admin_command(chat_id, args)
         reply = _handle_command(chat_id, command, args.strip())
         if reply is not None:
             return reply

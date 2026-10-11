@@ -212,6 +212,71 @@ async def test_keys(chat_id: str, args: str) -> str:
 
 
 # ----------------------------------------------------------------------------------------
+# Admin: shared keys (used by everyone as the fallback after their own keys)
+# ----------------------------------------------------------------------------------------
+
+ADMIN_HELP = (
+    "🛠 **Admin**\n"
+    "Shared keys are the fallback everyone uses when their own key is missing or fails.\n\n"
+    "`/admin keys` – list shared keys\n"
+    "`/admin addkey <key>` – test, then add\n"
+    "`/admin editkey <n> <new key>` · `/admin delkey <n>`\n"
+    "`/admin pausekey <n>` · `/admin resumekey <n>` · `/admin testkeys`\n"
+    "`/admin stats` – users and activity"
+)
+
+_ADMIN_TO_KEY_COMMAND = {
+    "keys": "/keys",
+    "addkey": "/setkey",
+    "editkey": "/editkey",
+    "delkey": "/delkey",
+    "pausekey": "/pausekey",
+    "resumekey": "/resumekey",
+    "testkeys": "/testkey",
+}
+
+
+async def handle_admin_command(chat_id: str, args: str) -> str:
+    """/admin ... (admins only). Shared keys live encrypted in the database."""
+    from app.config import is_admin
+
+    if not is_admin(chat_id):
+        return "🔒 Admin only. (An admin must list your chat id in ADMIN_CHAT_IDS.)"
+    parts = args.strip().split(None, 1)
+    sub = parts[0].lower() if parts else ""
+    rest = parts[1] if len(parts) > 1 else ""
+    if sub == "stats":
+        return await asyncio.to_thread(_admin_stats)
+    command = _ADMIN_TO_KEY_COMMAND.get(sub)
+    if command is None:
+        return ADMIN_HELP
+    reply = await handle_key_command(gw.SHARED_OWNER, command, rest)
+    return "🛠 **Shared keys**\n" + (reply or ADMIN_HELP)
+
+
+def _admin_stats() -> str:
+    from datetime import UTC, datetime, timedelta
+
+    from sqlalchemy import func, select
+
+    from app.db import SessionLocal
+    from app.models import Transaction, User
+
+    with SessionLocal() as db:
+        week = datetime.now(UTC).replace(tzinfo=None) - timedelta(days=7)
+        users = db.scalar(
+            select(func.count()).select_from(User).where(User.telegram_chat_id != gw.SHARED_OWNER)
+        )
+        active = db.scalar(
+            select(func.count(func.distinct(Transaction.user_id))).where(
+                Transaction.created_at >= week
+            )
+        )
+        txs = db.scalar(select(func.count()).select_from(Transaction))
+    return f"📈 **Bot stats**\nUsers: {users}\nActive in last 7 days: {active}\nTransactions: {txs}"
+
+
+# ----------------------------------------------------------------------------------------
 # Dispatcher
 # ----------------------------------------------------------------------------------------
 

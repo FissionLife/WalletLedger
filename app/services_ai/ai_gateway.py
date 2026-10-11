@@ -92,7 +92,7 @@ KEY_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     ("groq", re.compile(r"gsk_[A-Za-z0-9]{20,}")),
     ("openai", re.compile(r"sk-(?!ant-)[A-Za-z0-9_\-]{20,}")),
     ("gemini", re.compile(r"AIza[0-9A-Za-z_\-]{35}")),
-    ("gemini", re.compile(r"AQ\.[0-9A-Za-z_\-]{30,}")),
+    ("gemini", re.compile(r"AQ\.[0-9A-Za-z_\-.]{20,}")),
 ]
 
 RATE_LIMIT_COOLDOWN_SECONDS = 60
@@ -423,7 +423,10 @@ def _single_env_key(provider: str) -> str | None:
     return value or None
 
 
-def _load_user_keys(user_id: str) -> list[KeyCandidate]:
+SHARED_OWNER = "__shared__"  # pseudo-user that owns the admin-managed shared keys
+
+
+def _load_user_keys(user_id: str, source: str = "user") -> list[KeyCandidate]:
     db = _session()
     try:
         user = _find_user(db, user_id)
@@ -439,7 +442,7 @@ def _load_user_keys(user_id: str) -> list[KeyCandidate]:
             try:
                 provider = normalize_provider(record.provider)
                 keys.append(
-                    KeyCandidate(provider, decrypt_api_key(record.encrypted_key), "user", record.id)
+                    KeyCandidate(provider, decrypt_api_key(record.encrypted_key), source, record.id)
                 )
             except InvalidToken, ValueError:
                 logger.warning("Skipping unusable api key %s", record.id)
@@ -471,7 +474,16 @@ def build_candidates(
     for provider in order:
         candidates += _rotate(by_provider.get(provider, []), f"user:{user_id}:{provider}")
 
-    # Server keys, grouped by provider so the preferred provider is always tried first.
+    # Shared keys managed by the admin from Telegram (stored encrypted in the database).
+    shared_by_provider: dict[str, list[KeyCandidate]] = {}
+    for key in _load_user_keys(SHARED_OWNER, source="shared"):
+        shared_by_provider.setdefault(key.provider, []).append(key)
+    for provider in [preferred_provider] + [
+        p for p in shared_by_provider if p != preferred_provider
+    ]:
+        candidates += _rotate(shared_by_provider.get(provider, []), f"shared:{provider}")
+
+    # Server keys from .env, grouped by provider so the preferred provider is always tried first.
     # Within a provider: the rotated GEMINI_API_KEYS-style list, then the single
     # GEMINI_API_KEY-style variable (skipped if it is already in the list).
     order = [preferred_provider] + [p for p in PROVIDERS if p != preferred_provider]
@@ -496,8 +508,10 @@ def build_candidates(
 
 
 def has_server_keys() -> bool:
-    """True if the team configured shared fallback keys (never reveals them)."""
-    return any(_server_keys(p) or _single_env_key(p) for p in PROVIDERS)
+    """True if shared fallback keys exist, in .env or the admin-managed store (never reveals them)."""
+    if any(_server_keys(p) or _single_env_key(p) for p in PROVIDERS):
+        return True
+    return bool(_load_user_keys(SHARED_OWNER, source="shared"))
 
 
 # --------------------------------------------------------------------------------------
@@ -697,6 +711,26 @@ class KeyCheck:
         return self.status in ("valid", "rate_limited")
 
 
+def _explain_rejection(provider: str, exc: Exception) -> str:
+    """Turn a provider's auth error into something a user can act on."""
+    text = str(exc)
+    if "ACCESS_TOKEN_TYPE_UNSUPPORTED" in text:
+        return (
+            "Google says this key type isn't accepted by the Gemini API "
+            "(ACCESS_TOKEN_TYPE_UNSUPPORTED). Create a fresh key at aistudio.google.com/apikey"
+        )
+    if "API_KEY_SERVICE_BLOCKED" in text:
+        return (
+            "the key's project blocks the Gemini API (API_KEY_SERVICE_BLOCKED). Enable the "
+            "Generative Language API for that project, or use a key from another project"
+        )
+    if "API key not valid" in text or "API_KEY_INVALID" in text:
+        return "Google says this API key is not valid (typo, revoked, or copied incompletely)"
+    if "insufficient_quota" in text or "billing" in text.lower():
+        return "the account has no quota or billing set up"
+    return "the provider rejected this key"
+
+
 async def validate_api_key(provider: str, api_key: str) -> KeyCheck:
     """Test a key with a tiny real request, so a dead key is never silently saved.
 
@@ -728,7 +762,7 @@ async def validate_api_key(provider: str, api_key: str) -> KeyCheck:
         if kind == "rate_limit":
             return KeyCheck("rate_limited", "quota or rate limit reached right now")
         if kind == "auth":
-            return KeyCheck("invalid", "the provider rejected this key")
+            return KeyCheck("invalid", _explain_rejection(provider, exc))
         if isinstance(exc, litellm.NotFoundError):
             # Key accepted but the model name is unknown: the model list tells us if the key works.
             model_catalog.invalidate(provider, api_key)

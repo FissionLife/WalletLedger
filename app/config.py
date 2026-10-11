@@ -47,6 +47,8 @@ class Settings(BaseSettings):
 
     # Only these Telegram chat ids may use the bot (comma-separated). Empty = anyone.
     allowed_chat_ids: str = ""
+    # Chat ids allowed to run /admin (manage shared AI keys, see bot stats). Empty = no admins.
+    admin_chat_ids: str = ""
     # /bot/simulate_chat and the token-less /bot/webhook let the caller act as ANY chat id.
     # Unset = enabled only while no bot token is configured; true/false overrides.
     enable_dev_endpoints: bool | None = None
@@ -104,6 +106,11 @@ settings = Settings()
 def is_chat_allowed(chat_id: str) -> bool:
     allowed = {c.strip() for c in settings.allowed_chat_ids.split(",") if c.strip()}
     return not allowed or str(chat_id) in allowed
+
+
+def is_admin(chat_id: str) -> bool:
+    admins = {c.strip() for c in settings.admin_chat_ids.split(",") if c.strip()}
+    return str(chat_id) in admins
 
 
 def dev_endpoints_enabled() -> bool:

@@ -1,356 +1,93 @@
-# WalletLedger (WalletLedger & AI Financial Bot)
+# WalletLedger
 
-A production-ready FastAPI-based payment processing, wallet ledger, and AI-powered financial assistant system with user management, order processing, wallet transactions, and Telegram Bot integration.
+**A personal-finance assistant that lives in Telegram.** You chat with it like a friend, and it keeps
+your books.
 
-## Quick Links
+> You: *Spent 450 on dinner via Bank*
+> Bot: ✅ Expense logged: ₹450.00 → Food & Dining. 🏦 Bank balance: ₹14,550.00
 
-- 📖 [Complete Deployment Guide](DEPLOYMENT.md) - Step-by-step local setup instructions
-- 📚 [Technical Documentation](DOCUMENTATION.md) - Architecture, flows, and development guide
-- 👥 [Team & Architecture Guide](TEAM_GUIDE.md) - "Tank and Pipes" model, hackathon roles & bot architecture
-- 🗺️ [Architecture diagrams](docs/ARCHITECTURE.md) - Mermaid flow, sequence, graph and data-model diagrams
-- 🔒 [Security & data storage](docs/SECURITY.md) - what is stored, who can read it, how to harden it
-- 🔗 [API Documentation](http://localhost:8000/docs) - Interactive Swagger UI (after starting server)
+It tracks your accounts (cash, bank, cards), logs spending and income, imports bank/PhonePe PDF
+statements, shows reports, and gives savings advice. If you give it an AI key, it also understands
+free-form questions. Without one it still works with built-in rules.
 
-## Prerequisites
+New here? Read **[How it works, in plain words](docs/HOW_IT_WORKS.md)** (5 minutes).
 
-- Python 3.14+ (pinned in `.python-version`)
-- [uv](https://github.com/astral-sh/uv) (Fast Python package and project manager)
-- Docker (for PostgreSQL) or SQLite (for local testing)
-
-## Quick Start
-
-### MCP server for agent clients
-
-WalletLedger exposes its ledger tools over MCP stdio. After installing dependencies, configure
-your MCP client to launch `uv run --directory <path-to-WalletLedger> python -m app.services_ai.mcp_transport`.
-The tools accept either the user's Telegram chat ID or internal user UUID as `user_id`. The
-LangGraph agent uses the same tool registry directly.
-
-The tool set includes transaction entry and transfer, balance and category discovery, filtered
-transaction search and correction, spending and budget reports, budget updates, recurring bill
-detection, emergency fund calculations, and encrypted provider key storage.
-
-### 1. Database Setup
-
-Copy the settings template first (every setting is explained inside):
-```bash
-cp .env.example .env
-```
-
-Pick **one** database backend with `DB_MODE` in `.env` (tables are created automatically at startup):
-
-| `DB_MODE` | Use it for | Setup |
-|---|---|---|
-| `sqlite` (default) | development, personal use | nothing. Data lives in `SQLITE_PATH` (`./walletledger.db`) |
-| `postgres` | production, several users | `docker compose up -d`, then `DB_MODE=postgres` |
+## Set it up (3 steps)
 
 ```bash
-# SQLite: nothing to do (DB_MODE=sqlite is the default)
-
-# PostgreSQL
-docker compose up -d      # Postgres 16 on localhost:5433, data kept in a named volume
-docker compose ps         # wait until it shows "healthy"
-# then in .env:  DB_MODE=postgres   (POSTGRES_* match docker-compose.yml)
+uv sync                                 # 1. install
+uv run python scripts/setup.py          # 2. answer a few questions (bot token, your id, optional AI key)
+uv run uvicorn main:app --port 8000     # 3. start the bot
 ```
-Advanced: a full `DATABASE_URL=...` overrides `DB_MODE`. The active backend is logged at startup.
 
-### LLM models are discovered automatically
-You never maintain model names: the gateway asks each provider which models your API key can use
-and picks the best one (cached 6 h; falls back to built-in defaults if the lookup fails). Pin a
-model only if you need to with `AI_MODEL_<PROVIDER>`, or turn it off with `DYNAMIC_MODELS=false`.
+Then open your bot in Telegram and send `/start`.
 
-### Bot profile (command menu, description) - set up / refresh
-The "/" command menu, the intro text shown before /start, the profile blurb and the menu button are
-defined in code (`app/bot/main.py` `COMMAND_MENU`, `app/bot/profile.py`). They are applied
-automatically every time the server starts, and you can refresh them any time (also while the
-server is running):
+- You get the bot token from **@BotFather** in Telegram (`/newbot`).
+- The wizard creates `.env`, makes a strong secret key, finds your Telegram id, picks the database
+  (a SQLite file by default, no install), tests an AI key if you have one, and publishes the command menu.
+- Check that everything is healthy at any time: `uv run python scripts/setup.py --check`
+- Needs Python 3.14 and [uv](https://github.com/astral-sh/uv).
 
-```bash
-uv run python scripts/setup_bot.py                # apply everything
-uv run python scripts/setup_bot.py --show         # what Telegram has now vs this code
-uv run python scripts/setup_bot.py --reset        # clear stale commands in all scopes first
-uv run python scripts/setup_bot.py --name "WalletLedger"   # also rename the bot (rate limited)
-```
-Add or change a command in `COMMAND_MENU`, run the script, and Telegram picks it up.
+## What you can do
 
-### Managing AI keys (in the Telegram chat)
-Type `/` in Telegram to see the command menu. Keys are **tested live before they are saved**, so a
-dead or mistyped key is rejected with a reason instead of silently breaking the bot.
+| Say or tap | What happens |
+|---|---|
+| *Paid 150 to Starbucks for coffee* | logs an expense |
+| *Received 60000 salary in Bank* | logs income |
+| *Transferred 2000 from Bank to Cash* | moves money (not counted as spending) |
+| Send a PhonePe / GPay / bank **PDF** | previews and imports the transactions |
+| `/balance` · `/report` | your accounts, and the last 30 days of spending |
+| `/coach` · `/budgeter` · `/summary` | savings advice in three tones (needs an AI key) |
+| `/status` | is AI on, which model, how many keys |
+| `/help` | everything, in the chat |
+
+Type `/` in Telegram to see the whole command menu.
+
+## AI keys (all managed in the chat)
+
+There are three layers, tried in this order. If one fails, the next takes over automatically:
+
+1. **Your own key**: `/setkey <key>`. Every key is **tested live before it is saved**, so a dead or
+   mistyped key is rejected with the reason. Gemini (`AIza…` and the newer `AQ.…`), OpenAI, Claude and Groq work.
+2. **Shared keys** the admin manages for everyone: `/admin addkey <key>`. Stored encrypted.
+3. **Keys in `.env`** (`GEMINI_API_KEYS=…`), for people who prefer files.
 
 | Command | What it does |
 |---|---|
-| `/setkey <key>` | test, then save (Gemini, OpenAI, Claude, Groq; several at once is fine) |
 | `/keys` | numbered, masked list of your keys |
-| `/testkey [n]` | re-test one key or all of them |
-| `/editkey <n> <new key>` | replace key n (the old one is kept unless the new one works) |
-| `/delkey <n>` / `/pausekey <n>` / `/resumekey <n>` | remove, pause or re-enable key n |
+| `/testkey [n]` | re-test one key or all |
+| `/editkey <n> <new key>` | replace key n (the old one stays unless the new one works) |
+| `/delkey <n>` · `/pausekey <n>` · `/resumekey <n>` | remove, pause, re-enable |
+| `/admin` | admin only: manage shared keys, see bot stats |
 
-If your keys fail or run out of quota, the bot automatically **falls back to the shared team keys**
-configured on the server (`GEMINI_API_KEYS` etc. in `.env`).
+Model names are discovered automatically from each provider, so nothing needs updating by hand.
+Keys are encrypted in the database; the bot also deletes your message after you send a key.
 
-### Telegram bot (optional)
-Create a bot with @BotFather and put its token in `.env` as `TELEGRAM_BOT_TOKEN`.
-With `USE_WEBHOOK=false` the app polls Telegram when it starts, so just message your bot.
-Without a token the bot stays off and you can test with `POST /bot/simulate_chat`.
-Commands: `/start`, `/help`, `/balance`, `/report`, `/setkey <key>`, `/keys`, `/coach`, `/budgeter`, `/summary`, and PDF statement uploads.
+## Settings
 
-### 2. Install Dependencies
+Everything lives in `.env` (the wizard fills it in; `.env.example` explains every line).
+The ones you will actually touch:
 
-Use `uv` to automatically synchronize the environment and manage `.venv`:
-```bash
-uv sync
-```
+| Setting | Meaning |
+|---|---|
+| `TELEGRAM_BOT_TOKEN` | from @BotFather |
+| `ALLOWED_CHAT_IDS` | who may use the bot (empty = anyone: set this) |
+| `ADMIN_CHAT_IDS` | who may use `/admin` |
+| `SECRET_KEY` | encrypts saved AI keys (the wizard generates it) |
+| `DB_MODE` | `sqlite` (default, a single file) or `postgres` (`docker compose up -d`) |
 
-### 3. Run the Application
-
-```bash
-uv run uvicorn main:app --reload --port 8000
-```
-
-*Or run directly:*
-```bash
-uv run python main.py
-```
-
-The API will be available at `http://localhost:8000` (Swagger UI at `http://localhost:8000/docs`).
-
-### 4. Seed Sample Data
+## For developers
 
 ```bash
-# Seed multiple users with wallets and orders
-uv run python scripts/seed_data.py --all
-
-# Or seed a single user
-uv run python scripts/seed_data.py CUST-001
+uv run python -m unittest discover -s tests    # tests (offline)
+uv run python scripts/setup_bot.py --show      # command menu on Telegram vs this code
+uv run python scripts/seed_demo_data.py        # demo user with 50 transactions
 ```
 
-## API Endpoints
+Docs: [How it works](docs/HOW_IT_WORKS.md) · [Architecture diagrams](docs/ARCHITECTURE.md) ·
+[Security & data storage](docs/SECURITY.md) · [Deployment](docs/DEPLOYMENT.md) ·
+[Code map](docs/DOCUMENTATION.md)
 
-### Users
+## License and contributors
 
-**Create User**
-```bash
-curl -X POST http://localhost:8000/users \
-  -H "Content-Type: application/json" \
-  -d '{
-    "user_id": "CUST-001",
-    "email": "customer@example.com",
-    "full_name": "John Doe",
-    "phone": "+91-9876543210"
-  }'
-```
-
-**Get User**
-```bash
-curl http://localhost:8000/users/CUST-001
-```
-
-**List Users**
-```bash
-curl http://localhost:8000/users
-```
-
-### Orders
-
-**Create Order**
-```bash
-curl -X POST http://localhost:8000/orders \
-  -H "Content-Type: application/json" \
-  -d '{
-    "customer_id": "CUST-001",
-    "amount": 499.99,
-    "currency": "INR",
-    "idempotency_key": "order-123"
-  }'
-```
-
-**List Orders**
-```bash
-curl "http://localhost:8000/orders?customer_id=CUST-001"
-```
-
-### Wallet
-
-**Credit Wallet**
-```bash
-curl -X POST http://localhost:8000/wallet/CUST-001/credit \
-  -H "Content-Type: application/json" \
-  -d '{"amount": 1000}'
-```
-
-**Debit Wallet**
-```bash
-curl -X POST http://localhost:8000/wallet/CUST-001/debit \
-  -H "Content-Type: application/json" \
-  -d '{"amount": 200}'
-```
-
-**Get Wallet Balance**
-```bash
-curl http://localhost:8000/wallet/CUST-001
-```
-
-### Telegram Bot Webhook
-
-**Simulate a chat message (no bot token needed)**
-```bash
-curl -X POST http://localhost:8000/bot/simulate_chat \
-  -H "Content-Type: application/json" \
-  -d '{"chat_id": "12345", "text": "Spent 450 on dinner via Bank"}'
-```
-
-**Receive Telegram Update (dev mode, no token: reply returned as JSON)**
-```bash
-curl -X POST http://localhost:8000/bot/webhook \
-  -H "Content-Type: application/json" \
-  -d '{
-    "update_id": 10001,
-    "message": {
-      "chat": {"id": 12345},
-      "text": "/start"
-    }
-  }'
-```
-
-## Testing Scenarios
-
-Run test scenarios to validate the API and ledger behaviors:
-
-```bash
-# Run all scenarios with seeding
-uv run python scripts/run_scenarios.py --scenario all --seed
-
-# Run specific scenario
-uv run python scripts/run_scenarios.py --scenario orders_retry
-uv run python scripts/run_scenarios.py --scenario wallet_concurrency
-uv run python scripts/run_scenarios.py --scenario false_success
-
-# Repeat scenario multiple times
-uv run python scripts/run_scenarios.py --scenario wallet_concurrency --repeat 5
-```
-
-## Database Management
-
-### PostgreSQL via Docker
-
-**Initialize schema manually (optional, the app does this on startup):**
-```bash
-docker compose exec -T db psql -U postgres -d appdb < sql/schema.sql
-```
-`sql/schema.sql` is generated from `app/models.py`; after model changes run
-`uv run python scripts/generate_schema.py`.
-
-**Load demo data:**
-```bash
-uv run python scripts/seed_demo_data.py
-```
-
-**Connect to database:**
-```bash
-docker compose exec db psql -U postgres -d appdb    # then \dt lists the 8 tables
-```
-
-### SQLite
-
-With `DB_MODE=sqlite`, tables are initialized on startup. The file runs in WAL mode with foreign keys
-enforced (so deleting a user cascades). Inspect it with standard tools:
-```bash
-sqlite3 walletledger.db
-```
-
-## Working with `uv`
-
-- **Sync dependencies**: `uv sync`
-- **Add a dependency**: `uv add <package_name>`
-- **Remove a dependency**: `uv remove <package_name>`
-- **Run scripts**: `uv run python <script.py>`
-- **Run server**: `uv run uvicorn main:app --reload --port 8000`
-- **Prune unneeded packages**: `uv sync --clean`
-
-## Project Structure
-
-```
-WalletLedger/
-├── app/
-│   ├── __init__.py
-│   ├── auth.py                  # Authentication utilities
-│   ├── config.py                # Application settings
-│   ├── db.py                    # Database session & engine
-│   ├── models.py                # SQLAlchemy models (User, Wallet, Order)
-│   ├── routes_orders.py         # Order endpoints
-│   ├── routes_users.py          # User management endpoints
-│   ├── routes_wallet.py         # Wallet balance & transactions
-│   ├── schemas.py               # Pydantic validation schemas
-│   ├── services.py              # Core business & ledger logic
-│   ├── bot/                     # Telegram Bot integration
-│   │   ├── __init__.py
-│   │   ├── agent.py             # LangGraph state machine & reasoning
-│   │   └── main.py              # Telegram webhook endpoint
-│   └── services_ai/             # AI service layers
-│       ├── __init__.py
-│       ├── ai_gateway.py        # LiteLLM routing & API keys
-│       ├── mcp_server.py        # Model Context Protocol tools
-│       └── transaction_parser.py # PDF statement & chat parser
-├── scripts/
-│   ├── run_scenarios.py         # Concurrency and idempotency test scenarios
-│   └── seed_data.py             # Sample data seeding utility
-├── sql/
-│   ├── schema.sql               # PostgreSQL schema
-│   └── (generated by scripts/generate_schema.py)
-├── .github/
-│   └── workflows/
-│       └── lint.yml             # GitHub Actions CI linting, formatting & auto-heal workflow
-├── .pre-commit-config.yaml      # Pre-commit hook definitions (ruff, ruff-format, hooks)
-├── project.devprune.json        # dev-prune workspace configuration
-├── main.py                      # FastAPI application entry point
-├── pyproject.toml               # Project metadata, dependencies & ruff config
-├── uv.lock                      # Locked dependency versions
-├── .gitignore
-├── .python-version              # Python 3.14 pin
-├── DEPLOYMENT.md                # Detailed deployment guide
-├── DOCUMENTATION.md             # In-depth architectural & API documentation
-├── TEAM_GUIDE.md                # Hackathon & "Tank and Pipes" architecture guide
-└── README.md
-```
-
-## Code Quality, Pre-Commit & CI/CD
-
-### Local Formatting & Linting
-The project uses **Ruff** for fast linting and code formatting:
-```bash
-# Check code and auto-fix issues
-uv run ruff check --fix .
-
-# Auto-format all files
-uv run ruff format .
-```
-
-### Git Pre-Commit Hooks
-Pre-commit hooks are pre-configured to ensure clean commits:
-```bash
-# Install git pre-commit hooks
-uv run pre-commit install
-
-# Run against all files manually
-uv run pre-commit run --all-files
-```
-
-### GitHub Actions CI/CD (Auto-Healing)
-A GitHub Actions workflow is set up in `.github/workflows/lint.yml` on push and pull requests:
-- Automatically validates code against Ruff formatting and lint rules.
-- **Auto-heals**: If any formatting or lint fixes are needed, the workflow automatically fixes them and commits back to the branch.
-- **Non-blocking**: Designed not to break commits, maintaining rapid iteration speed for the hackathon team while keeping the repository clean.
-
-## Development
-
-The application uses:
-- **FastAPI** for high-performance REST APIs & ASGI webhook handling
-- **SQLAlchemy 2.x** for ORM persistence
-- **PostgreSQL & SQLite** database backends
-- **Pydantic v2** for request/response validation
-- **uv** for fast package & environment management
-- **aiogram & LangGraph** for AI conversational workflows
-- **LiteLLM** for provider-agnostic LLM routing
-- **Ruff & Pre-Commit** for linting, formatting, and auto-healing
-
-Database schema is automatically initialized on application startup.
+Apache License 2.0, see [LICENSE](LICENSE). Built by the people in [CONTRIBUTORS.md](CONTRIBUTORS.md).
