@@ -12,6 +12,7 @@ No hardcoded keyword matching or static category dictionaries are used.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import re
@@ -24,6 +25,7 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from langgraph.graph import END, START, StateGraph
 from sqlalchemy import select
 
+from app.bot import nlu, replies
 from app.bot.keys import save_keys
 from app.db import SessionLocal
 from app.models import ChatMessage, User
@@ -1030,17 +1032,95 @@ def _dynamic_llm_json_reasoning(message: str) -> dict[str, Any]:
 
     return {
         "type": "direct_text",
-        "content": (
-            "👋 **Hello! I'm your WalletLedger AI Financial Assistant.**\n\n"
-            "Tell me what you spent (*'Spent 200 on coffee'*), what you earned (*'Received 5000 freelance'*), "
-            "or ask me any financial question (*'What is my balance?'*, *'How can I reduce expenses?'*)."
-        ),
+        "content": replies.GREETING,
     }
 
 
 # ---------------------------------------------------------------------------
 # LangGraph Nodes
 # ---------------------------------------------------------------------------
+
+
+def _nlu_context(chat_id: str) -> nlu.Context:
+    """Names the user already uses (accounts, merchants) and where their money usually goes."""
+    from sqlalchemy import select as _select
+
+    from app.models import Account, Merchant, Transaction
+
+    with SessionLocal() as db:
+        user = db.get(User, str(chat_id)) or db.scalar(
+            _select(User).where(User.telegram_chat_id == str(chat_id))
+        )
+        if user is None:
+            return nlu.Context()
+        accounts = {
+            a.id: a.name for a in db.scalars(_select(Account).where(Account.user_id == user.id))
+        }
+        merchants = list(
+            db.scalars(_select(Merchant.name).where(Merchant.user_id == user.id).limit(300))
+        )
+
+        def last_account(kind: str) -> str | None:
+            account_id = db.scalar(
+                _select(Transaction.account_id)
+                .where(Transaction.user_id == user.id, Transaction.transaction_type == kind)
+                .order_by(Transaction.created_at.desc())
+                .limit(1)
+            )
+            return accounts.get(account_id) if account_id else None
+
+        names = list(accounts.values())
+        bank = next((n for n in names if "cash" not in n.lower()), "Bank")
+        return nlu.Context(
+            accounts=names,
+            merchants=merchants,
+            default_expense_account=last_account("expense")
+            or ("Cash" if "Cash" in names else bank),
+            default_income_account=last_account("income") or bank,
+        )
+
+
+async def _nlu_analysis(chat_id: str, message: str) -> dict[str, Any] | None:
+    """Clear messages ("Spent 200 on chai, 80 on auto") are handled by rules: instant, no AI call."""
+    ctx = await asyncio.to_thread(_nlu_context, chat_id)
+    entries = nlu.parse_entries(message, ctx)
+    if not entries:
+        return None
+    calls: list[dict[str, Any]] = []
+    for e in entries:
+        if e.kind == "transfer":
+            args = {"from_account": e.account, "to_account": e.to_account, "amount": e.amount}
+            calls.append({"tool_name": "transfer_funds", "tool_args": args})
+        elif e.kind == "income":
+            args = {
+                "amount": e.amount,
+                "source_account": e.account,
+                "category": e.category or "Income",
+                "description": e.note,
+                "date": e.when,
+            }
+            calls.append(
+                {
+                    "tool_name": "log_income",
+                    "tool_args": {k: v for k, v in args.items() if v is not None},
+                }
+            )
+        else:
+            args = {
+                "amount": e.amount,
+                "category": e.category or "Uncategorized",
+                "merchant": e.merchant,
+                "account_name": e.account,
+                "description": e.note,
+                "date": e.when,
+            }
+            calls.append(
+                {
+                    "tool_name": "log_expense",
+                    "tool_args": {k: v for k, v in args.items() if v is not None},
+                }
+            )
+    return {"type": "tool_calls", "tool_calls": calls}
 
 
 async def llm_reasoning_node(state: AgentState) -> dict[str, Any]:
@@ -1084,7 +1164,9 @@ async def llm_reasoning_node(state: AgentState) -> dict[str, Any]:
         {"role": "user" if isinstance(m, HumanMessage) else "assistant", "content": m.content}
         for m in state.get("messages", [])
     ]
-    analysis = await _run_llm_analysis(chat_id, user_message, history)
+    analysis = await _nlu_analysis(chat_id, user_message)
+    if analysis is None:
+        analysis = await _run_llm_analysis(chat_id, user_message, history)
     offline = (
         {"offline_reason": analysis["offline_reason"]} if analysis.get("offline_reason") else {}
     )
@@ -1171,10 +1253,7 @@ async def confirmation_node(state: AgentState) -> dict[str, Any]:
             "tool_calls": None,
             "requires_confirmation": False,
             "confirmation_decision": "cancelled",
-            "response_text": (
-                "❌ **Action Cancelled.**\n"
-                "The pending operation has been aborted without modifying your ledger."
-            ),
+            "response_text": replies.CANCELLED,
         }
 
 
@@ -1183,15 +1262,7 @@ async def tool_executor_node(state: AgentState) -> dict[str, Any]:
     if state.get("requires_confirmation"):
         action = state.get("confirmation_action", {})
         desc = action.get("description", "High-value ledger transaction")
-        return {
-            "response_text": (
-                f"⚠️ **Confirmation Required (Human-in-the-Loop)**\n\n"
-                f"You requested: **{desc}**\n\n"
-                f"To prevent accidental balance movements, please confirm:\n"
-                f"👉 Reply **'yes'** or **'confirm'** to proceed.\n"
-                f"👉 Reply **'no'** or **'cancel'** to abort."
-            )
-        }
+        return {"response_text": replies.confirm_prompt(desc)}
 
     tool_calls = state.get("tool_calls")
     if not tool_calls and state.get("tool_name"):
@@ -1241,7 +1312,7 @@ async def tool_executor_node(state: AgentState) -> dict[str, Any]:
     }
 
 
-OFFLINE_NOTE = "\n\n_⚙️ Offline mode: the AI is unavailable right now, so I used basic rules._"
+OFFLINE_NOTE = "\n\n_(The AI is busy right now, so I used basic rules.)_"
 
 
 async def response_synthesizer_node(state: AgentState) -> dict[str, Any]:
@@ -1253,6 +1324,7 @@ async def response_synthesizer_node(state: AgentState) -> dict[str, Any]:
     text = (
         state.get("response_text")
         or await _persona_response(state)
+        or replies.compact(state)
         or _multi_tool_or_template_response(state)
     )
     if state.get("offline_reason"):

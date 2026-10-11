@@ -136,7 +136,7 @@ class TestCommands(BotTestCase):
 
     def test_other_text_goes_to_agent(self):
         reply = run(bot.handle_text(self.chat_id, "Received 1000 salary in Bank"))
-        self.assertIn("Income Credited", reply)
+        self.assertIn("+₹1,000", reply)
 
 
 class TestStatementImport(BotTestCase):

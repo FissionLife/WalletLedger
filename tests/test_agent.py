@@ -102,10 +102,10 @@ class TestConfirmationFlow(AgentTestCase):
 
     def test_yes_executes_transfer_without_ai(self):
         reply = chat(self.chat_id, "Transfer 10000 from Bank to Cash")
-        self.assertIn("Confirmation Required", reply)
+        self.assertIn("Tap Yes", reply)
         self.assertEqual(self.balances()["Bank"], 50000)
         reply = chat(self.chat_id, "yes")
-        self.assertIn("Transfer Successful", reply)
+        self.assertIn("Bank → Cash", reply)
         self.assertEqual(self.balances()["Bank"], 40000)
         self.assertEqual(self.balances()["Cash"], 10000)
 
@@ -123,11 +123,11 @@ class TestConfirmationFlow(AgentTestCase):
         )
         with patch.object(litellm, "acompletion", AsyncMock(return_value=transfer)) as mock:
             reply = chat(self.chat_id, "move ten thousand from bank to cash")
-            self.assertIn("Confirmation Required", reply)
+            self.assertIn("Tap Yes", reply)
             self.assertEqual(mock.await_count, 1)
             reply = chat(self.chat_id, "Yes!")
             self.assertEqual(mock.await_count, 1, "a yes/no reply must not call the AI")
-        self.assertIn("Transfer Successful", reply)
+        self.assertIn("Bank → Cash", reply)
         self.assertEqual(self.balances()["Bank"], 40000)
 
     def test_unrelated_message_cancels_pending(self):
@@ -135,7 +135,7 @@ class TestConfirmationFlow(AgentTestCase):
         chat(self.chat_id, "what is my balance")
         self.assertIsNone(agent.session_store.get_pending(self.chat_id))
         reply = chat(self.chat_id, "yes")
-        self.assertNotIn("Transfer Successful", reply)
+        self.assertNotIn("Bank → Cash", reply)
         self.assertEqual(self.balances()["Bank"], 50000)
 
     def test_expired_confirmation_is_ignored(self):
@@ -143,12 +143,12 @@ class TestConfirmationFlow(AgentTestCase):
         pending = agent.session_store.get_session(self.chat_id).pending_action
         pending["created_at"] = (datetime.utcnow() - timedelta(minutes=6)).isoformat()
         reply = chat(self.chat_id, "yes")
-        self.assertNotIn("Transfer Successful", reply)
+        self.assertNotIn("Bank → Cash", reply)
         self.assertEqual(self.balances()["Bank"], 50000)
 
     def test_small_transfer_runs_immediately(self):
         reply = chat(self.chat_id, "Transfer 500 from Bank to Cash")
-        self.assertIn("Transfer Successful", reply)
+        self.assertIn("Bank → Cash", reply)
 
     def test_classify_reply(self):
         self.assertEqual(agent.classify_reply(" OK. "), "confirmed")
@@ -246,8 +246,9 @@ class TestPersonas(AgentTestCase):
         expense = tool_response("log_expense", {"amount": 200, "category": "Food"})
         with patch.object(litellm, "acompletion", AsyncMock(return_value=expense)) as mock:
             reply = chat(self.chat_id, "spent 200 on food")
-        self.assertEqual(mock.await_count, 1)
-        self.assertIn("Expense Recorded", reply)
+        self.assertEqual(mock.await_count, 0)  # clear messages are handled by rules: no AI call
+        self.assertIn("−₹200", reply)
+        self.assertIn("Food", reply)
 
 
 class TestHistoryAndOfflineMode(AgentTestCase):
@@ -281,13 +282,13 @@ class TestHistoryAndOfflineMode(AgentTestCase):
             self.assertLogs("app.bot.agent", level="WARNING") as logs,
         ):
             reply = chat(self.chat_id, "what is my balance")
-        self.assertIn("Offline mode", reply)
+        self.assertIn("basic rules", reply)
         self.assertIn("Tank", reply)
         self.assertTrue(any("AI unavailable" in line for line in logs.output))
 
     def test_no_key_has_no_offline_note(self):
         reply = chat(self.chat_id, "what is my balance")
-        self.assertNotIn("Offline mode", reply)
+        self.assertNotIn("basic rules", reply)
 
 
 class TestMultiTransactionAndBatchIngestion(AgentTestCase):
@@ -309,9 +310,7 @@ class TestMultiTransactionAndBatchIngestion(AgentTestCase):
             "340=team lunch"
         )
         reply = chat(self.chat_id, message)
-        self.assertIn("Ledger Transactions Recorded", reply)
-        self.assertIn("Expenses Logged (12)", reply)
-        self.assertIn("Total Outflow", reply)
+        self.assertIn("12 entries", reply)
         self.assertIn("1,489.62", reply)
 
     def test_mixed_income_and_batch_expenses(self):
@@ -330,12 +329,9 @@ class TestMultiTransactionAndBatchIngestion(AgentTestCase):
             "340=team lunch"
         )
         reply = chat(self.chat_id, message)
-        self.assertIn("Ledger Transactions Recorded", reply)
-        self.assertIn("Income Logged (1)", reply)
-        self.assertIn("Expenses Logged (12)", reply)
-        self.assertIn("15,000.00", reply)
+        self.assertIn("13 entries", reply)
+        self.assertIn("+₹15,000", reply)
         self.assertIn("1,489.62", reply)
-        self.assertIn("Net Balance Change", reply)
 
     def test_natural_spending_query(self):
         reply = chat(self.chat_id, "how much total i spend")
@@ -373,9 +369,9 @@ class TestMultiTransactionAndBatchIngestion(AgentTestCase):
         with patch.object(litellm, "acompletion", AsyncMock(return_value=ai_resp)) as mock:
             reply = chat(self.chat_id, "stipend and snacks")
             self.assertEqual(mock.await_count, 1)
-        self.assertIn("Ledger Transactions Recorded", reply)
-        self.assertIn("Income Logged (1)", reply)
-        self.assertIn("Expenses Logged (2)", reply)
+        self.assertIn("3 entries", reply)
+        self.assertIn("+₹15,000", reply)
+        self.assertIn("Poornima", reply)
 
 
 if __name__ == "__main__":

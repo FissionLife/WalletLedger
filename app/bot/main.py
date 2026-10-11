@@ -22,8 +22,8 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy import select
 
-from app.bot import ui, views
-from app.bot.agent import classify_reply, process_user_interaction_ex
+from app.bot import nlu, replies, ui, views
+from app.bot.agent import classify_reply, process_user_interaction_ex, session_store
 from app.bot.keys import KEY_COMMANDS, handle_admin_command, handle_key_command
 from app.bot.ui import Reply
 from app.config import dev_endpoints_enabled, is_chat_allowed
@@ -188,6 +188,14 @@ async def handle_incoming(chat_id: str, text: str) -> Reply:
             return reply
         if command not in PERSONA_COMMANDS:
             return Reply(unknown_command_text(command))
+
+    if classify_reply(clean) and not session_store.get_pending(chat_id):
+        return Reply(replies.NOTHING_PENDING, rows=ui.back_home())
+    screen = nlu.detect_screen(clean)  # "how much did I spend on food last month" -> stats screen
+    if screen is not None:
+        view = await _view_command(chat_id, screen.command, screen.args)
+        if view is not None:
+            return view
 
     outcome = await process_user_interaction_ex(chat_id=chat_id, text=clean)
     rows: list[list[ui.Btn]] = []

@@ -99,7 +99,7 @@ def caption(rep: dict, unmatched: list[str] | None = None) -> str:
                 lines.append(
                     "Top: " + " · ".join(f"{c['category']} {fmt.short(c['amount'])}" for c in top)
                 )
-        if rep["insights"]:
+        if rep["insights"] and not q["filtered"]:
             lines.append("")
             lines.append("💡 " + rep["insights"][0])
     if unmatched:
