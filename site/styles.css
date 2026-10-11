@@ -1,0 +1,1621 @@
+/*
+  ==========================================================================================
+  WALLETLEDGER COLOUR TOKENS  (copy these verbatim into the dashboard / charts)
+  ==========================================================================================
+  Role                     Light       Dark        Used for
+  -----------------------  ----------  ----------  -----------------------------------------
+  surface                  #ffffff     #121212     page background, cards in light mode
+  surface-variant          #f5f5f5     #1e1e1e     alternate sections, code areas, chips
+  outline                  #737373     #8f8f8f     outlined buttons, input borders (>= 3:1)
+  on-surface               #18181b     #ececec     main text
+  on-surface-variant       #525252     #b3b3b3     secondary text
+  primary                  #056dff     #045ede     filled buttons, icons, user chat bubbles
+  primary-container        #e5efff     #2b2b2b     small highlights (icon tiles, info badges)
+  success                  #006045     #86efac     success text / icons
+  warning                  #8a4b00     #ffc46b     warning text / icons
+  error                    #b3261e     #ffb4ab     error text / icons
+
+  Companion values (also safe to reuse):
+  on-primary               #ffffff     #ffffff     text on primary
+  on-primary-container     #0041a8     #8cc2ff     text/icons on primary-container
+  link                     #0057d9     #6aafff     blue TEXT on any surface (primary itself is
+                                                   only 4.1:1 on surface-variant, so text uses this)
+  outline-variant          #e5e5e5     #333333     dividers, card hairlines (decorative)
+  surface-raised           #ffffff     #262626     cards that sit on surface-variant
+  success-container        #dcfce7     #1f2e25
+  warning-container        #fff3d6     #33291a
+  error-container          #fde7e7     #3a2121
+
+  Contrast (WCAG 2.x), checked with a script: every text pair above is >= 4.5:1, e.g.
+  on-primary/primary 4.53 (light) and 5.74 (dark); on-surface-variant/surface-variant 7.17 / 7.95;
+  link/surface-variant 5.72 / 7.29; outline/surface 4.74 / 5.79.
+  ==========================================================================================
+
+  DESIGN APPROACH: Material Design 3 structure + Cloudflare Kumo blue
+  -------------------------------------------------------------------
+  - Accent: Kumo's brand blue is the ONLY accent colour.
+      Source: https://github.com/cloudflare/kumo/blob/main/packages/kumo/src/styles/theme-kumo.css
+      --color-kumo-brand: light-dark(oklch(0.5772 0.2324 260), <same mixed with 10% black>)
+      = #056dff (light) and #045ede (dark). Hover: Kumo blue-700 #1447e6.
+      Light-mode link #0057d9 is a slightly deeper step of the same blue, chosen for contrast.
+      Dark-mode link #6aafff sits next to Kumo's blue-400 (#51a2ff) and is a bit lighter for contrast.
+  - Neutrals: Kumo's neutral scale (white, neutral-100 #f5f5f5, neutral-200 #e5e5e5,
+    neutral-500 #737373, neutral-600 #525252, neutral-800 #262626, neutral-900 #18181b).
+    Dark mode uses Material's neutral dark surfaces (#121212, #1e1e1e). No surface is tinted
+    blue, and there is no navy anywhere: in dark mode even primary-container is neutral grey
+    and the blue lives only in text, icons, buttons and the user's chat bubbles.
+  - Material 3 shape: pill buttons (full radius), 8px chips, 16-20px cards, 28px large containers.
+  - Material 3 elevation: soft two-layer shadows (levels 1-3 below). In dark mode the raised
+    surfaces are also lighter greys (tonal elevation).
+  - Material 3 states: a "state layer" (a currentColor overlay) at 8% on hover, 10% on focus and
+    12% on press, plus a 2px blue focus ring for keyboard users.
+  - Kumo conventions kept: weight-500 button labels, pill badges with 12px text, 1px hairlines.
+  - Motion: 150-250ms, Material "standard" easing; all of it is switched off for people who ask
+    their system for reduced motion.
+  - Theme: LIGHT by default. The moon/sun button switches to dark and the choice is remembered
+    in this browser (localStorage).
+  - Fonts: the system font stack only (nothing is downloaded).
+*/
+
+:root {
+  /* the tokens from the table above */
+  --surface: #ffffff;
+  --surface-variant: #f5f5f5;
+  --surface-raised: #ffffff;
+  --outline: #737373;
+  --outline-variant: #e5e5e5;
+  --on-surface: #18181b;
+  --on-surface-variant: #525252;
+  --primary: #056dff;
+  --primary-hover: #1447e6;
+  --on-primary: #ffffff;
+  --primary-container: #e5efff;
+  --on-primary-container: #0041a8;
+  --link: #0057d9;
+  --success: #006045;
+  --success-container: #dcfce7;
+  --warning: #8a4b00;
+  --warning-container: #fff3d6;
+  --error: #b3261e;
+  --error-container: #fde7e7;
+
+  /* Material 3 elevation, softened */
+  --elev-1: 0 1px 2px rgba(0, 0, 0, 0.08), 0 1px 3px 1px rgba(0, 0, 0, 0.05);
+  --elev-2: 0 1px 2px rgba(0, 0, 0, 0.08), 0 2px 6px 2px rgba(0, 0, 0, 0.06);
+  --elev-3: 0 2px 4px rgba(0, 0, 0, 0.06), 0 8px 24px 4px rgba(0, 0, 0, 0.08);
+  --elev-phone: 0 2px 6px rgba(0, 0, 0, 0.1), 0 30px 60px -18px rgba(0, 0, 0, 0.28);
+
+  /* phone illustration (neutral greys + the primary blue for the user's bubbles) */
+  --chat-bg: #eeeeee;
+  --chat-in: #ffffff;
+  --chat-meta: #6b6b6b;
+  --phone-frame: #1c1c1c;
+
+  --radius-chip: 8px;
+  --radius-sm: 12px;
+  --radius-card: 16px;
+  --radius-lg: 20px;
+  --radius-xl: 28px;
+  --radius-full: 999px;
+
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --fast: 150ms;
+  --medium: 250ms;
+
+  --font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans",
+    sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+
+  --max: 1120px;
+  --gutter: 16px;
+  --header-h: 64px;
+
+  color-scheme: light;
+}
+
+/* Dark theme: only when the visitor picks it with the toggle (light is the default). */
+:root[data-theme="dark"] {
+  --surface: #121212;
+  --surface-variant: #1e1e1e;
+  --surface-raised: #262626;
+  --outline: #8f8f8f;
+  --outline-variant: #333333;
+  --on-surface: #ececec;
+  --on-surface-variant: #b3b3b3;
+  --primary: #045ede;
+  --primary-hover: #1447e6;
+  --on-primary: #ffffff;
+  --primary-container: #2b2b2b;
+  --on-primary-container: #8cc2ff;
+  --link: #6aafff;
+  --success: #86efac;
+  --success-container: #1f2e25;
+  --warning: #ffc46b;
+  --warning-container: #33291a;
+  --error: #ffb4ab;
+  --error-container: #3a2121;
+
+  --elev-1: 0 1px 2px rgba(0, 0, 0, 0.5), 0 1px 3px 1px rgba(0, 0, 0, 0.3);
+  --elev-2: 0 1px 2px rgba(0, 0, 0, 0.5), 0 2px 6px 2px rgba(0, 0, 0, 0.35);
+  --elev-3: 0 2px 4px rgba(0, 0, 0, 0.5), 0 8px 24px 4px rgba(0, 0, 0, 0.4);
+  --elev-phone: 0 0 0 1px #333333, 0 30px 60px -18px rgba(0, 0, 0, 0.7);
+
+  --chat-bg: #121212;
+  --chat-in: #2a2a2a;
+  --chat-meta: #a3a3a3;
+  --phone-frame: #2a2a2a;
+
+  color-scheme: dark;
+}
+
+/* ---------- Base ---------- */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  scroll-padding-top: calc(var(--header-h) + 12px);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  html {
+    scroll-behavior: smooth;
+  }
+}
+
+body {
+  margin: 0;
+  font-family: var(--font);
+  font-size: 16px;
+  line-height: 1.6;
+  color: var(--on-surface);
+  background: var(--surface);
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+
+img,
+svg {
+  display: block;
+  max-width: 100%;
+}
+
+h1,
+h2,
+h3 {
+  color: var(--on-surface);
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  margin: 0;
+}
+
+p {
+  margin: 0;
+}
+
+a {
+  color: var(--link);
+  text-underline-offset: 3px;
+}
+
+a:hover {
+  text-decoration-thickness: 2px;
+}
+
+code,
+kbd {
+  font-family: var(--mono);
+  font-size: 0.9em;
+}
+
+:not(pre) > code {
+  background: var(--surface-variant);
+  border: 1px solid var(--outline-variant);
+  border-radius: 6px;
+  padding: 0.05em 0.35em;
+  white-space: nowrap;
+}
+
+:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.visually-hidden {
+  position: absolute !important;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.skip-link {
+  position: absolute;
+  left: var(--gutter);
+  top: -100px;
+  z-index: 100;
+  background: var(--primary);
+  color: var(--on-primary);
+  padding: 10px 18px;
+  border-radius: var(--radius-full);
+  font-weight: 500;
+  text-decoration: none;
+  box-shadow: var(--elev-2);
+}
+
+.skip-link:focus {
+  top: 12px;
+}
+
+.container {
+  width: 100%;
+  max-width: var(--max);
+  margin: 0 auto;
+  padding: 0 var(--gutter);
+}
+
+@media (min-width: 768px) {
+  :root {
+    --gutter: 24px;
+  }
+}
+
+/* ---------- State layer (Material 3): hover 8%, focus 10%, pressed 12% ---------- */
+
+.state {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+}
+
+.state::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: currentColor;
+  opacity: 0;
+  transition: opacity var(--fast) var(--ease);
+  pointer-events: none;
+}
+
+.state:hover::after {
+  opacity: 0.08;
+}
+
+.state:focus-visible::after {
+  opacity: 0.1;
+}
+
+.state:active::after {
+  opacity: 0.12;
+}
+
+/* ---------- Buttons: filled, tonal, outlined, text, icon (all pill-shaped) ---------- */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 40px;
+  padding: 0 24px;
+  border: 0;
+  border-radius: var(--radius-full);
+  font: inherit;
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  text-decoration: none;
+  cursor: pointer;
+  transition: box-shadow var(--fast) var(--ease), background-color var(--fast) var(--ease),
+    transform var(--fast) var(--ease);
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.btn:hover {
+  text-decoration: none;
+}
+
+.btn:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .btn:active {
+    transform: scale(0.98);
+  }
+}
+
+.btn svg {
+  width: 18px;
+  height: 18px;
+  flex: none;
+}
+
+.btn-filled {
+  color: var(--on-primary);
+  background: var(--primary);
+  box-shadow: none;
+}
+
+.btn-filled:hover {
+  background: var(--primary-hover);
+  box-shadow: var(--elev-1);
+}
+
+.btn-tonal {
+  color: var(--on-surface);
+  background: var(--surface-variant);
+}
+
+:root[data-theme="dark"] .btn-tonal {
+  background: #2b2b2b; /* one tonal step above surface-variant so it reads on #121212 */
+}
+
+.btn-outlined {
+  color: var(--link);
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--outline);
+}
+
+.btn-text {
+  color: var(--link);
+  background: transparent;
+  padding: 0 12px;
+}
+
+.btn-icon {
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  color: var(--on-surface-variant);
+  background: transparent;
+}
+
+.btn-sm {
+  height: 36px;
+  padding: 0 16px;
+  font-size: 14px;
+}
+
+.btn-lg {
+  height: 48px;
+  padding: 0 28px;
+  font-size: 16px;
+}
+
+/* ---------- Badges (Kumo pill badge) and chips (Material assist chip) ---------- */
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: fit-content;
+  padding: 2px 10px;
+  border-radius: var(--radius-full);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.6;
+  white-space: nowrap;
+}
+
+.badge-info {
+  color: var(--on-primary-container);
+  background: var(--primary-container);
+}
+
+.badge-success {
+  color: var(--success);
+  background: var(--success-container);
+}
+
+.badge-warning {
+  color: var(--warning);
+  background: var(--warning-container);
+}
+
+.badge-neutral {
+  color: var(--on-surface-variant);
+  background: var(--surface-variant);
+  box-shadow: inset 0 0 0 1px var(--outline-variant);
+}
+
+.dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: var(--radius-chip);
+  box-shadow: inset 0 0 0 1px var(--outline-variant);
+  background: var(--surface);
+  color: var(--on-surface-variant);
+  font-size: 14px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.chip svg {
+  width: 18px;
+  height: 18px;
+  color: var(--link);
+}
+
+.chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* ---------- Top app bar ---------- */
+
+.site-header {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  background: var(--surface);
+  transition: box-shadow var(--medium) var(--ease);
+}
+
+.site-header.is-scrolled {
+  box-shadow: var(--elev-2);
+}
+
+.nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: var(--header-h);
+}
+
+.logo {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--on-surface);
+  font-weight: 650;
+  font-size: 18px;
+  letter-spacing: -0.01em;
+  text-decoration: none;
+  margin-right: auto;
+}
+
+.logo:hover {
+  text-decoration: none;
+}
+
+.logo img {
+  width: 30px;
+  height: 30px;
+}
+
+.nav-links {
+  display: none;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.nav-links a {
+  display: block;
+  padding: 8px 14px;
+  border-radius: var(--radius-full);
+  color: var(--on-surface-variant);
+  font-size: 15px;
+  font-weight: 500;
+  text-decoration: none;
+}
+
+.nav-links a:hover {
+  color: var(--on-surface);
+}
+
+.nav-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.nav-github-label {
+  display: none;
+}
+
+.nav-github {
+  width: 40px;
+  height: 40px;
+  padding: 0;
+}
+
+@media (min-width: 900px) {
+  .nav-github {
+    width: auto;
+    padding: 0 16px;
+  }
+}
+
+.theme-toggle .icon-sun,
+:root[data-theme="dark"] .theme-toggle .icon-moon {
+  display: none;
+}
+
+:root[data-theme="dark"] .theme-toggle .icon-sun {
+  display: block;
+}
+
+.menu-toggle .icon-close,
+.menu-toggle[aria-expanded="true"] .icon-menu {
+  display: none;
+}
+
+.menu-toggle[aria-expanded="true"] .icon-close {
+  display: block;
+}
+
+/* Mobile menu (a Material-style sheet under the app bar) */
+.mobile-nav {
+  background: var(--surface);
+  border-top: 1px solid var(--outline-variant);
+  box-shadow: var(--elev-2);
+}
+
+.mobile-nav[hidden] {
+  display: none;
+}
+
+.mobile-nav ul {
+  list-style: none;
+  margin: 0;
+  padding: 8px 8px 12px;
+}
+
+.mobile-nav a {
+  display: block;
+  padding: 14px 16px;
+  border-radius: var(--radius-full);
+  color: var(--on-surface);
+  font-weight: 500;
+  text-decoration: none;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .mobile-nav.is-open {
+    animation: sheet-in var(--medium) var(--ease);
+  }
+}
+
+/* Transform only (no opacity), so the menu is always readable even if the animation is skipped. */
+@keyframes sheet-in {
+  from {
+    transform: translateY(-8px);
+  }
+  to {
+    transform: none;
+  }
+}
+
+@media (min-width: 900px) {
+  .nav-links {
+    display: flex;
+    gap: 2px;
+    margin-right: auto;
+  }
+  .menu-toggle,
+  .mobile-nav {
+    display: none !important;
+  }
+  .nav-github-label {
+    display: inline;
+  }
+  .logo {
+    margin-right: 16px;
+  }
+}
+
+/* ---------- Sections ---------- */
+
+section {
+  padding: 64px 0;
+}
+
+@media (min-width: 768px) {
+  section {
+    padding: 96px 0;
+  }
+}
+
+.section-alt {
+  background: var(--surface-variant);
+}
+
+.section-head {
+  max-width: 680px;
+  margin-bottom: 40px;
+}
+
+.eyebrow {
+  display: inline-block;
+  margin-bottom: 12px;
+  color: var(--link);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.section-head h2 {
+  font-size: clamp(28px, 4.2vw, 40px);
+  margin-bottom: 14px;
+}
+
+.section-head p {
+  color: var(--on-surface-variant);
+  font-size: 17px;
+}
+
+/* ---------- Hero ---------- */
+
+.hero {
+  position: relative;
+  padding: 40px 0 64px;
+  overflow: hidden;
+}
+
+.hero::before {
+  /* faint neutral dot grid */
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(var(--outline-variant) 1px, transparent 1px);
+  background-size: 22px 22px;
+  -webkit-mask-image: linear-gradient(to bottom, #000 0%, transparent 80%);
+  mask-image: linear-gradient(to bottom, #000 0%, transparent 80%);
+  pointer-events: none;
+}
+
+.hero-grid {
+  position: relative;
+  display: grid;
+  gap: 48px;
+  align-items: center;
+}
+
+.hero-copy .badge {
+  margin-bottom: 20px;
+}
+
+.hero h1 {
+  font-size: clamp(40px, 8vw, 60px);
+  letter-spacing: -0.035em;
+  margin-bottom: 20px;
+}
+
+.hero h1 .accent {
+  color: var(--link);
+  white-space: nowrap;
+}
+
+.lede {
+  max-width: 560px;
+  color: var(--on-surface-variant);
+  font-size: 18px;
+  margin-bottom: 28px;
+}
+
+@media (min-width: 768px) {
+  .lede {
+    font-size: 20px;
+  }
+}
+
+.cta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.hero-note {
+  margin-top: 18px;
+  color: var(--on-surface-variant);
+  font-size: 14px;
+}
+
+.hero .chip-list {
+  margin-top: 28px;
+}
+
+@media (min-width: 960px) {
+  .hero {
+    padding: 72px 0 96px;
+  }
+  .hero-grid {
+    grid-template-columns: 1.1fr 0.9fr;
+    gap: 56px;
+  }
+}
+
+/* ---------- Phone mockup (pure HTML/CSS) ---------- */
+
+.phone-wrap {
+  display: flex;
+  justify-content: center;
+  margin: 0;
+}
+
+.phone {
+  width: 100%;
+  max-width: 340px;
+  padding: 10px;
+  border-radius: 46px;
+  background: var(--phone-frame);
+  box-shadow: var(--elev-phone);
+}
+
+.phone-screen {
+  display: flex;
+  flex-direction: column;
+  border-radius: 36px;
+  overflow: hidden;
+  background: var(--chat-bg);
+  font-size: 13.5px;
+  line-height: 1.4;
+}
+
+.phone-status {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 22px 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--on-surface);
+  background: var(--surface);
+}
+
+.phone-notch {
+  width: 80px;
+  height: 20px;
+  border-radius: 20px;
+  background: var(--phone-frame);
+}
+
+.chat-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 14px 10px;
+  background: var(--surface);
+  box-shadow: 0 1px 0 var(--outline-variant);
+}
+
+.chat-back {
+  color: var(--link);
+  font-size: 22px;
+  line-height: 1;
+}
+
+.chat-avatar {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: var(--primary);
+  color: var(--on-primary);
+  font-weight: 700;
+  font-size: 15px;
+}
+
+.chat-title {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.25;
+}
+
+.chat-title strong {
+  color: var(--on-surface);
+  font-size: 14px;
+}
+
+.chat-title span {
+  color: var(--on-surface-variant);
+  font-size: 12px;
+}
+
+.chat-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 10px 12px;
+  margin: 0;
+  list-style: none;
+}
+
+.msg {
+  max-width: 86%;
+  padding: 8px 12px 6px;
+  border-radius: 18px;
+  color: var(--on-surface);
+  box-shadow: var(--elev-1);
+  overflow-wrap: anywhere;
+}
+
+.msg-in {
+  align-self: flex-start;
+  background: var(--chat-in);
+  border-bottom-left-radius: 6px;
+}
+
+.msg-out {
+  align-self: flex-end;
+  background: var(--primary);
+  color: var(--on-primary);
+  border-bottom-right-radius: 6px;
+}
+
+.msg time {
+  display: block;
+  margin-top: 2px;
+  text-align: right;
+  color: var(--chat-meta);
+  font-size: 11px;
+}
+
+.msg-out time {
+  color: var(--on-primary);
+}
+
+.msg .cmd {
+  font-weight: 600;
+}
+
+.msg ul {
+  margin: 4px 0 0;
+  padding-left: 16px;
+}
+
+.msg-file {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.file-icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: var(--on-primary);
+  color: #045ede;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.file-meta {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.3;
+}
+
+.file-meta strong {
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.file-meta span {
+  font-size: 12px;
+}
+
+.inline-buttons {
+  align-self: flex-start;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  width: 86%;
+  margin-top: -2px;
+}
+
+.inline-buttons span {
+  display: block;
+  padding: 8px;
+  border-radius: var(--radius-full);
+  text-align: center;
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--link);
+  background: var(--chat-in);
+  box-shadow: var(--elev-1);
+}
+
+.chat-input {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px 14px;
+  background: var(--surface);
+  box-shadow: 0 -1px 0 var(--outline-variant);
+}
+
+.chat-input .field {
+  flex: 1;
+  padding: 8px 14px;
+  border-radius: var(--radius-full);
+  background: var(--surface-variant);
+  color: var(--on-surface-variant);
+  font-size: 13px;
+}
+
+.chat-input .send {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--primary);
+  color: var(--on-primary);
+}
+
+.chat-input .send svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* ---------- Cards (Material elevated / outlined / filled) ---------- */
+
+.card {
+  background: var(--surface-raised);
+  border-radius: var(--radius-lg);
+  padding: 24px;
+  box-shadow: var(--elev-1);
+  transition: box-shadow var(--medium) var(--ease), transform var(--medium) var(--ease);
+}
+
+.card-outlined {
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1px var(--outline-variant);
+}
+
+.card-filled {
+  background: var(--surface-variant);
+  box-shadow: none;
+}
+
+@media (prefers-reduced-motion: no-preference) and (hover: hover) {
+  .card-hover:hover {
+    box-shadow: var(--elev-3);
+    transform: translateY(-2px);
+  }
+}
+
+.card h3 {
+  font-size: 18px;
+  margin-bottom: 8px;
+  letter-spacing: -0.01em;
+}
+
+.card p {
+  color: var(--on-surface-variant);
+}
+
+.card p + p {
+  margin-top: 10px;
+}
+
+/* ---------- Steps ---------- */
+
+.steps {
+  display: grid;
+  gap: 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+@media (min-width: 820px) {
+  .steps {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 20px;
+  }
+}
+
+.step-num {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  margin-bottom: 16px;
+  border-radius: 50%;
+  background: var(--primary);
+  color: var(--on-primary);
+  font-weight: 700;
+  font-size: 16px;
+}
+
+.example {
+  margin-top: 14px;
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-variant);
+  color: var(--on-surface);
+  font-size: 14px;
+}
+
+/* ---------- Feature grid ---------- */
+
+.feature-grid {
+  display: grid;
+  gap: 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+@media (min-width: 640px) {
+  .feature-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .span-2 {
+    grid-column: span 2;
+  }
+}
+
+@media (min-width: 1000px) {
+  .feature-grid {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 20px;
+  }
+}
+
+.icon-tile {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  margin-bottom: 16px;
+  border-radius: var(--radius-sm);
+  background: var(--primary-container);
+  color: var(--on-primary-container);
+}
+
+.icon-tile svg {
+  width: 22px;
+  height: 22px;
+}
+
+.feature-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.feature-head h3 {
+  margin: 0;
+}
+
+/* Segmented button (Material 3) built from real radio buttons: works without JavaScript. */
+.segmented-group {
+  margin: 16px 0 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.segmented {
+  display: inline-flex;
+  max-width: 100%;
+  border-radius: var(--radius-full);
+  box-shadow: inset 0 0 0 1px var(--outline);
+  overflow: hidden;
+}
+
+.segmented label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 40px;
+  padding: 0 16px;
+  color: var(--on-surface);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color var(--fast) var(--ease);
+}
+
+.segmented label + label {
+  box-shadow: inset 1px 0 0 var(--outline);
+}
+
+.segmented label:hover {
+  background: color-mix(in srgb, var(--on-surface) 8%, transparent);
+}
+
+.segmented .tick {
+  display: none;
+  width: 16px;
+  height: 16px;
+}
+
+#tone-coach:checked ~ .segmented label[for="tone-coach"],
+#tone-budgeter:checked ~ .segmented label[for="tone-budgeter"],
+#tone-summary:checked ~ .segmented label[for="tone-summary"] {
+  background: var(--primary-container);
+  color: var(--on-primary-container);
+}
+
+#tone-coach:checked ~ .segmented label[for="tone-coach"] .tick,
+#tone-budgeter:checked ~ .segmented label[for="tone-budgeter"] .tick,
+#tone-summary:checked ~ .segmented label[for="tone-summary"] .tick {
+  display: block;
+}
+
+#tone-coach:focus-visible ~ .segmented label[for="tone-coach"],
+#tone-budgeter:focus-visible ~ .segmented label[for="tone-budgeter"],
+#tone-summary:focus-visible ~ .segmented label[for="tone-summary"] {
+  outline: 2px solid var(--primary);
+  outline-offset: -4px;
+  border-radius: var(--radius-full);
+}
+
+.tone {
+  display: none;
+  margin-top: 12px;
+}
+
+#tone-coach:checked ~ .tone-panels .tone-coach,
+#tone-budgeter:checked ~ .tone-panels .tone-budgeter,
+#tone-summary:checked ~ .tone-panels .tone-summary {
+  display: block;
+}
+
+@media (max-width: 400px) {
+  .segmented label {
+    padding: 0 12px;
+  }
+}
+
+/* ---------- Keys section ---------- */
+
+.split {
+  display: grid;
+  gap: 32px;
+  align-items: start;
+}
+
+@media (min-width: 900px) {
+  .split {
+    grid-template-columns: 1fr 1fr;
+    gap: 48px;
+  }
+}
+
+.check-list {
+  display: grid;
+  gap: 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.check-list li {
+  display: grid;
+  grid-template-columns: 24px 1fr;
+  gap: 12px;
+  align-items: start;
+}
+
+.check-list svg {
+  width: 22px;
+  height: 22px;
+  margin-top: 2px;
+  color: var(--link);
+}
+
+.check-list strong {
+  color: var(--on-surface);
+}
+
+.check-list p {
+  color: var(--on-surface-variant);
+}
+
+.providers {
+  margin-top: 24px;
+}
+
+.chain-title {
+  margin-bottom: 20px;
+  color: var(--on-surface);
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.chain {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.chain li {
+  position: relative;
+  display: grid;
+  grid-template-columns: 36px 1fr;
+  gap: 14px;
+  padding-bottom: 22px;
+}
+
+.chain li:last-child {
+  padding-bottom: 0;
+}
+
+.chain li::before {
+  content: "";
+  position: absolute;
+  left: 17px;
+  top: 36px;
+  bottom: 0;
+  width: 2px;
+  background: var(--outline-variant);
+}
+
+.chain li:last-child::before {
+  display: none;
+}
+
+.chain .n {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--surface-variant);
+  color: var(--on-surface);
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.chain .n.is-primary {
+  background: var(--primary);
+  color: var(--on-primary);
+}
+
+.chain strong {
+  display: block;
+  color: var(--on-surface);
+}
+
+.chain span {
+  color: var(--on-surface-variant);
+  font-size: 15px;
+}
+
+/* ---------- Data section ---------- */
+
+.data-grid {
+  display: grid;
+  gap: 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+@media (min-width: 720px) {
+  .data-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.data-grid .card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.data-grid h3 {
+  margin: 0;
+}
+
+.callout {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 20px;
+  padding: 20px 24px;
+  border-radius: var(--radius-lg);
+  background: var(--surface-variant);
+}
+
+.callout p {
+  max-width: 640px;
+  color: var(--on-surface-variant);
+}
+
+/* ---------- Setup / code ---------- */
+
+.setup-grid {
+  display: grid;
+  gap: 32px;
+  align-items: start;
+}
+
+@media (min-width: 900px) {
+  .setup-grid {
+    grid-template-columns: 0.8fr 1.2fr;
+    gap: 48px;
+  }
+}
+
+.prereq {
+  margin: 16px 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 10px;
+}
+
+.prereq li {
+  display: flex;
+  gap: 12px;
+  color: var(--on-surface-variant);
+}
+
+.prereq li::before {
+  content: "";
+  flex: none;
+  width: 8px;
+  height: 8px;
+  margin-top: 9px;
+  border-radius: 50%;
+  background: var(--primary);
+}
+
+.terminal {
+  border-radius: var(--radius-xl);
+  overflow: hidden;
+  background: var(--surface-raised);
+  box-shadow: var(--elev-2);
+}
+
+.terminal-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 12px 12px 20px;
+  border-bottom: 1px solid var(--outline-variant);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--on-surface-variant);
+}
+
+.cmd-list {
+  margin: 0;
+  padding: 8px;
+  list-style: none;
+}
+
+.cmd-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 12px;
+  padding: 12px;
+}
+
+.cmd-label {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--on-surface-variant);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.cmd-row pre {
+  margin: 0;
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-variant);
+  color: var(--on-surface);
+  font-family: var(--mono);
+  font-size: 14px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.cmd-row pre code::before {
+  content: "$ ";
+  color: var(--on-surface-variant);
+}
+
+.copy-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: var(--primary-container);
+  color: var(--on-primary-container);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.copy-btn:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.copy-btn svg {
+  width: 16px;
+  height: 16px;
+}
+
+.copy-btn.is-copied {
+  background: var(--success-container);
+  color: var(--success);
+}
+
+.after-setup {
+  margin-top: 16px;
+  color: var(--on-surface-variant);
+  font-size: 15px;
+}
+
+/* ---------- FAQ (expansion panels) ---------- */
+
+.faq {
+  max-width: 820px;
+}
+
+.faq details {
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1px var(--outline-variant);
+  transition: box-shadow var(--medium) var(--ease), background-color var(--medium) var(--ease);
+}
+
+.faq details[open] {
+  background: var(--surface-raised);
+  box-shadow: var(--elev-2);
+}
+
+.faq details + details {
+  margin-top: 12px;
+}
+
+.faq summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 56px;
+  padding: 16px 20px;
+  color: var(--on-surface);
+  font-weight: 600;
+  font-size: 17px;
+  cursor: pointer;
+  list-style: none;
+  border-radius: var(--radius-card);
+}
+
+.faq summary::-webkit-details-marker {
+  display: none;
+}
+
+.faq summary::before {
+  /* chevron, drawn with borders; sits on the right because of order */
+  content: "";
+  order: 2;
+  flex: none;
+  width: 9px;
+  height: 9px;
+  margin-right: 4px;
+  border-right: 2px solid var(--on-surface-variant);
+  border-bottom: 2px solid var(--on-surface-variant);
+  transform: translateY(-2px) rotate(45deg);
+  transition: transform var(--medium) var(--ease);
+}
+
+.faq details[open] summary::before {
+  transform: translateY(2px) rotate(225deg);
+}
+
+.faq .answer {
+  padding: 0 20px 20px;
+  color: var(--on-surface-variant);
+}
+
+.faq .answer p + p {
+  margin-top: 10px;
+}
+
+/* ---------- Final CTA + footer ---------- */
+
+.final-cta {
+  text-align: center;
+}
+
+.final-cta .section-head {
+  margin: 0 auto 28px;
+}
+
+.final-cta .cta-row {
+  justify-content: center;
+}
+
+.site-footer {
+  padding: 28px 0 36px;
+  border-top: 1px solid var(--outline-variant);
+  background: var(--surface);
+  color: var(--on-surface-variant);
+  font-size: 14px;
+}
+
+.footer-inner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.footer-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 20px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.footer-links a {
+  color: var(--on-surface-variant);
+}
+
+.footer-links a:hover {
+  color: var(--on-surface);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition: none !important;
+    animation: none !important;
+  }
+}
