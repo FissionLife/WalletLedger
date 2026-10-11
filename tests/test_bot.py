@@ -153,10 +153,14 @@ class TestStatementImport(BotTestCase):
         db = SessionLocal()
         try:
             user = db.query(User).filter(User.telegram_chat_id == self.chat_id).one()
-            sources = {t.source for t in db.query(Transaction).filter_by(user_id=user.id)}
+            txs = list(db.query(Transaction).filter_by(user_id=user.id))
+            sources = {t.source for t in txs}
+            dates = sorted(t.created_at.date().isoformat() for t in txs)
         finally:
             db.close()
         self.assertEqual(sources, {"pdf"})
+        # imported rows keep the statement's own dates (not the day of the import)
+        self.assertEqual(dates, ["2026-10-02", "2026-10-03", "2026-10-05"])
         self.assertIn("₹670", run(bot.handle_text(self.chat_id, "/report")))
 
     def test_no_cancels_import(self):

@@ -13,12 +13,14 @@ from __future__ import annotations
 
 import difflib
 import logging
+from collections import Counter
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
+from sqlalchemy import select
 
 from app.bot import ui, views
 from app.bot.agent import classify_reply, process_user_interaction_ex
@@ -27,10 +29,11 @@ from app.bot.ui import Reply
 from app.config import dev_endpoints_enabled, is_chat_allowed
 from app.db import SessionLocal
 from app.health import user_status_text
+from app.models import Transaction
 from app.services.ledger import get_or_create_user
 from app.services_ai.ai_gateway import extract_api_keys
 from app.services_ai.mcp_server import execute_tool
-from app.services_ai.transaction_parser import parse_statement_file
+from app.services_ai.transaction_parser import parse_statement_file, summarize_statement
 
 PRIVATE_BOT_TEXT = "🔒 This bot is private."
 
@@ -161,7 +164,9 @@ async def handle_incoming(chat_id: str, text: str) -> Reply:
     if pending:
         decision = classify_reply(clean)
         if decision:
-            return Reply(_finish_import(chat_id, decision))
+            done = _finish_import(chat_id, decision)
+            rows = [[ui.Btn("📊 Stats", "go:stats"), ui.Btn("🧾 History", "go:history")]]
+            return Reply(done, rows=rows if "Imported" in done else [])
         _pending_imports.pop(chat_id, None)  # unrelated message: drop the pending import
 
     if clean.startswith("/"):
@@ -299,8 +304,10 @@ async def handle_document_rich(chat_id: str, file_name: str, file_bytes: bytes) 
 
 
 def _import_preview(file_name: str, rows: list[dict[str, Any]]) -> str:
-    spent = sum(r["amount"] for r in rows if r.get("type") != "income")
-    received = sum(r["amount"] for r in rows if r.get("type") == "income")
+    summary = summarize_statement(rows)
+    kind = f" ({summary['format_label']})" if summary["format_label"] else ""
+    period = f" ({summary['period']})" if summary["period"] else ""
+    top = " · ".join(f"{name} ₹{total:,.0f}" for name, total in summary["categories"][:3])
     sample = "\n".join(
         f"  • {r.get('date') or '—'}  {'+' if r.get('type') == 'income' else '-'}₹{r['amount']:,.2f}"
         f"  {r.get('merchant') or 'Unknown'} ({r.get('category') or 'Uncategorized'})"
@@ -308,12 +315,45 @@ def _import_preview(file_name: str, rows: list[dict[str, Any]]) -> str:
     )
     more = f"\n  …and {len(rows) - PREVIEW_ROWS} more" if len(rows) > PREVIEW_ROWS else ""
     return (
-        f"📄 **Statement:** `{file_name}`\n"
-        f"Found **{len(rows)} transactions**: ₹{spent:,.2f} spent, ₹{received:,.2f} received.\n\n"
-        f"{sample}{more}\n\n"
+        f"📄 **Statement:** `{file_name}`{kind}\n"
+        f"Found **{summary['count']} transactions**{period}: ₹{summary['total_debit']:,.2f} spent, "
+        f"₹{summary['total_credit']:,.2f} received.\n"
+        + (f"Top: {top}\n" if top else "")
+        + f"\n{sample}{more}\n\n"
         f"Import them into your **{IMPORT_ACCOUNT}** pipe?\n"
         f"👉 Reply **'yes'** to import or **'no'** to cancel."
     )
+
+
+def _drop_already_imported(chat_id: str, rows: list[dict[str, Any]]) -> tuple[list, int]:
+    """Skip rows already in the ledger (same type, amount and description, which carries the
+    date and merchant), so uploading the same statement twice never double-counts."""
+    descriptions = sorted({r["description"] for r in rows if r.get("description")})
+    if not descriptions:
+        return rows, 0
+    existing: Counter = Counter()
+    db = SessionLocal()
+    try:
+        user_id = get_or_create_user(db, telegram_chat_id=chat_id).id
+        for start in range(0, len(descriptions), 500):
+            found = db.execute(
+                select(Transaction.transaction_type, Transaction.amount, Transaction.description)
+                .where(Transaction.user_id == user_id)
+                .where(Transaction.description.in_(descriptions[start : start + 500]))
+            )
+            existing.update((t, round(a, 2), d) for t, a, d in found)
+    finally:
+        db.close()
+    fresh, duplicates = [], 0
+    for row in rows:
+        tx_type = "income" if row.get("type") == "income" else "expense"
+        key = (tx_type, round(float(row["amount"]), 2), row.get("description"))
+        if existing[key] > 0:
+            existing[key] -= 1
+            duplicates += 1
+        else:
+            fresh.append(row)
+    return fresh, duplicates
 
 
 def _finish_import(chat_id: str, decision: str) -> str:
@@ -323,8 +363,9 @@ def _finish_import(chat_id: str, decision: str) -> str:
     if decision != "confirmed":
         return "❌ **Import cancelled.** Nothing was added to your ledger."
 
+    rows, duplicates = _drop_already_imported(chat_id, pending.rows)
     imported, failed = 0, 0
-    for row in pending.rows:
+    for row in rows:
         try:
             if row.get("type") == "income":
                 execute_tool(
@@ -335,6 +376,7 @@ def _finish_import(chat_id: str, decision: str) -> str:
                     category=row.get("category") or "Income",
                     description=row.get("description"),
                     source="pdf",
+                    date=row.get("date"),
                 )
             else:
                 execute_tool(
@@ -346,6 +388,7 @@ def _finish_import(chat_id: str, decision: str) -> str:
                     account_name=IMPORT_ACCOUNT,
                     description=row.get("description"),
                     source="pdf",
+                    date=row.get("date"),
                 )
             imported += 1
         except Exception as e:
@@ -353,6 +396,8 @@ def _finish_import(chat_id: str, decision: str) -> str:
             logger.warning("Import row failed for chat %s: %s", chat_id, e)
 
     text = f"✅ **Imported {imported} transactions** from `{pending.file_name}`."
+    if duplicates:
+        text += f"\n↩️ Skipped {duplicates} already in your ledger."
     if failed:
         text += f"\n⚠️ {failed} rows could not be imported."
     return text + "\nSee them with `/report` or `/balance`."

@@ -1,5 +1,10 @@
 """Tests for the registry-backed ledger tools and their MCP surface."""
 
+import os
+
+os.environ["WALLETLEDGER_TESTING"] = "1"  # never read the real .env in tests
+os.environ["LITELLM_MODE"] = "PRODUCTION"  # litellm would otherwise load .env (real keys!)
+
 import asyncio
 import unittest
 from unittest.mock import patch
