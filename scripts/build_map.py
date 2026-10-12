@@ -124,6 +124,10 @@ NOTES: dict[str, tuple[str, str]] = {
         "ai",
         "The tool registry: the functions the AI may call (log expense, transfer, savings plan ...).",
     ),
+    "app/services_ai/tool_client.py": (
+        "ai",
+        "One door for every tool call: plain Python (`TOOL_MODE=direct`, default) or the real MCP server over stdio (`TOOL_MODE=mcp`, demo mode). The agent, helper and PDF import only call this.",
+    ),
     "app/services_ai/mcp_transport.py": (
         "ai",
         "Serves the same tools over MCP so other agents can use them.",
@@ -222,6 +226,10 @@ NOTES: dict[str, tuple[str, str]] = {
         "tests",
         "Every statement format, with synthetic examples.",
     ),
+    "tests/test_tool_mode.py": (
+        "tests",
+        "TOOL_MODE direct vs mcp: starts the real MCP server process against a throwaway database.",
+    ),
     "tests/test_transaction_parser.py": ("tests", "Statement parsing basics."),
     "site/index.html": ("site", "The landing page."),
     "site/styles.css": ("site", "Landing page styling and the colour tokens."),
@@ -249,7 +257,14 @@ TOURS = [
                 "app/bot/nlu.py",
                 "Rules find 2 items, the amounts, the category words and the date. No AI is used.",
             ),
-            ("app/services_ai/mcp_server.py", "Each item becomes a tool call: `log_expense`."),
+            (
+                "app/services_ai/tool_client.py",
+                "Each item becomes a tool call (`log_expense`), sent through the one tool door: plain Python, or the MCP server in demo mode.",
+            ),
+            (
+                "app/services_ai/mcp_server.py",
+                "The tool itself: validates the arguments and calls the ledger.",
+            ),
             (
                 "app/services/ledger.py",
                 "The ledger validates and saves the transaction and updates the balance together.",
