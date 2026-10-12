@@ -1,0 +1,79 @@
+[
+ {
+  "model": "gemini/gemini-flash-latest",
+  "messages": [
+   {
+    "role": "system",
+    "content": "You are WalletLedger's Financial AI Agent Brain modeled on the 'Tank & Pipes' architecture.\nYour job is to understand natural language user messages, analyze finances, and invoke appropriate tools dynamically.\n\nKey Guidelines:\n1. Account Pipes: Map colloquial payment accounts to clean pipe names (e.g. 'Bank', 'Cash', 'UPI Wallet'). Default to 'Cash' for everyday out-of-pocket expenses unless specified, and 'Bank' for income/transfers.\n2. Categories: Infer accurate, standard expense or income categories based on context (e.g. Food, Groceries, Transport, Shopping, Utilities, Subscriptions, Health, Personal Care, Entertainment, Gifts, Salary, Freelance, Stipend, Cashback).\n3. Multi-Item & Batch Transactions:\n   When the user provides a list of expenses (e.g. '190=poornima pizza Dosa\\n80=Neeraj Dosa\\n115.62=petrol...'), multiple purchases, or an income together with expenses ('got stipend 15000 and spent 190 on dosa, 80 on coffee'), YOU MUST CALL THE RELEVANT TOOL FOR EACH INDIVIDUAL ITEM (call `log_income` for the stipend, and call `log_expense` for EVERY single expense item). Do not truncate, merge, or ignore any item.\n4. Merchants & Descriptions: Identify merchant/payee names and clear descriptions for each transaction.\n5. Queries & Reporting:\n   - When the user asks 'how much total i spend', 'total expenses', 'show spending breakdown', call `get_spending_breakdown`.\n   - When the user asks 'what is my balance', 'net worth', 'show pipes', call `get_pipe_balances`.\n   - When the user asks how to save money, reduce expenses, or wants financial advice, call `financial_advice_bundle`.\n   - When the user asks for budget checks or alerts, call `skill_budget_alert_check`.\n   - When the user asks for recurring bills or subscriptions, call `skill_recurring_bill_detector`.\n   - When the user asks for emergency fund or runway calculations, call `skill_emergency_fund_calculator`.\n6. General Financial Conversations:\n   If the user asks a general question, greetings, or conversational advice where no tools need to be executed, reply with a helpful, friendly, and structured financial response.\n"
+   },
+   {
+    "role": "user",
+    "content": "the plumber came today, gave him two thousand five hundred in cash"
+   }
+  ],
+  "response": {
+   "id": "SgrNarnVI426juMPvqaO0A8",
+   "created": 1791822409,
+   "model": "gemini-3.8-flash",
+   "object": "chat.completion",
+   "system_fingerprint": null,
+   "choices": [
+    {
+     "finish_reason": "tool_calls",
+     "index": 0,
+     "message": {
+      "content": null,
+      "role": "assistant",
+      "tool_calls": [
+       {
+        "index": 0,
+        "provider_specific_fields": {
+         "thought_signature": "EokFCoYFAWkUfRN2P8Z7s4C7lzXfYeWQW7N/V+7xAQ1ZtK7nhK23hCR3pAFxUZglrDhDROFBy0L4+QfU/GiUNOasL+UzShUBvDfrpHi4sGADFTgvuFyQnvHURRO+7yT4ZS/kl0GTcmSA+wwooimCojKb5wGj1WozB6wncxSS7ckjmDl5PDBjrn0/gOSSV32s45yo2LhKKKBFLcD4O/p0foasWsSoj4bV9GguwLPRnIbfED2Wa02AFrVkWr6MD0L74ZNFSKbV5Huc02jnYHEexyutpgZJgoNqYPiEuDPtnZBScJtDkfBKU4/ZuxsGjS3DztS71OkHOOZZFgk2+/ndmaH4zLleNYTuLIPRSoh+KvN4RejLRPq+Fxn5QvwWk6ZvVTK2fDJFfeK7KqMMjsp++sp0QCY2MeBG6Bf3Hv8UQC7zb4Zu2AysOn2uJSOFuAaFVnu3YxhD0bxxx8U0ABoiEI4AhHMpYSPlyYOz2JticVDbHDdo2xgNOYcI1nDJh+hid3XozmL7baKBhuOLtKAC5/HY9H/Lc4kLV7pAQYlmcj9P2nLeGhohPqPmkVuGVJJ5THvQ1ZtYzuOSrHbPwQJIvCnBJ9Sn2Vewv7vHUYxHDNzY5lrJibKS8G8DXlwF5QRL8cj/srRIF5vBdvvVQlU9C5qU/SMkHIDQ/iWwEWXJiDnzVwQKkOswGA7B2fiYAiDX8EA4fH+y8/SdBcitafxY9KUQQ16tneCIC9PO97fRpeJOiYT1CbD3OjnDI4FH2WYkBSEC+TwJAFfcPCc6M6QX6lTxAs3m0gjfSCWDmwTpWLjo7n989SNV4+H8hjWb/jgUMMqwg4+4ZZhiB66rZQ2StvsuX5H0gygb0pQFVw=="
+        },
+        "function": {
+         "arguments": "{\"description\": \"Plumbing repair service\", \"account_name\": \"Cash\", \"amount\": 2500, \"merchant\": \"Plumber\", \"category\": \"Utilities\"}",
+         "name": "log_expense"
+        },
+        "id": "call_1242750__thought__EokFCoYFAWkUfRN2P8Z7s4C7lzXfYeWQW7N/V+7xAQ1ZtK7nhK23hCR3pAFxUZglrDhDROFBy0L4+QfU/GiUNOasL+UzShUBvDfrpHi4sGADFTgvuFyQnvHURRO+7yT4ZS/kl0GTcmSA+wwooimCojKb5wGj1WozB6wncxSS7ckjmDl5PDBjrn0/gOSSV32s45yo2LhKKKBFLcD4O/p0foasWsSoj4bV9GguwLPRnIbfED2Wa02AFrVkWr6MD0L74ZNFSKbV5Huc02jnYHEexyutpgZJgoNqYPiEuDPtnZBScJtDkfBKU4/ZuxsGjS3DztS71OkHOOZZFgk2+/ndmaH4zLleNYTuLIPRSoh+KvN4RejLRPq+Fxn5QvwWk6ZvVTK2fDJFfeK7KqMMjsp++sp0QCY2MeBG6Bf3Hv8UQC7zb4Zu2AysOn2uJSOFuAaFVnu3YxhD0bxxx8U0ABoiEI4AhHMpYSPlyYOz2JticVDbHDdo2xgNOYcI1nDJh+hid3XozmL7baKBhuOLtKAC5/HY9H/Lc4kLV7pAQYlmcj9P2nLeGhohPqPmkVuGVJJ5THvQ1ZtYzuOSrHbPwQJIvCnBJ9Sn2Vewv7vHUYxHDNzY5lrJibKS8G8DXlwF5QRL8cj/srRIF5vBdvvVQlU9C5qU/SMkHIDQ/iWwEWXJiDnzVwQKkOswGA7B2fiYAiDX8EA4fH+y8/SdBcitafxY9KUQQ16tneCIC9PO97fRpeJOiYT1CbD3OjnDI4FH2WYkBSEC+TwJAFfcPCc6M6QX6lTxAs3m0gjfSCWDmwTpWLjo7n989SNV4+H8hjWb/jgUMMqwg4+4ZZhiB66rZQ2StvsuX5H0gygb0pQFVw==",
+        "type": "function"
+       }
+      ],
+      "function_call": null,
+      "images": [],
+      "thinking_blocks": [],
+      "provider_specific_fields": {
+       "thought_signatures": [
+        "EokFCoYFAWkUfRN2P8Z7s4C7lzXfYeWQW7N/V+7xAQ1ZtK7nhK23hCR3pAFxUZglrDhDROFBy0L4+QfU/GiUNOasL+UzShUBvDfrpHi4sGADFTgvuFyQnvHURRO+7yT4ZS/kl0GTcmSA+wwooimCojKb5wGj1WozB6wncxSS7ckjmDl5PDBjrn0/gOSSV32s45yo2LhKKKBFLcD4O/p0foasWsSoj4bV9GguwLPRnIbfED2Wa02AFrVkWr6MD0L74ZNFSKbV5Huc02jnYHEexyutpgZJgoNqYPiEuDPtnZBScJtDkfBKU4/ZuxsGjS3DztS71OkHOOZZFgk2+/ndmaH4zLleNYTuLIPRSoh+KvN4RejLRPq+Fxn5QvwWk6ZvVTK2fDJFfeK7KqMMjsp++sp0QCY2MeBG6Bf3Hv8UQC7zb4Zu2AysOn2uJSOFuAaFVnu3YxhD0bxxx8U0ABoiEI4AhHMpYSPlyYOz2JticVDbHDdo2xgNOYcI1nDJh+hid3XozmL7baKBhuOLtKAC5/HY9H/Lc4kLV7pAQYlmcj9P2nLeGhohPqPmkVuGVJJ5THvQ1ZtYzuOSrHbPwQJIvCnBJ9Sn2Vewv7vHUYxHDNzY5lrJibKS8G8DXlwF5QRL8cj/srRIF5vBdvvVQlU9C5qU/SMkHIDQ/iWwEWXJiDnzVwQKkOswGA7B2fiYAiDX8EA4fH+y8/SdBcitafxY9KUQQ16tneCIC9PO97fRpeJOiYT1CbD3OjnDI4FH2WYkBSEC+TwJAFfcPCc6M6QX6lTxAs3m0gjfSCWDmwTpWLjo7n989SNV4+H8hjWb/jgUMMqwg4+4ZZhiB66rZQ2StvsuX5H0gygb0pQFVw=="
+       ]
+      }
+     },
+     "provider_specific_fields": {
+      "native_finish_reason": "STOP"
+     }
+    }
+   ],
+   "usage": {
+    "completion_tokens": 180,
+    "prompt_tokens": 2271,
+    "total_tokens": 2451,
+    "completion_tokens_details": {
+     "reasoning_tokens": 133,
+     "text_tokens": 47
+    },
+    "prompt_tokens_details": {
+     "audio_tokens": null,
+     "cached_tokens": null,
+     "text_tokens": 2271,
+     "image_tokens": null,
+     "video_tokens": null
+    },
+    "cache_read_input_tokens": null
+   },
+   "vertex_ai_grounding_metadata": [],
+   "vertex_ai_url_context_metadata": [],
+   "vertex_ai_safety_results": [],
+   "vertex_ai_citation_metadata": [],
+   "service_tier": "default"
+  }
+ }
+]

@@ -62,6 +62,11 @@ class ScoringTests(unittest.TestCase):
         observed["reply_text"] = "You spent ₹9,999."
         self.assertFalse(all(c["ok"] for c in scoring.score_turn(expect, observed)))
 
+    def test_sums_of_real_figures_are_grounded_but_guesses_are_not(self):
+        observed = {"calls": [{"result": {"food": 920, "fun": 649, "rent": 15000}}],
+                    "reply_text": "Food and fun cost ₹1,569; cut ~₹400."}  # fmt: skip
+        self.assertEqual(scoring.unsupported_figures(observed), [400.0])
+
     def test_metrics_and_not_run(self):
         case = {"id": "X", "tier": "llm", "group": "llm_goal", "max_provider_requests": 2,
                 "turns": [{"user": "q", "expect": {"ledger_after": {"new_transactions": 0}}}]}  # fmt: skip

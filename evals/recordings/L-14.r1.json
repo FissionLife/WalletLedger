@@ -1,0 +1,652 @@
+[
+ {
+  "model": "gemini/gemini-flash-latest",
+  "messages": [
+   {
+    "role": "system",
+    "content": "You are WalletLedger's Financial AI Agent Brain modeled on the 'Tank & Pipes' architecture.\nYour job is to understand natural language user messages, analyze finances, and invoke appropriate tools dynamically.\n\nKey Guidelines:\n1. Account Pipes: Map colloquial payment accounts to clean pipe names (e.g. 'Bank', 'Cash', 'UPI Wallet'). Default to 'Cash' for everyday out-of-pocket expenses unless specified, and 'Bank' for income/transfers.\n2. Categories: Infer accurate, standard expense or income categories based on context (e.g. Food, Groceries, Transport, Shopping, Utilities, Subscriptions, Health, Personal Care, Entertainment, Gifts, Salary, Freelance, Stipend, Cashback).\n3. Multi-Item & Batch Transactions:\n   When the user provides a list of expenses (e.g. '190=poornima pizza Dosa\\n80=Neeraj Dosa\\n115.62=petrol...'), multiple purchases, or an income together with expenses ('got stipend 15000 and spent 190 on dosa, 80 on coffee'), YOU MUST CALL THE RELEVANT TOOL FOR EACH INDIVIDUAL ITEM (call `log_income` for the stipend, and call `log_expense` for EVERY single expense item). Do not truncate, merge, or ignore any item.\n4. Merchants & Descriptions: Identify merchant/payee names and clear descriptions for each transaction.\n5. Queries & Reporting:\n   - When the user asks 'how much total i spend', 'total expenses', 'show spending breakdown', call `get_spending_breakdown`.\n   - When the user asks 'what is my balance', 'net worth', 'show pipes', call `get_pipe_balances`.\n   - When the user asks how to save money, reduce expenses, or wants financial advice, call `financial_advice_bundle`.\n   - When the user asks for budget checks or alerts, call `skill_budget_alert_check`.\n   - When the user asks for recurring bills or subscriptions, call `skill_recurring_bill_detector`.\n   - When the user asks for emergency fund or runway calculations, call `skill_emergency_fund_calculator`.\n6. General Financial Conversations:\n   If the user asks a general question, greetings, or conversational advice where no tools need to be executed, reply with a helpful, friendly, and structured financial response.\n\n\nYou work as four helpers in one:\n- Ledger: record spending, income and transfers exactly as the user said (one tool call per item).\n- Analyst: look at their numbers with get_financial_snapshot / get_spending_breakdown before judging anything. Never guess a figure you can look up.\n- Planner: for goals use savings_plan and say plainly whether it is realistic.\n- Writer: finish with a short, friendly answer (under 120 words, rupee amounts like ₹4,500, no tables). Lead with the answer, then at most 3 bullet points.\nOnly change money records when the user clearly asked you to. If something is missing (for example an amount), ask one short question instead of guessing."
+   },
+   {
+    "role": "user",
+    "content": "I spent 1200 on a dinner party yesterday, also how much have I spent on food this week?"
+   }
+  ],
+  "error": "ServiceUnavailableError: litellm.ServiceUnavailableError: GeminiException - {\n  \"error\": {\n    \"code\": 503,\n    \"message\": \"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later.\",\n    \"status\": \"UNAVAILABLE\"\n  }\n}\n"
+ },
+ {
+  "model": "gemini/gemini-flash-latest",
+  "messages": [
+   {
+    "role": "system",
+    "content": "You are WalletLedger's Financial AI Agent Brain modeled on the 'Tank & Pipes' architecture.\nYour job is to understand natural language user messages, analyze finances, and invoke appropriate tools dynamically.\n\nKey Guidelines:\n1. Account Pipes: Map colloquial payment accounts to clean pipe names (e.g. 'Bank', 'Cash', 'UPI Wallet'). Default to 'Cash' for everyday out-of-pocket expenses unless specified, and 'Bank' for income/transfers.\n2. Categories: Infer accurate, standard expense or income categories based on context (e.g. Food, Groceries, Transport, Shopping, Utilities, Subscriptions, Health, Personal Care, Entertainment, Gifts, Salary, Freelance, Stipend, Cashback).\n3. Multi-Item & Batch Transactions:\n   When the user provides a list of expenses (e.g. '190=poornima pizza Dosa\\n80=Neeraj Dosa\\n115.62=petrol...'), multiple purchases, or an income together with expenses ('got stipend 15000 and spent 190 on dosa, 80 on coffee'), YOU MUST CALL THE RELEVANT TOOL FOR EACH INDIVIDUAL ITEM (call `log_income` for the stipend, and call `log_expense` for EVERY single expense item). Do not truncate, merge, or ignore any item.\n4. Merchants & Descriptions: Identify merchant/payee names and clear descriptions for each transaction.\n5. Queries & Reporting:\n   - When the user asks 'how much total i spend', 'total expenses', 'show spending breakdown', call `get_spending_breakdown`.\n   - When the user asks 'what is my balance', 'net worth', 'show pipes', call `get_pipe_balances`.\n   - When the user asks how to save money, reduce expenses, or wants financial advice, call `financial_advice_bundle`.\n   - When the user asks for budget checks or alerts, call `skill_budget_alert_check`.\n   - When the user asks for recurring bills or subscriptions, call `skill_recurring_bill_detector`.\n   - When the user asks for emergency fund or runway calculations, call `skill_emergency_fund_calculator`.\n6. General Financial Conversations:\n   If the user asks a general question, greetings, or conversational advice where no tools need to be executed, reply with a helpful, friendly, and structured financial response.\n\n\nYou work as four helpers in one:\n- Ledger: record spending, income and transfers exactly as the user said (one tool call per item).\n- Analyst: look at their numbers with get_financial_snapshot / get_spending_breakdown before judging anything. Never guess a figure you can look up.\n- Planner: for goals use savings_plan and say plainly whether it is realistic.\n- Writer: finish with a short, friendly answer (under 120 words, rupee amounts like ₹4,500, no tables). Lead with the answer, then at most 3 bullet points.\nOnly change money records when the user clearly asked you to. If something is missing (for example an amount), ask one short question instead of guessing."
+   },
+   {
+    "role": "user",
+    "content": "I spent 1200 on a dinner party yesterday, also how much have I spent on food this week?"
+   }
+  ],
+  "response": {
+   "id": "kQvNapT-C_L_4-EP0t_dyQE",
+   "created": 1791822736,
+   "model": "gemini-3.8-flash",
+   "object": "chat.completion",
+   "system_fingerprint": null,
+   "choices": [
+    {
+     "finish_reason": "tool_calls",
+     "index": 0,
+     "message": {
+      "content": null,
+      "role": "assistant",
+      "tool_calls": [
+       {
+        "index": 0,
+        "provider_specific_fields": {
+         "thought_signature": "EqMkCqAkAWkUfRPossBilvLEaqCDKNH3c7w03xki+o+Zix38z8t+cktKWSkK7qteZmGem4fU1DCAxJbpD3b6Iw/3zylS2ND7kLt5OFKK+0ysDgtyTAvaMUzUJpAv1l9okK13YnGtgeyKPzC1+1W6iMnj2s/sETG9sVrueEg0U6oJ1y1Y0Np+fNSzpWbrBaXTxrRcfQqrWE6TL6hnmvl8RdyKUqGSFD9JqtiFv6i4k1wnxoom//ycCZjqb8CE3YBVUOlrUmyHes73j/W5nvMAgF5mwJ/qnanJ9389JstNG+uGEg3n73dU+YWHji1zZRxc+IyrlSrXHT6oWEc7KoO/CIQ0y3RQUAoeZ9f5Kc9Wd1qc7tb3/G0Z+F2YRH+rGRBZG5FHJli9SLA4zDJcPkFGCphhy93fywZZt7iJb2ceyWgyPIVnXU81LuTt1ahOBIlPMrmVdpJrVENS0aBBshuWgEwGRuQEVhNXKGDy5WmcbFqjtMShnjJw1f+kMLUztzhTr9cfL1Ihl4thc5Tt7MKdKoeqlZnFhXFMV11nSAcmTrpHOK0a/hZ0Ke2gZWdIFD5DfHBpY331VF8IXh4hKMswllAsajJAwkQLwrjJtOdTkeXFVvpp38RJembebuKzAzBZ3kCxXAvhvMoFYMMHFwAWZ/DMjhOYkfFiv2rlwZAKWLqC8GEHJ1dwMVGcpm+Rm30A++9oVefqSjCiaICWZc4aBRSWl/E9BTMOa7nb4h5q8LqJVGs+PgpZkdkaJh8m2Sa/QuaLMM6s/gaG+yD1JZR3djaRnD0ZG4S+5UbtqGoY9xyWWGMfjm4vPHe6eUKihWUsW8jlrTDeH5TOEEh04uj/mCF5MFz2j0RyhOrUo3D9v/zzk+MVklrwcmKNESrIrHKNhxrtYHNT7KcJThWtPi1hPZL5FeKDNPDiJhqw6PE8EOqSGZJlGzNlaJXcsnjXZG/RhEN1XtjABEkQP2qYGdKujWI2ZzZttTXnZE2wnjxh7CsMKxueQb0oLA3P6lvhA8rpfK2zV6M8kfxD5Q9joaUIbdn6wzeQ83xQar9lxVwbNLZVfsLxV4cydTJ68xzvDN9aVKUZCPTRNZR3Kn91kR/RoPhxR6gFepsdBe2VNxb6B8zD6cow1sVPXymnhmezwWe8TA/2o0zvt41GhrxzW5RUDq4bJugx4IqxnZZTC4+Qp1tp7ZYnsBvpwCFHKJjXb2Ht77LDT4a94Gs3tpuOBWZnwYlaIAfTVyoHzi3kgZyoQJWBg8mL5bn5sbSdGXxqpYc7pAzRsv312ZFQcMzamYqdAYDemBdOWswtYOrIFUukOjqgV1BtFt12rpdFzjglHy3OZKiGIe+Wbn4HlZIbNiltHvP1KEbV85NO0f2k6YW0W4QHjzHK9Ig91RnnJ7AkQHPiYQ3RyOdggY35QV2huqqyONF8yNo2isdcJ1MefsTtVE4EVJ6uOISjIp01IG5lUXuusTl1zMKBKSvTKagj1prdUfYEQDiTS3nLVZ1/MbVse8SusP7CNtyFlsb7XVgYv4Aug4tuombzAHvSB7hCYWvCE2zqxF4j56mUjIk/wNz/ZUs1hOKK3j6Gbebbr1MCKlPsqGR6jCK7hhQsl3Bzo4n+O11+vbtowpxZdKY4nmJSbfFdadOWkT8LRh4LxYw71sdXd/XvWTWjEe6PUfOTwAXLaMh4IPlXeeaxotZS+C/otk8FiTncAUQMxXZV7VXejcpPi8g7jvWeeQNfqkuwMwOvLVAZ+nz2IZsQdi5Rve/fPlkxpuvbZeUVPic6ZoZLWF2L28voyA4MHbVIILBezGAADP8jCSbSH/eCdpJNGYZtw91L3gAdVcksPMgVLODvuMCzqKU74EdHXHxdAsj7LGocuTisDZ4ri7AWQzNSOrEee/r+/rNkSvhRwkox9KUyj+lA5sTv7yBVK5kKh4GCgbbB8nwO5KTWqBM5JAw6eKobAwVARdaDVAsAjTQcRQQX2sjzKfO4XJm7Jn8+fRlgemaTx98NTtOxxolGWA81AOCRb9gp9tby+Eer9Dal7QqnfhCYrRfgSSY7Xy4YWZEySyh+3gf4nIa+6YQkXsNxRSCIypCRvqEeWqximRV5Xy0uXgGL7mCB8jBiUvtK4FMHQu9OwgaXNG9tih79U1uWZvwQ31Vgo+3TsASlkBqtyykkM4ODiL8CcTudpXCxDLnO0ZngjJ4VpqzP7FGKxmsekn0C9IS2AFRkuaJAq66ecqtB89jRK0TUJXz9n5OSRdY6QUWlEhbHS+BhO7UcqlNhspCxzZPA375Cr3nkdMNplytop1EKueF8+s3C0lIop5atQtbKxU9yFpECPpbKoEuU0F9oRzinY8A27wzKchb7gbhz4H7xVEpaAEEQyiFeb/r0MfppqYp7BUqA2S4c289flX8qYMgzaK77d2nSq6ANzbFwj2Ks/qENjCo6aR/gn0169mVHb3eNgrK22ODLDJ5dfomS1ZT9s77K41tP9spADwarVeINtWZF4n/Nuey07lphg7MAoTtsnyYRMC5L4mYG8ePTGjcuoRvgaim6hZ8ytd+3WBS3V5rtahfKVJIO9+U0JqhP8ZPgoDdtOqMasRgblSlhxRBalIVHEh19xxePdbievcX3VlDiVkWrsVRLyiIKgiZzqP7Ln4RZePeyZn+g/d3nJHSfl75evLS2LkTnu7qSRsgF5SlMnnR3LSEwlWB6azsgd6tMChzCeEXO44D8oDDsGj3H6/64ccJJRmY/rFUoOsDUzBB6uXIsU9q76ucseqARcKudG+Mq0qhShYrcSZ4F8M7IGn+7XWpIVoRa+uaojn6SsQzIrj4M0tJCie+wBHC5XmLtbvokXrd1CN2ovPk62THQJ7WYseHIRc9cQ/dm6aPcSZ1YQ74tN1VjF6/r6BGR1uagUAB22U6w0TdgCcyFWo5zPGX9JCUeW7GsFkzBASnO0wvLQN/irTDXhH1FLKGzbwFMOd4C8f2SEIvCyIAKN36cMt5C2hDXq8phdAmMIbB89j6p1dgJ+7hDdnvpn5FQdFcqNji5440AbQYx9d4HXJWyuNbndEqfw9wacmlqCLzF0VEJxlcUp3OCkCKc1Nt12QiI02PyJ4n5Dre0kTgFT6MyDnnZIMdoUdTXTci4+/6KPlXjA9j2ntZHYqxs04OpqwN8+QjxhUXYBH8G186CoIK3dpbFy8b8akg4BBotvMpeWA4YrvS5qCYEYUYmh9AuuwJur6M9XNlTGTD8Wt6Ac9jOw11pa0BS8IrYOLOlWN21mEYIaxLt22wOXMb6ET1vYoXvPuBh6EUWtElwzvesvkLdCAdNkij+CA9x858IHyP2/r1cs8oafNR4PmP4Eq4nqxYtooAIGFijZftU+GsYR5MHMPr5X9oFXVEqtW3PLXINYiY5W6gDrBWXDPEwSo3IYqgELHeqzFSdkvgKAZ5bHFDouQ7g8ikkv+gOY3y93g2pO5KYiCSQgOZdxinscZmC7vrRCNcbfhPUmxFV4v300C+y1HJMBncUa1ydQeKd6Af/ZFjEeonHkYe2nwcjAfS5IWQU54wWe4CaBFge5FUlhof1urlH8UQSTCY54jsclojzLllxgwfc6i4HyyaARDeKr2e2YDC7BH2bHFo1FA8tG5qb9OfNiQa/y1Kzm4sG3KklaCpCdMJ+iMag/4+6+x3GKYHKEVLJVEi0/obifrnKNosH7ruJ34PpI5Ksx/AAB9SKukWYswAkw3d6n1Bi0kZZXVmIPudbow3xXRY9touEq4UaecOo8W2aS5pSDuY7wVgfnhto53UZxteapc72sF+RZXxLntL0l0miF54uSYa2bxf6ZnY2U56rl3r/w6TSFXZGPYNUbTw9b734ehYMeY+OqgmiTqnHZp30y6ahqCZ3gAI/Z1cCj3u2cWSa7kVhuiZiyTosTqYpyrA5GYHqBgNXFtM0OTilu627Lj7EGfge92BtzJS9Wf9oIv1TKaEBJwGsSlgjclsmbv4oElfoM3imMBMWbAguDdh7KGFAETV4VDVj15qMdazsze7Nxzqdn8Z/ePed2UbFtqUsxeIA2YZHGQRY+Gus2SnSPhY58nNp/9wPkeUkgniVYTcGJADerH8JPE+n1EsXnvwgkgRjGzl/kqvyfCQS22i6u1jG3rn917Xl8/CjGaBHKnLTS/pGIrnih993g63DLiBOskSwmcQGwcJdxhPqg88yUuvpHi7Dn6YKNjJly9DcidOvc6qotKBuyeIco9HnRRDNFRMRNJr7GNAe7APdvy+IwmjzCQiAeCwHBQpXAF40+39T9lUMUGkMfOdjNWlOYy8W0t1HS+E24W9PhzG5IgxkpooxeDdCkQ//VHsZvuDiF2h2sJ1afcx0OoDZ9wlUSLgDLT8nG+SNjWbDtSq6oXkSnO9f2ryRVhS4YrxLeSoYPUrfq7CFlDdsLxIuY8TCBJvAmNd9kjsgDtn64CKBquhJ3ZuyPd2iuil+jkFjoMX2JcY+SlJnE18JPm2Mt3rjy4ynu3wF8ZrQA0nGw/FxvoQB9BEPJRicBfQVdY/rL59jVIcxke9XSjbHQcUi29pEJWEaq7H2cufm/T5+c2nBWvHwNR2OfVsybt5hRrUwdWkcFmMpg1FUvQhf8X2Zo9d/eTMjRsDbniJSzsIdm1J4nLVycj4oawWFeaVGPvb1q9BRRzBiuuIvGBtatOYznJtBFdYH3p6gVzstHrsUV01pTHc2SrG0JGqB8P7eJbA+96ZlemOSmMbZeqXr2Q4yvFEwEeLNIy7Jcjrmjt4iLt7uxR5QNRqgIpLeNkC/NLKtn94IDZOZdGLsozlsMWVJsCYJ8yuLzL674lTDI3jm2E+pIuQ/3+fGjejAiEVRA3R4JYa3ZaNWU0slvucPzX2sPJx0bp20ldEN3TwDe/zaF/a0BbU+KszQwoI+qbTDBFmhuGfGOtABcEK4KTX07Hss3iFWsv/02JP8mMu2N4njUu/FZS1kUlkiluXdmmFI/wUViMNh4u241rjOJ0mNtUB77Zzer/r6Y6y8xBxcXXH3XEMTXgY7gWFr82xkLSsirpM3qkJEoy+lfNPMQBE5VQ3iBV4/dF9/B3cO/bKDsa9x00Oae604YuQgGMVrACPKHBxN1bHCcnNAbB2ESqgaOPrlUXG5fwzjA//MUWAT+rIE0JbJSzdv92uTmV/itqiFgXK0Cg4yvTFpu7h34qx9vKYWV6jksGOmCPXuBhePScrN4TzBT8dnM/BxwZNfTU7hPbnE0CH/nx/pYLH3CpvrerZOxfsP8kA6hM4ghri9rWeDSlfzfHqiM1xn/Xe66CoPp288doO3vpDR34nsJKOwzXWEHeEPQAB+UqZeq+1+IqZbFvraJpAxveQGeTMq2QArN8Bka5WIbGSh2qWjlFxGC2U0dYhgVDY8/l1F195R9x0Hp4DM8S7KAsErHKS3JKvPWTa/FppTt1vJcEWSQ/xbIcpwBmsn4IC4dJOaoguGWHWnpdXUalIYy/gygGltaxZPmQsZVOP1wPNwgTvOUpZPUR8dY7I1Wv0Roo6V5O1gq8BSu3nJSyhrVrrpDAFI+eozEz99kqhNBn00aFv5bOKMDcQmhrHse28IG6PvTNAolwxHWudRi+ZXUkK/lRcmIGIy0Ug82ZIevvpCCm3sMlmW4x+0Nylx86kSydWJjTb25UvEP5Ir4ITmUIceohj91Cl4JOdwonRE2WexDEqIfejycL5agObAbCFG+h3Xb4y8k/ReMPp3EqtwWICRVu/6esdWHGdLpkJ5O5UeE1/ra0C26Rs9nKJ5tkm20BNhjElkhTUD/S1spdTATOWo4oY6BXo3cAtWeSJXliYJQBS9rrc+GD9t7VzcvGyPtzwBHWTtZUgHpDgmPwdGQEw4e+Segiujk2M/I2LjLRMp3fffoepJ+HJTTw6Z5Vig0gYVrk9SgY+hab11eFIUwvlOaB9SzuYN5moshlV4mAjNWsIy0U074EP+/sz/loTD1yyY/N5bXWgttki2VgwqryVHUv+QNwRLSS05K6iHQymM5efMu7pNW0d74+219i8zvFTb5QmOzbeU7XxZXLmyptbOrzHsQ1Pm/aZ9P+pkCSdza1pwDc1JjvZS3huXKAmb9QytNmdbw/rH+O+W9bcLxD7rcYhUWueeirWBx+4oVlsu4IrBmA1g3X4hicmSAaDc2MbbWEv89t5ksnaSidLl/qKNkaS+abNPMFtrU5o="
+        },
+        "function": {
+         "arguments": "{\"limit\": 1}",
+         "name": "search_transactions"
+        },
+        "id": "call_4768__thought__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",
+        "type": "function"
+       },
+       {
+        "index": 1,
+        "function": {
+         "arguments": "{\"category\": \"Food\", \"period\": \"week\"}",
+         "name": "get_spending_breakdown"
+        },
+        "id": "call_4769",
+        "type": "function"
+       }
+      ],
+      "function_call": null,
+      "images": [],
+      "thinking_blocks": [],
+      "provider_specific_fields": {
+       "thought_signatures": [
+        "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"
+       ]
+      }
+     },
+     "provider_specific_fields": {
+      "native_finish_reason": "STOP"
+     }
+    }
+   ],
+   "usage": {
+    "completion_tokens": 1325,
+    "prompt_tokens": 2321,
+    "total_tokens": 3646,
+    "completion_tokens_details": {
+     "reasoning_tokens": 1286,
+     "text_tokens": 39
+    },
+    "prompt_tokens_details": {
+     "audio_tokens": null,
+     "cached_tokens": null,
+     "text_tokens": 2321,
+     "image_tokens": null,
+     "video_tokens": null
+    },
+    "cache_read_input_tokens": null
+   },
+   "vertex_ai_grounding_metadata": [],
+   "vertex_ai_url_context_metadata": [],
+   "vertex_ai_safety_results": [],
+   "vertex_ai_citation_metadata": [],
+   "service_tier": "default"
+  }
+ },
+ {
+  "model": "gemini/gemini-flash-latest",
+  "messages": [
+   {
+    "role": "system",
+    "content": "You are WalletLedger's Financial AI Agent Brain modeled on the 'Tank & Pipes' architecture.\nYour job is to understand natural language user messages, analyze finances, and invoke appropriate tools dynamically.\n\nKey Guidelines:\n1. Account Pipes: Map colloquial payment accounts to clean pipe names (e.g. 'Bank', 'Cash', 'UPI Wallet'). Default to 'Cash' for everyday out-of-pocket expenses unless specified, and 'Bank' for income/transfers.\n2. Categories: Infer accurate, standard expense or income categories based on context (e.g. Food, Groceries, Transport, Shopping, Utilities, Subscriptions, Health, Personal Care, Entertainment, Gifts, Salary, Freelance, Stipend, Cashback).\n3. Multi-Item & Batch Transactions:\n   When the user provides a list of expenses (e.g. '190=poornima pizza Dosa\\n80=Neeraj Dosa\\n115.62=petrol...'), multiple purchases, or an income together with expenses ('got stipend 15000 and spent 190 on dosa, 80 on coffee'), YOU MUST CALL THE RELEVANT TOOL FOR EACH INDIVIDUAL ITEM (call `log_income` for the stipend, and call `log_expense` for EVERY single expense item). Do not truncate, merge, or ignore any item.\n4. Merchants & Descriptions: Identify merchant/payee names and clear descriptions for each transaction.\n5. Queries & Reporting:\n   - When the user asks 'how much total i spend', 'total expenses', 'show spending breakdown', call `get_spending_breakdown`.\n   - When the user asks 'what is my balance', 'net worth', 'show pipes', call `get_pipe_balances`.\n   - When the user asks how to save money, reduce expenses, or wants financial advice, call `financial_advice_bundle`.\n   - When the user asks for budget checks or alerts, call `skill_budget_alert_check`.\n   - When the user asks for recurring bills or subscriptions, call `skill_recurring_bill_detector`.\n   - When the user asks for emergency fund or runway calculations, call `skill_emergency_fund_calculator`.\n6. General Financial Conversations:\n   If the user asks a general question, greetings, or conversational advice where no tools need to be executed, reply with a helpful, friendly, and structured financial response.\n\n\nYou work as four helpers in one:\n- Ledger: record spending, income and transfers exactly as the user said (one tool call per item).\n- Analyst: look at their numbers with get_financial_snapshot / get_spending_breakdown before judging anything. Never guess a figure you can look up.\n- Planner: for goals use savings_plan and say plainly whether it is realistic.\n- Writer: finish with a short, friendly answer (under 120 words, rupee amounts like ₹4,500, no tables). Lead with the answer, then at most 3 bullet points.\nOnly change money records when the user clearly asked you to. If something is missing (for example an amount), ask one short question instead of guessing."
+   },
+   {
+    "role": "user",
+    "content": "I spent 1200 on a dinner party yesterday, also how much have I spent on food this week?"
+   },
+   {
+    "role": "assistant",
+    "content": "",
+    "tool_calls": [
+     {
+      "id": "call_4768__thought__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",
+      "type": "function",
+      "function": {
+       "name": "search_transactions",
+       "arguments": "{\"limit\": 1}"
+      }
+     },
+     {
+      "id": "call_4769",
+      "type": "function",
+      "function": {
+       "name": "get_spending_breakdown",
+       "arguments": "{\"category\": \"Food\", \"period\": \"week\"}"
+      }
+     }
+    ]
+   },
+   {
+    "role": "tool",
+    "tool_call_id": "call_4768__thought__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",
+    "content": "{\"transactions\": [{\"id\": \"d270d30b-4463-42db-b482-f1ae9d0dc1ae\", \"date\": \"2026-10-12T00:00:00\", \"type\": \"expense\", \"amount\": 1800.0, \"account\": \"Bank\", \"category\": \"Groceries\", \"merchant\": \"Bigbasket\", \"description\": null, \"source\": \"chat\"}], \"limit\": 1, \"offset\": 0}"
+   },
+   {
+    "role": "tool",
+    "tool_call_id": "call_4769",
+    "content": "{\"period\": \"week\", \"period_days\": 7, \"total_expenses\": 0, \"category_breakdown\": {}}"
+   }
+  ],
+  "response": {
+   "id": "nQvNaoj0FIi1g8UPo7fWiAI",
+   "created": 1791822748,
+   "model": "gemini-3.8-flash",
+   "object": "chat.completion",
+   "system_fingerprint": null,
+   "choices": [
+    {
+     "finish_reason": "tool_calls",
+     "index": 0,
+     "message": {
+      "content": null,
+      "role": "assistant",
+      "tool_calls": [
+       {
+        "index": 0,
+        "provider_specific_fields": {
+         "thought_signature": "EtYCCtMCAWkUfRNux3BrfNDpTWzuuPMJ9H+ek9TImmajG4eTvGFAU2NvFuhnFy2mb+NBi2JW/uEl9MEmZ1glX5XRZk69BrrNjd03MS7nUMBiFqLwKrBhihdr6N+oSD6xZvdfsrGoNXjdWLRnPw13W4FpH/R5D56465tbY0NLAf3VYlhj/ktwmb0A2F0lx3WBkdrgb8PE63IC7Llhoz9wAMEB4a/gGMspZDw0rlwbJZZPntUD5xknMM+3p5WpTRL6LMa9nEsRvvbJ/ZwP9cCw651wgUYDpx2I2rDN6vh+zI9pZCv+vvGVR2a9LrWyUFC5xo8FjH+gFav0auN3TDygtIcIk+oW83CBKv40e5HjtAYmZ0AthMiWaFBSGUI8Jie9cdVTNCchzo1xxyuY8Vn4KsWtErV6t9CKB4Rx5QfVAT1ZlACinHuZ48MbHSls+xLuYzhu9Q1+7cRt"
+        },
+        "function": {
+         "arguments": "{\"days\": 7}",
+         "name": "get_financial_snapshot"
+        },
+        "id": "call_54571__thought__EtYCCtMCAWkUfRNux3BrfNDpTWzuuPMJ9H+ek9TImmajG4eTvGFAU2NvFuhnFy2mb+NBi2JW/uEl9MEmZ1glX5XRZk69BrrNjd03MS7nUMBiFqLwKrBhihdr6N+oSD6xZvdfsrGoNXjdWLRnPw13W4FpH/R5D56465tbY0NLAf3VYlhj/ktwmb0A2F0lx3WBkdrgb8PE63IC7Llhoz9wAMEB4a/gGMspZDw0rlwbJZZPntUD5xknMM+3p5WpTRL6LMa9nEsRvvbJ/ZwP9cCw651wgUYDpx2I2rDN6vh+zI9pZCv+vvGVR2a9LrWyUFC5xo8FjH+gFav0auN3TDygtIcIk+oW83CBKv40e5HjtAYmZ0AthMiWaFBSGUI8Jie9cdVTNCchzo1xxyuY8Vn4KsWtErV6t9CKB4Rx5QfVAT1ZlACinHuZ48MbHSls+xLuYzhu9Q1+7cRt",
+        "type": "function"
+       }
+      ],
+      "function_call": null,
+      "images": [],
+      "thinking_blocks": [],
+      "provider_specific_fields": {
+       "thought_signatures": [
+        "EtYCCtMCAWkUfRNux3BrfNDpTWzuuPMJ9H+ek9TImmajG4eTvGFAU2NvFuhnFy2mb+NBi2JW/uEl9MEmZ1glX5XRZk69BrrNjd03MS7nUMBiFqLwKrBhihdr6N+oSD6xZvdfsrGoNXjdWLRnPw13W4FpH/R5D56465tbY0NLAf3VYlhj/ktwmb0A2F0lx3WBkdrgb8PE63IC7Llhoz9wAMEB4a/gGMspZDw0rlwbJZZPntUD5xknMM+3p5WpTRL6LMa9nEsRvvbJ/ZwP9cCw651wgUYDpx2I2rDN6vh+zI9pZCv+vvGVR2a9LrWyUFC5xo8FjH+gFav0auN3TDygtIcIk+oW83CBKv40e5HjtAYmZ0AthMiWaFBSGUI8Jie9cdVTNCchzo1xxyuY8Vn4KsWtErV6t9CKB4Rx5QfVAT1ZlACinHuZ48MbHSls+xLuYzhu9Q1+7cRt"
+       ]
+      }
+     },
+     "provider_specific_fields": {
+      "native_finish_reason": "STOP"
+     }
+    }
+   ],
+   "usage": {
+    "completion_tokens": 101,
+    "prompt_tokens": 3798,
+    "total_tokens": 3899,
+    "completion_tokens_details": {
+     "reasoning_tokens": 85,
+     "text_tokens": 16
+    },
+    "prompt_tokens_details": {
+     "audio_tokens": null,
+     "cached_tokens": null,
+     "text_tokens": 3798,
+     "image_tokens": null,
+     "video_tokens": null
+    },
+    "cache_read_input_tokens": null
+   },
+   "vertex_ai_grounding_metadata": [],
+   "vertex_ai_url_context_metadata": [],
+   "vertex_ai_safety_results": [],
+   "vertex_ai_citation_metadata": [],
+   "service_tier": "default"
+  }
+ },
+ {
+  "model": "gemini/gemini-flash-latest",
+  "messages": [
+   {
+    "role": "system",
+    "content": "You are WalletLedger's Financial AI Agent Brain modeled on the 'Tank & Pipes' architecture.\nYour job is to understand natural language user messages, analyze finances, and invoke appropriate tools dynamically.\n\nKey Guidelines:\n1. Account Pipes: Map colloquial payment accounts to clean pipe names (e.g. 'Bank', 'Cash', 'UPI Wallet'). Default to 'Cash' for everyday out-of-pocket expenses unless specified, and 'Bank' for income/transfers.\n2. Categories: Infer accurate, standard expense or income categories based on context (e.g. Food, Groceries, Transport, Shopping, Utilities, Subscriptions, Health, Personal Care, Entertainment, Gifts, Salary, Freelance, Stipend, Cashback).\n3. Multi-Item & Batch Transactions:\n   When the user provides a list of expenses (e.g. '190=poornima pizza Dosa\\n80=Neeraj Dosa\\n115.62=petrol...'), multiple purchases, or an income together with expenses ('got stipend 15000 and spent 190 on dosa, 80 on coffee'), YOU MUST CALL THE RELEVANT TOOL FOR EACH INDIVIDUAL ITEM (call `log_income` for the stipend, and call `log_expense` for EVERY single expense item). Do not truncate, merge, or ignore any item.\n4. Merchants & Descriptions: Identify merchant/payee names and clear descriptions for each transaction.\n5. Queries & Reporting:\n   - When the user asks 'how much total i spend', 'total expenses', 'show spending breakdown', call `get_spending_breakdown`.\n   - When the user asks 'what is my balance', 'net worth', 'show pipes', call `get_pipe_balances`.\n   - When the user asks how to save money, reduce expenses, or wants financial advice, call `financial_advice_bundle`.\n   - When the user asks for budget checks or alerts, call `skill_budget_alert_check`.\n   - When the user asks for recurring bills or subscriptions, call `skill_recurring_bill_detector`.\n   - When the user asks for emergency fund or runway calculations, call `skill_emergency_fund_calculator`.\n6. General Financial Conversations:\n   If the user asks a general question, greetings, or conversational advice where no tools need to be executed, reply with a helpful, friendly, and structured financial response.\n\n\nYou work as four helpers in one:\n- Ledger: record spending, income and transfers exactly as the user said (one tool call per item).\n- Analyst: look at their numbers with get_financial_snapshot / get_spending_breakdown before judging anything. Never guess a figure you can look up.\n- Planner: for goals use savings_plan and say plainly whether it is realistic.\n- Writer: finish with a short, friendly answer (under 120 words, rupee amounts like ₹4,500, no tables). Lead with the answer, then at most 3 bullet points.\nOnly change money records when the user clearly asked you to. If something is missing (for example an amount), ask one short question instead of guessing."
+   },
+   {
+    "role": "user",
+    "content": "I spent 1200 on a dinner party yesterday, also how much have I spent on food this week?"
+   },
+   {
+    "role": "assistant",
+    "content": "",
+    "tool_calls": [
+     {
+      "id": "call_4768__thought__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",
+      "type": "function",
+      "function": {
+       "name": "search_transactions",
+       "arguments": "{\"limit\": 1}"
+      }
+     },
+     {
+      "id": "call_4769",
+      "type": "function",
+      "function": {
+       "name": "get_spending_breakdown",
+       "arguments": "{\"category\": \"Food\", \"period\": \"week\"}"
+      }
+     }
+    ]
+   },
+   {
+    "role": "tool",
+    "tool_call_id": "call_4768__thought__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",
+    "content": "{\"transactions\": [{\"id\": \"d270d30b-4463-42db-b482-f1ae9d0dc1ae\", \"date\": \"2026-10-12T00:00:00\", \"type\": \"expense\", \"amount\": 1800.0, \"account\": \"Bank\", \"category\": \"Groceries\", \"merchant\": \"Bigbasket\", \"description\": null, \"source\": \"chat\"}], \"limit\": 1, \"offset\": 0}"
+   },
+   {
+    "role": "tool",
+    "tool_call_id": "call_4769",
+    "content": "{\"period\": \"week\", \"period_days\": 7, \"total_expenses\": 0, \"category_breakdown\": {}}"
+   },
+   {
+    "role": "assistant",
+    "content": "",
+    "tool_calls": [
+     {
+      "id": "call_54571__thought__EtYCCtMCAWkUfRNux3BrfNDpTWzuuPMJ9H+ek9TImmajG4eTvGFAU2NvFuhnFy2mb+NBi2JW/uEl9MEmZ1glX5XRZk69BrrNjd03MS7nUMBiFqLwKrBhihdr6N+oSD6xZvdfsrGoNXjdWLRnPw13W4FpH/R5D56465tbY0NLAf3VYlhj/ktwmb0A2F0lx3WBkdrgb8PE63IC7Llhoz9wAMEB4a/gGMspZDw0rlwbJZZPntUD5xknMM+3p5WpTRL6LMa9nEsRvvbJ/ZwP9cCw651wgUYDpx2I2rDN6vh+zI9pZCv+vvGVR2a9LrWyUFC5xo8FjH+gFav0auN3TDygtIcIk+oW83CBKv40e5HjtAYmZ0AthMiWaFBSGUI8Jie9cdVTNCchzo1xxyuY8Vn4KsWtErV6t9CKB4Rx5QfVAT1ZlACinHuZ48MbHSls+xLuYzhu9Q1+7cRt",
+      "type": "function",
+      "function": {
+       "name": "get_financial_snapshot",
+       "arguments": "{\"days\": 7}"
+      }
+     }
+    ]
+   },
+   {
+    "role": "tool",
+    "tool_call_id": "call_54571__thought__EtYCCtMCAWkUfRNux3BrfNDpTWzuuPMJ9H+ek9TImmajG4eTvGFAU2NvFuhnFy2mb+NBi2JW/uEl9MEmZ1glX5XRZk69BrrNjd03MS7nUMBiFqLwKrBhihdr6N+oSD6xZvdfsrGoNXjdWLRnPw13W4FpH/R5D56465tbY0NLAf3VYlhj/ktwmb0A2F0lx3WBkdrgb8PE63IC7Llhoz9wAMEB4a/gGMspZDw0rlwbJZZPntUD5xknMM+3p5WpTRL6LMa9nEsRvvbJ/ZwP9cCw651wgUYDpx2I2rDN6vh+zI9pZCv+vvGVR2a9LrWyUFC5xo8FjH+gFav0auN3TDygtIcIk+oW83CBKv40e5HjtAYmZ0AthMiWaFBSGUI8Jie9cdVTNCchzo1xxyuY8Vn4KsWtErV6t9CKB4Rx5QfVAT1ZlACinHuZ48MbHSls+xLuYzhu9Q1+7cRt",
+    "content": "{\"status\": \"success\", \"period\": \"Last 7 days\", \"spent\": 2600.0, \"earned\": 2000.0, \"net\": -600.0, \"savings_rate_percent\": -30.0, \"spent_change_percent\": -82.67, \"top_categories\": [{\"name\": \"Groceries\", \"amount\": 1800.0, \"share_percent\": 69.23, \"change_percent\": null}, {\"name\": \"Food & Dining\", \"amount\": 540.0, \"share_percent\": 20.77, \"change_percent\": null}, {\"name\": \"Transport\", \"amount\": 260.0, \"share_percent\": 10.0, \"change_percent\": null}], \"top_merchants\": [{\"name\": \"Bigbasket\", \"amount\": 1800.0}, {\"name\": \"Zomato\", \"amount\": 540.0}, {\"name\": \"Uber\", \"amount\": 260.0}], \"budgets\": [{\"category\": \"Groceries\", \"spent\": 1800.0, \"budget\": 5000.0, \"level\": \"ok\"}, {\"category\": \"Food & Dining\", \"spent\": 540.0, \"budget\": 3000.0, \"level\": \"ok\"}, {\"category\": \"Entertainment\", \"spent\": 0.0, \"budget\": 1000.0, \"level\": \"ok\"}], \"recurring\": [{\"name\": \"Netflix\", \"monthly\": 649.0}, {\"name\": \"Zomato\", \"monthly\": 580.0}], \"month_end_projection\": 22365.67, \"money_now\": 140812.0, \"months_of_runway\": 7.42, \"insights\": [\"Groceries is your biggest spend: ₹1,800 (69%).\", \"Spending is down 83% compared with the period before.\", \"You spent more than you earned in this period.\", \"2 recurring payments add up to about ₹1,229 a month.\", \"Mon is your costliest day (about ₹1,800).\", \"At this pace the month ends near ₹22,366.\"]}"
+   }
+  ],
+  "response": {
+   "id": "oAvNavHFDLSsg8UPyv6F2QM",
+   "created": 1791822751,
+   "model": "gemini-3.8-flash",
+   "object": "chat.completion",
+   "system_fingerprint": null,
+   "choices": [
+    {
+     "finish_reason": "tool_calls",
+     "index": 0,
+     "message": {
+      "content": null,
+      "role": "assistant",
+      "tool_calls": [
+       {
+        "index": 0,
+        "provider_specific_fields": {
+         "thought_signature": "EuYBCuMBAWkUfRM9KrQw/ntibtEtA9EDtt9SV5atI0V0d0HIahor2rer98cjvAM+lm2fHKQB0+xBb+bs+Qy3BC6NaEuGmyHmUUcY2DRAGfRL9ZnXc4ooWYf6VKQcaNAE9jhvIw6lT2eXAmMLLPc95KhqrUCiCaxRCw7JE3e9ylN2Xujr1RHcacSV0jh+4bT6dyoMKvb/N983uqTCR8PVoHfCQz8M7ZBEedOcTM3iXiHU6eomtOfjPb8oZUUBveRvt9QIUEW/NgLzGB5GDQngWtWtjs0bM0gxY8XHAzQBcYVzYjtEbYuxbXY="
+        },
+        "function": {
+         "arguments": "{\"transaction_type\": \"expense\"}",
+         "name": "list_categories"
+        },
+        "id": "call_1486448__thought__EuYBCuMBAWkUfRM9KrQw/ntibtEtA9EDtt9SV5atI0V0d0HIahor2rer98cjvAM+lm2fHKQB0+xBb+bs+Qy3BC6NaEuGmyHmUUcY2DRAGfRL9ZnXc4ooWYf6VKQcaNAE9jhvIw6lT2eXAmMLLPc95KhqrUCiCaxRCw7JE3e9ylN2Xujr1RHcacSV0jh+4bT6dyoMKvb/N983uqTCR8PVoHfCQz8M7ZBEedOcTM3iXiHU6eomtOfjPb8oZUUBveRvt9QIUEW/NgLzGB5GDQngWtWtjs0bM0gxY8XHAzQBcYVzYjtEbYuxbXY=",
+        "type": "function"
+       }
+      ],
+      "function_call": null,
+      "images": [],
+      "thinking_blocks": [],
+      "provider_specific_fields": {
+       "thought_signatures": [
+        "EuYBCuMBAWkUfRM9KrQw/ntibtEtA9EDtt9SV5atI0V0d0HIahor2rer98cjvAM+lm2fHKQB0+xBb+bs+Qy3BC6NaEuGmyHmUUcY2DRAGfRL9ZnXc4ooWYf6VKQcaNAE9jhvIw6lT2eXAmMLLPc95KhqrUCiCaxRCw7JE3e9ylN2Xujr1RHcacSV0jh+4bT6dyoMKvb/N983uqTCR8PVoHfCQz8M7ZBEedOcTM3iXiHU6eomtOfjPb8oZUUBveRvt9QIUEW/NgLzGB5GDQngWtWtjs0bM0gxY8XHAzQBcYVzYjtEbYuxbXY="
+       ]
+      }
+     },
+     "provider_specific_fields": {
+      "native_finish_reason": "STOP"
+     }
+    }
+   ],
+   "usage": {
+    "completion_tokens": 52,
+    "prompt_tokens": 4337,
+    "total_tokens": 4389,
+    "completion_tokens_details": {
+     "reasoning_tokens": 34,
+     "text_tokens": 18
+    },
+    "prompt_tokens_details": {
+     "audio_tokens": null,
+     "cached_tokens": null,
+     "text_tokens": 4337,
+     "image_tokens": null,
+     "video_tokens": null
+    },
+    "cache_read_input_tokens": null
+   },
+   "vertex_ai_grounding_metadata": [],
+   "vertex_ai_url_context_metadata": [],
+   "vertex_ai_safety_results": [],
+   "vertex_ai_citation_metadata": [],
+   "service_tier": "default"
+  }
+ },
+ {
+  "model": "gemini/gemini-flash-latest",
+  "messages": [
+   {
+    "role": "system",
+    "content": "You are WalletLedger's Financial AI Agent Brain modeled on the 'Tank & Pipes' architecture.\nYour job is to understand natural language user messages, analyze finances, and invoke appropriate tools dynamically.\n\nKey Guidelines:\n1. Account Pipes: Map colloquial payment accounts to clean pipe names (e.g. 'Bank', 'Cash', 'UPI Wallet'). Default to 'Cash' for everyday out-of-pocket expenses unless specified, and 'Bank' for income/transfers.\n2. Categories: Infer accurate, standard expense or income categories based on context (e.g. Food, Groceries, Transport, Shopping, Utilities, Subscriptions, Health, Personal Care, Entertainment, Gifts, Salary, Freelance, Stipend, Cashback).\n3. Multi-Item & Batch Transactions:\n   When the user provides a list of expenses (e.g. '190=poornima pizza Dosa\\n80=Neeraj Dosa\\n115.62=petrol...'), multiple purchases, or an income together with expenses ('got stipend 15000 and spent 190 on dosa, 80 on coffee'), YOU MUST CALL THE RELEVANT TOOL FOR EACH INDIVIDUAL ITEM (call `log_income` for the stipend, and call `log_expense` for EVERY single expense item). Do not truncate, merge, or ignore any item.\n4. Merchants & Descriptions: Identify merchant/payee names and clear descriptions for each transaction.\n5. Queries & Reporting:\n   - When the user asks 'how much total i spend', 'total expenses', 'show spending breakdown', call `get_spending_breakdown`.\n   - When the user asks 'what is my balance', 'net worth', 'show pipes', call `get_pipe_balances`.\n   - When the user asks how to save money, reduce expenses, or wants financial advice, call `financial_advice_bundle`.\n   - When the user asks for budget checks or alerts, call `skill_budget_alert_check`.\n   - When the user asks for recurring bills or subscriptions, call `skill_recurring_bill_detector`.\n   - When the user asks for emergency fund or runway calculations, call `skill_emergency_fund_calculator`.\n6. General Financial Conversations:\n   If the user asks a general question, greetings, or conversational advice where no tools need to be executed, reply with a helpful, friendly, and structured financial response.\n\n\nYou work as four helpers in one:\n- Ledger: record spending, income and transfers exactly as the user said (one tool call per item).\n- Analyst: look at their numbers with get_financial_snapshot / get_spending_breakdown before judging anything. Never guess a figure you can look up.\n- Planner: for goals use savings_plan and say plainly whether it is realistic.\n- Writer: finish with a short, friendly answer (under 120 words, rupee amounts like ₹4,500, no tables). Lead with the answer, then at most 3 bullet points.\nOnly change money records when the user clearly asked you to. If something is missing (for example an amount), ask one short question instead of guessing."
+   },
+   {
+    "role": "user",
+    "content": "I spent 1200 on a dinner party yesterday, also how much have I spent on food this week?"
+   },
+   {
+    "role": "assistant",
+    "content": "",
+    "tool_calls": [
+     {
+      "id": "call_4768__thought__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",
+      "type": "function",
+      "function": {
+       "name": "search_transactions",
+       "arguments": "{\"limit\": 1}"
+      }
+     },
+     {
+      "id": "call_4769",
+      "type": "function",
+      "function": {
+       "name": "get_spending_breakdown",
+       "arguments": "{\"category\": \"Food\", \"period\": \"week\"}"
+      }
+     }
+    ]
+   },
+   {
+    "role": "tool",
+    "tool_call_id": "call_4768__thought__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",
+    "content": "{\"transactions\": [{\"id\": \"d270d30b-4463-42db-b482-f1ae9d0dc1ae\", \"date\": \"2026-10-12T00:00:00\", \"type\": \"expense\", \"amount\": 1800.0, \"account\": \"Bank\", \"category\": \"Groceries\", \"merchant\": \"Bigbasket\", \"description\": null, \"source\": \"chat\"}], \"limit\": 1, \"offset\": 0}"
+   },
+   {
+    "role": "tool",
+    "tool_call_id": "call_4769",
+    "content": "{\"period\": \"week\", \"period_days\": 7, \"total_expenses\": 0, \"category_breakdown\": {}}"
+   },
+   {
+    "role": "assistant",
+    "content": "",
+    "tool_calls": [
+     {
+      "id": "call_54571__thought__EtYCCtMCAWkUfRNux3BrfNDpTWzuuPMJ9H+ek9TImmajG4eTvGFAU2NvFuhnFy2mb+NBi2JW/uEl9MEmZ1glX5XRZk69BrrNjd03MS7nUMBiFqLwKrBhihdr6N+oSD6xZvdfsrGoNXjdWLRnPw13W4FpH/R5D56465tbY0NLAf3VYlhj/ktwmb0A2F0lx3WBkdrgb8PE63IC7Llhoz9wAMEB4a/gGMspZDw0rlwbJZZPntUD5xknMM+3p5WpTRL6LMa9nEsRvvbJ/ZwP9cCw651wgUYDpx2I2rDN6vh+zI9pZCv+vvGVR2a9LrWyUFC5xo8FjH+gFav0auN3TDygtIcIk+oW83CBKv40e5HjtAYmZ0AthMiWaFBSGUI8Jie9cdVTNCchzo1xxyuY8Vn4KsWtErV6t9CKB4Rx5QfVAT1ZlACinHuZ48MbHSls+xLuYzhu9Q1+7cRt",
+      "type": "function",
+      "function": {
+       "name": "get_financial_snapshot",
+       "arguments": "{\"days\": 7}"
+      }
+     }
+    ]
+   },
+   {
+    "role": "tool",
+    "tool_call_id": "call_54571__thought__EtYCCtMCAWkUfRNux3BrfNDpTWzuuPMJ9H+ek9TImmajG4eTvGFAU2NvFuhnFy2mb+NBi2JW/uEl9MEmZ1glX5XRZk69BrrNjd03MS7nUMBiFqLwKrBhihdr6N+oSD6xZvdfsrGoNXjdWLRnPw13W4FpH/R5D56465tbY0NLAf3VYlhj/ktwmb0A2F0lx3WBkdrgb8PE63IC7Llhoz9wAMEB4a/gGMspZDw0rlwbJZZPntUD5xknMM+3p5WpTRL6LMa9nEsRvvbJ/ZwP9cCw651wgUYDpx2I2rDN6vh+zI9pZCv+vvGVR2a9LrWyUFC5xo8FjH+gFav0auN3TDygtIcIk+oW83CBKv40e5HjtAYmZ0AthMiWaFBSGUI8Jie9cdVTNCchzo1xxyuY8Vn4KsWtErV6t9CKB4Rx5QfVAT1ZlACinHuZ48MbHSls+xLuYzhu9Q1+7cRt",
+    "content": "{\"status\": \"success\", \"period\": \"Last 7 days\", \"spent\": 2600.0, \"earned\": 2000.0, \"net\": -600.0, \"savings_rate_percent\": -30.0, \"spent_change_percent\": -82.67, \"top_categories\": [{\"name\": \"Groceries\", \"amount\": 1800.0, \"share_percent\": 69.23, \"change_percent\": null}, {\"name\": \"Food & Dining\", \"amount\": 540.0, \"share_percent\": 20.77, \"change_percent\": null}, {\"name\": \"Transport\", \"amount\": 260.0, \"share_percent\": 10.0, \"change_percent\": null}], \"top_merchants\": [{\"name\": \"Bigbasket\", \"amount\": 1800.0}, {\"name\": \"Zomato\", \"amount\": 540.0}, {\"name\": \"Uber\", \"amount\": 260.0}], \"budgets\": [{\"category\": \"Groceries\", \"spent\": 1800.0, \"budget\": 5000.0, \"level\": \"ok\"}, {\"category\": \"Food & Dining\", \"spent\": 540.0, \"budget\": 3000.0, \"level\": \"ok\"}, {\"category\": \"Entertainment\", \"spent\": 0.0, \"budget\": 1000.0, \"level\": \"ok\"}], \"recurring\": [{\"name\": \"Netflix\", \"monthly\": 649.0}, {\"name\": \"Zomato\", \"monthly\": 580.0}], \"month_end_projection\": 22365.67, \"money_now\": 140812.0, \"months_of_runway\": 7.42, \"insights\": [\"Groceries is your biggest spend: ₹1,800 (69%).\", \"Spending is down 83% compared with the period before.\", \"You spent more than you earned in this period.\", \"2 recurring payments add up to about ₹1,229 a month.\", \"Mon is your costliest day (about ₹1,800).\", \"At this pace the month ends near ₹22,366.\"]}"
+   },
+   {
+    "role": "assistant",
+    "content": "",
+    "tool_calls": [
+     {
+      "id": "call_1486448__thought__EuYBCuMBAWkUfRM9KrQw/ntibtEtA9EDtt9SV5atI0V0d0HIahor2rer98cjvAM+lm2fHKQB0+xBb+bs+Qy3BC6NaEuGmyHmUUcY2DRAGfRL9ZnXc4ooWYf6VKQcaNAE9jhvIw6lT2eXAmMLLPc95KhqrUCiCaxRCw7JE3e9ylN2Xujr1RHcacSV0jh+4bT6dyoMKvb/N983uqTCR8PVoHfCQz8M7ZBEedOcTM3iXiHU6eomtOfjPb8oZUUBveRvt9QIUEW/NgLzGB5GDQngWtWtjs0bM0gxY8XHAzQBcYVzYjtEbYuxbXY=",
+      "type": "function",
+      "function": {
+       "name": "list_categories",
+       "arguments": "{\"transaction_type\": \"expense\"}"
+      }
+     }
+    ]
+   },
+   {
+    "role": "tool",
+    "tool_call_id": "call_1486448__thought__EuYBCuMBAWkUfRM9KrQw/ntibtEtA9EDtt9SV5atI0V0d0HIahor2rer98cjvAM+lm2fHKQB0+xBb+bs+Qy3BC6NaEuGmyHmUUcY2DRAGfRL9ZnXc4ooWYf6VKQcaNAE9jhvIw6lT2eXAmMLLPc95KhqrUCiCaxRCw7JE3e9ylN2Xujr1RHcacSV0jh+4bT6dyoMKvb/N983uqTCR8PVoHfCQz8M7ZBEedOcTM3iXiHU6eomtOfjPb8oZUUBveRvt9QIUEW/NgLzGB5GDQngWtWtjs0bM0gxY8XHAzQBcYVzYjtEbYuxbXY=",
+    "content": "{\"categories\": [{\"id\": \"ac9df6c5-6898-469b-89ab-c13ff2d98384\", \"name\": \"Bills & Utilities\", \"type\": \"expense\", \"monthly_budget\": null}, {\"id\": \"ce83abaa-ddc3-4a25-a494-e2ea1c756253\", \"name\": \"Entertainment\", \"type\": \"expense\", \"monthly_budget\": 1000.0}, {\"id\": \"3196ea05-d512-41a2-8ac7-ae7a7a4c3859\", \"name\": \"Food & Dining\", \"type\": \"expense\", \"monthly_budget\": 3000.0}, {\"id\": \"88199342-e830-468e-bd0d-c3cd0c1263d3\", \"name\": \"Groceries\", \"type\": \"expense\", \"monthly_budget\": 5000.0}, {\"id\": \"f21f3574-f0ad-4e62-9aa7-ad36adfc3714\", \"name\": \"Rent\", \"type\": \"expense\", \"monthly_budget\": null}, {\"id\": \"d1010ed7-4051-4931-b925-51f9471cf78b\", \"name\": \"Transport\", \"type\": \"expense\", \"monthly_budget\": null}]}"
+   }
+  ],
+  "response": {
+   "id": "ogvNaqTBH4ny4-EPvq3t-QU",
+   "created": 1791822753,
+   "model": "gemini-3.8-flash",
+   "object": "chat.completion",
+   "system_fingerprint": null,
+   "choices": [
+    {
+     "finish_reason": "tool_calls",
+     "index": 0,
+     "message": {
+      "content": null,
+      "role": "assistant",
+      "tool_calls": [
+       {
+        "index": 0,
+        "provider_specific_fields": {
+         "thought_signature": "EoMCCoACAWkUfROEiHLjaoi2TlrJ+LpAhz6QXBPm4BykbQQQ1sxYeKb4oAMmdfb1/qe1EVL4/soPjQNhwoRXN0Hkm9P7GvYwsoY10ny6zbXB5LgrU2fYtDCOjjgqrMBrs/Mi8fKRJSx1rNHTDgVEtJn56ViQ7HuB15lt5NkmrQkWoZfVKpDGYrm2TNAmO226dNsOOJ3GCucer5JjoQbjk27VRYipeoEc1aKU26A9EoUt9HSDd1ESifIe2y7ROY5IglYH2qKdL/afdvkBfVWwNPm1NVdgyxzoWhcpCk2FVpQdVRQ6QOWm5FSBz6/TN/69C/mcyywDC87vhQ3xoa/YTzvorCymfw=="
+        },
+        "function": {
+         "arguments": "{\"limit\": 3}",
+         "name": "search_transactions"
+        },
+        "id": "call_1402859__thought__EoMCCoACAWkUfROEiHLjaoi2TlrJ+LpAhz6QXBPm4BykbQQQ1sxYeKb4oAMmdfb1/qe1EVL4/soPjQNhwoRXN0Hkm9P7GvYwsoY10ny6zbXB5LgrU2fYtDCOjjgqrMBrs/Mi8fKRJSx1rNHTDgVEtJn56ViQ7HuB15lt5NkmrQkWoZfVKpDGYrm2TNAmO226dNsOOJ3GCucer5JjoQbjk27VRYipeoEc1aKU26A9EoUt9HSDd1ESifIe2y7ROY5IglYH2qKdL/afdvkBfVWwNPm1NVdgyxzoWhcpCk2FVpQdVRQ6QOWm5FSBz6/TN/69C/mcyywDC87vhQ3xoa/YTzvorCymfw==",
+        "type": "function"
+       }
+      ],
+      "function_call": null,
+      "images": [],
+      "thinking_blocks": [],
+      "provider_specific_fields": {
+       "thought_signatures": [
+        "EoMCCoACAWkUfROEiHLjaoi2TlrJ+LpAhz6QXBPm4BykbQQQ1sxYeKb4oAMmdfb1/qe1EVL4/soPjQNhwoRXN0Hkm9P7GvYwsoY10ny6zbXB5LgrU2fYtDCOjjgqrMBrs/Mi8fKRJSx1rNHTDgVEtJn56ViQ7HuB15lt5NkmrQkWoZfVKpDGYrm2TNAmO226dNsOOJ3GCucer5JjoQbjk27VRYipeoEc1aKU26A9EoUt9HSDd1ESifIe2y7ROY5IglYH2qKdL/afdvkBfVWwNPm1NVdgyxzoWhcpCk2FVpQdVRQ6QOWm5FSBz6/TN/69C/mcyywDC87vhQ3xoa/YTzvorCymfw=="
+       ]
+      }
+     },
+     "provider_specific_fields": {
+      "native_finish_reason": "STOP"
+     }
+    }
+   ],
+   "usage": {
+    "completion_tokens": 48,
+    "prompt_tokens": 4729,
+    "total_tokens": 4777,
+    "completion_tokens_details": {
+     "reasoning_tokens": 34,
+     "text_tokens": 14
+    },
+    "prompt_tokens_details": {
+     "audio_tokens": null,
+     "cached_tokens": null,
+     "text_tokens": 4729,
+     "image_tokens": null,
+     "video_tokens": null
+    },
+    "cache_read_input_tokens": null
+   },
+   "vertex_ai_grounding_metadata": [],
+   "vertex_ai_url_context_metadata": [],
+   "vertex_ai_safety_results": [],
+   "vertex_ai_citation_metadata": [],
+   "service_tier": "default"
+  }
+ },
+ {
+  "model": "gemini/gemini-flash-latest",
+  "messages": [
+   {
+    "role": "system",
+    "content": "You are WalletLedger's Financial AI Agent Brain modeled on the 'Tank & Pipes' architecture.\nYour job is to understand natural language user messages, analyze finances, and invoke appropriate tools dynamically.\n\nKey Guidelines:\n1. Account Pipes: Map colloquial payment accounts to clean pipe names (e.g. 'Bank', 'Cash', 'UPI Wallet'). Default to 'Cash' for everyday out-of-pocket expenses unless specified, and 'Bank' for income/transfers.\n2. Categories: Infer accurate, standard expense or income categories based on context (e.g. Food, Groceries, Transport, Shopping, Utilities, Subscriptions, Health, Personal Care, Entertainment, Gifts, Salary, Freelance, Stipend, Cashback).\n3. Multi-Item & Batch Transactions:\n   When the user provides a list of expenses (e.g. '190=poornima pizza Dosa\\n80=Neeraj Dosa\\n115.62=petrol...'), multiple purchases, or an income together with expenses ('got stipend 15000 and spent 190 on dosa, 80 on coffee'), YOU MUST CALL THE RELEVANT TOOL FOR EACH INDIVIDUAL ITEM (call `log_income` for the stipend, and call `log_expense` for EVERY single expense item). Do not truncate, merge, or ignore any item.\n4. Merchants & Descriptions: Identify merchant/payee names and clear descriptions for each transaction.\n5. Queries & Reporting:\n   - When the user asks 'how much total i spend', 'total expenses', 'show spending breakdown', call `get_spending_breakdown`.\n   - When the user asks 'what is my balance', 'net worth', 'show pipes', call `get_pipe_balances`.\n   - When the user asks how to save money, reduce expenses, or wants financial advice, call `financial_advice_bundle`.\n   - When the user asks for budget checks or alerts, call `skill_budget_alert_check`.\n   - When the user asks for recurring bills or subscriptions, call `skill_recurring_bill_detector`.\n   - When the user asks for emergency fund or runway calculations, call `skill_emergency_fund_calculator`.\n6. General Financial Conversations:\n   If the user asks a general question, greetings, or conversational advice where no tools need to be executed, reply with a helpful, friendly, and structured financial response.\n\n\nYou work as four helpers in one:\n- Ledger: record spending, income and transfers exactly as the user said (one tool call per item).\n- Analyst: look at their numbers with get_financial_snapshot / get_spending_breakdown before judging anything. Never guess a figure you can look up.\n- Planner: for goals use savings_plan and say plainly whether it is realistic.\n- Writer: finish with a short, friendly answer (under 120 words, rupee amounts like ₹4,500, no tables). Lead with the answer, then at most 3 bullet points.\nOnly change money records when the user clearly asked you to. If something is missing (for example an amount), ask one short question instead of guessing."
+   },
+   {
+    "role": "user",
+    "content": "I spent 1200 on a dinner party yesterday, also how much have I spent on food this week?"
+   },
+   {
+    "role": "assistant",
+    "content": "",
+    "tool_calls": [
+     {
+      "id": "call_4768__thought__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",
+      "type": "function",
+      "function": {
+       "name": "search_transactions",
+       "arguments": "{\"limit\": 1}"
+      }
+     },
+     {
+      "id": "call_4769",
+      "type": "function",
+      "function": {
+       "name": "get_spending_breakdown",
+       "arguments": "{\"category\": \"Food\", \"period\": \"week\"}"
+      }
+     }
+    ]
+   },
+   {
+    "role": "tool",
+    "tool_call_id": "call_4768__thought__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",
+    "content": "{\"transactions\": [{\"id\": \"d270d30b-4463-42db-b482-f1ae9d0dc1ae\", \"date\": \"2026-10-12T00:00:00\", \"type\": \"expense\", \"amount\": 1800.0, \"account\": \"Bank\", \"category\": \"Groceries\", \"merchant\": \"Bigbasket\", \"description\": null, \"source\": \"chat\"}], \"limit\": 1, \"offset\": 0}"
+   },
+   {
+    "role": "tool",
+    "tool_call_id": "call_4769",
+    "content": "{\"period\": \"week\", \"period_days\": 7, \"total_expenses\": 0, \"category_breakdown\": {}}"
+   },
+   {
+    "role": "assistant",
+    "content": "",
+    "tool_calls": [
+     {
+      "id": "call_54571__thought__EtYCCtMCAWkUfRNux3BrfNDpTWzuuPMJ9H+ek9TImmajG4eTvGFAU2NvFuhnFy2mb+NBi2JW/uEl9MEmZ1glX5XRZk69BrrNjd03MS7nUMBiFqLwKrBhihdr6N+oSD6xZvdfsrGoNXjdWLRnPw13W4FpH/R5D56465tbY0NLAf3VYlhj/ktwmb0A2F0lx3WBkdrgb8PE63IC7Llhoz9wAMEB4a/gGMspZDw0rlwbJZZPntUD5xknMM+3p5WpTRL6LMa9nEsRvvbJ/ZwP9cCw651wgUYDpx2I2rDN6vh+zI9pZCv+vvGVR2a9LrWyUFC5xo8FjH+gFav0auN3TDygtIcIk+oW83CBKv40e5HjtAYmZ0AthMiWaFBSGUI8Jie9cdVTNCchzo1xxyuY8Vn4KsWtErV6t9CKB4Rx5QfVAT1ZlACinHuZ48MbHSls+xLuYzhu9Q1+7cRt",
+      "type": "function",
+      "function": {
+       "name": "get_financial_snapshot",
+       "arguments": "{\"days\": 7}"
+      }
+     }
+    ]
+   },
+   {
+    "role": "tool",
+    "tool_call_id": "call_54571__thought__EtYCCtMCAWkUfRNux3BrfNDpTWzuuPMJ9H+ek9TImmajG4eTvGFAU2NvFuhnFy2mb+NBi2JW/uEl9MEmZ1glX5XRZk69BrrNjd03MS7nUMBiFqLwKrBhihdr6N+oSD6xZvdfsrGoNXjdWLRnPw13W4FpH/R5D56465tbY0NLAf3VYlhj/ktwmb0A2F0lx3WBkdrgb8PE63IC7Llhoz9wAMEB4a/gGMspZDw0rlwbJZZPntUD5xknMM+3p5WpTRL6LMa9nEsRvvbJ/ZwP9cCw651wgUYDpx2I2rDN6vh+zI9pZCv+vvGVR2a9LrWyUFC5xo8FjH+gFav0auN3TDygtIcIk+oW83CBKv40e5HjtAYmZ0AthMiWaFBSGUI8Jie9cdVTNCchzo1xxyuY8Vn4KsWtErV6t9CKB4Rx5QfVAT1ZlACinHuZ48MbHSls+xLuYzhu9Q1+7cRt",
+    "content": "{\"status\": \"success\", \"period\": \"Last 7 days\", \"spent\": 2600.0, \"earned\": 2000.0, \"net\": -600.0, \"savings_rate_percent\": -30.0, \"spent_change_percent\": -82.67, \"top_categories\": [{\"name\": \"Groceries\", \"amount\": 1800.0, \"share_percent\": 69.23, \"change_percent\": null}, {\"name\": \"Food & Dining\", \"amount\": 540.0, \"share_percent\": 20.77, \"change_percent\": null}, {\"name\": \"Transport\", \"amount\": 260.0, \"share_percent\": 10.0, \"change_percent\": null}], \"top_merchants\": [{\"name\": \"Bigbasket\", \"amount\": 1800.0}, {\"name\": \"Zomato\", \"amount\": 540.0}, {\"name\": \"Uber\", \"amount\": 260.0}], \"budgets\": [{\"category\": \"Groceries\", \"spent\": 1800.0, \"budget\": 5000.0, \"level\": \"ok\"}, {\"category\": \"Food & Dining\", \"spent\": 540.0, \"budget\": 3000.0, \"level\": \"ok\"}, {\"category\": \"Entertainment\", \"spent\": 0.0, \"budget\": 1000.0, \"level\": \"ok\"}], \"recurring\": [{\"name\": \"Netflix\", \"monthly\": 649.0}, {\"name\": \"Zomato\", \"monthly\": 580.0}], \"month_end_projection\": 22365.67, \"money_now\": 140812.0, \"months_of_runway\": 7.42, \"insights\": [\"Groceries is your biggest spend: ₹1,800 (69%).\", \"Spending is down 83% compared with the period before.\", \"You spent more than you earned in this period.\", \"2 recurring payments add up to about ₹1,229 a month.\", \"Mon is your costliest day (about ₹1,800).\", \"At this pace the month ends near ₹22,366.\"]}"
+   },
+   {
+    "role": "assistant",
+    "content": "",
+    "tool_calls": [
+     {
+      "id": "call_1486448__thought__EuYBCuMBAWkUfRM9KrQw/ntibtEtA9EDtt9SV5atI0V0d0HIahor2rer98cjvAM+lm2fHKQB0+xBb+bs+Qy3BC6NaEuGmyHmUUcY2DRAGfRL9ZnXc4ooWYf6VKQcaNAE9jhvIw6lT2eXAmMLLPc95KhqrUCiCaxRCw7JE3e9ylN2Xujr1RHcacSV0jh+4bT6dyoMKvb/N983uqTCR8PVoHfCQz8M7ZBEedOcTM3iXiHU6eomtOfjPb8oZUUBveRvt9QIUEW/NgLzGB5GDQngWtWtjs0bM0gxY8XHAzQBcYVzYjtEbYuxbXY=",
+      "type": "function",
+      "function": {
+       "name": "list_categories",
+       "arguments": "{\"transaction_type\": \"expense\"}"
+      }
+     }
+    ]
+   },
+   {
+    "role": "tool",
+    "tool_call_id": "call_1486448__thought__EuYBCuMBAWkUfRM9KrQw/ntibtEtA9EDtt9SV5atI0V0d0HIahor2rer98cjvAM+lm2fHKQB0+xBb+bs+Qy3BC6NaEuGmyHmUUcY2DRAGfRL9ZnXc4ooWYf6VKQcaNAE9jhvIw6lT2eXAmMLLPc95KhqrUCiCaxRCw7JE3e9ylN2Xujr1RHcacSV0jh+4bT6dyoMKvb/N983uqTCR8PVoHfCQz8M7ZBEedOcTM3iXiHU6eomtOfjPb8oZUUBveRvt9QIUEW/NgLzGB5GDQngWtWtjs0bM0gxY8XHAzQBcYVzYjtEbYuxbXY=",
+    "content": "{\"categories\": [{\"id\": \"ac9df6c5-6898-469b-89ab-c13ff2d98384\", \"name\": \"Bills & Utilities\", \"type\": \"expense\", \"monthly_budget\": null}, {\"id\": \"ce83abaa-ddc3-4a25-a494-e2ea1c756253\", \"name\": \"Entertainment\", \"type\": \"expense\", \"monthly_budget\": 1000.0}, {\"id\": \"3196ea05-d512-41a2-8ac7-ae7a7a4c3859\", \"name\": \"Food & Dining\", \"type\": \"expense\", \"monthly_budget\": 3000.0}, {\"id\": \"88199342-e830-468e-bd0d-c3cd0c1263d3\", \"name\": \"Groceries\", \"type\": \"expense\", \"monthly_budget\": 5000.0}, {\"id\": \"f21f3574-f0ad-4e62-9aa7-ad36adfc3714\", \"name\": \"Rent\", \"type\": \"expense\", \"monthly_budget\": null}, {\"id\": \"d1010ed7-4051-4931-b925-51f9471cf78b\", \"name\": \"Transport\", \"type\": \"expense\", \"monthly_budget\": null}]}"
+   },
+   {
+    "role": "assistant",
+    "content": "",
+    "tool_calls": [
+     {
+      "id": "call_1402859__thought__EoMCCoACAWkUfROEiHLjaoi2TlrJ+LpAhz6QXBPm4BykbQQQ1sxYeKb4oAMmdfb1/qe1EVL4/soPjQNhwoRXN0Hkm9P7GvYwsoY10ny6zbXB5LgrU2fYtDCOjjgqrMBrs/Mi8fKRJSx1rNHTDgVEtJn56ViQ7HuB15lt5NkmrQkWoZfVKpDGYrm2TNAmO226dNsOOJ3GCucer5JjoQbjk27VRYipeoEc1aKU26A9EoUt9HSDd1ESifIe2y7ROY5IglYH2qKdL/afdvkBfVWwNPm1NVdgyxzoWhcpCk2FVpQdVRQ6QOWm5FSBz6/TN/69C/mcyywDC87vhQ3xoa/YTzvorCymfw==",
+      "type": "function",
+      "function": {
+       "name": "search_transactions",
+       "arguments": "{\"limit\": 3}"
+      }
+     }
+    ]
+   },
+   {
+    "role": "tool",
+    "tool_call_id": "call_1402859__thought__EoMCCoACAWkUfROEiHLjaoi2TlrJ+LpAhz6QXBPm4BykbQQQ1sxYeKb4oAMmdfb1/qe1EVL4/soPjQNhwoRXN0Hkm9P7GvYwsoY10ny6zbXB5LgrU2fYtDCOjjgqrMBrs/Mi8fKRJSx1rNHTDgVEtJn56ViQ7HuB15lt5NkmrQkWoZfVKpDGYrm2TNAmO226dNsOOJ3GCucer5JjoQbjk27VRYipeoEc1aKU26A9EoUt9HSDd1ESifIe2y7ROY5IglYH2qKdL/afdvkBfVWwNPm1NVdgyxzoWhcpCk2FVpQdVRQ6QOWm5FSBz6/TN/69C/mcyywDC87vhQ3xoa/YTzvorCymfw==",
+    "content": "{\"transactions\": [{\"id\": \"d270d30b-4463-42db-b482-f1ae9d0dc1ae\", \"date\": \"2026-10-12T00:00:00\", \"type\": \"expense\", \"amount\": 1800.0, \"account\": \"Bank\", \"category\": \"Groceries\", \"merchant\": \"Bigbasket\", \"description\": null, \"source\": \"chat\"}, {\"id\": \"0d86b78d-b733-40d4-bf27-acb7d5ab742b\", \"date\": \"2026-10-11T00:00:00\", \"type\": \"expense\", \"amount\": 260.0, \"account\": \"Cash\", \"category\": \"Transport\", \"merchant\": \"Uber\", \"description\": null, \"source\": \"chat\"}, {\"id\": \"8a9c1bb2-5bab-4bcc-a99d-b6e36f5211b0\", \"date\": \"2026-10-10T00:00:00\", \"type\": \"income\", \"amount\": 2000.0, \"account\": \"Bank\", \"category\": \"Freelance\", \"merchant\": null, \"description\": null, \"source\": \"chat\"}], \"limit\": 3, \"offset\": 0}"
+   }
+  ],
+  "response": {
+   "id": "pQvNartu7-WO4w-AraP5DQ",
+   "created": 1791822756,
+   "model": "gemini-3.8-flash",
+   "object": "chat.completion",
+   "system_fingerprint": null,
+   "choices": [
+    {
+     "finish_reason": "tool_calls",
+     "index": 0,
+     "message": {
+      "content": null,
+      "role": "assistant",
+      "tool_calls": [
+       {
+        "index": 0,
+        "provider_specific_fields": {
+         "thought_signature": "Et8KCtwKAWkUfRPmuGgHRLwt1hX798TmOY+e4uTxQN76+vPh3uO1ZY6Tt4Wzx578YwSXr4wXWOAzSdZtirQL3zX53D1WOigF/2mJdDil5ZhOEsg0tNszg6B15JxCvJ1n+P2ow2tIjgnuMjBdaMfTPjUrj2uhd14mBbTvE7myh7DQP57PczJdEmJoByNNLX2skTFKvc0vjJ9Kc9chKwsLVkKdmI5qJHsSXKBy1r9XBnOumfswjwFvAZ/UalwqVcE5T4eu5yR2GmT40U4U1LDgkvIJTNdXPiXl10gS2fX9qmZQNjoYW1nFaPc+SKgiprvk05IS4LY26AGvM1nAJSyV3ybf++paWnKlO7JZAw9gUHq+wM69CFCe9HSd640f39rS2AXjvKFRZxZG7NuSSS3HiF1p9HXXZ8MW0CM1MMac8a3zLJnoeKt3T3lcnBEMPQ9MEfr3+pCAGpvSadhUpwNiv0FbJHs/2LZBsomknJg0en9bLNAv2muh32rUC858mvQ89CD+MiFNH9d2HjuKCJ1vfh5OvBLUGK14t7zFyCjE9QyJwqiNLB9LUMo01c5j1v6s2OGXXsUGy7RR40DAFu8zqmREvsuJ22U0+KyXCgSJa/ScPoiUj84TCTOXG8dLmPzwud3O1d2L9HpXANpMtdRLIQGgK2n7EE/NpWl5oeUUmTp1YYWKaM8McRHoWDolfe7zqKwgd9D4dw/aXTWSUL7dciEpyiQPGomBl9UGDKucjZribWSROO3L72bst5rJHarcihEUhWiiwaoD/ex5Mgbtah7Hzh6rnYDacmK9E1OeUHedcP1dQoucT0G1JfLRhmICjgA3kMZ6fSIVttJLCPpe/3xy24PNLdyihov3XXRP3MlU/ekaGZNO7lGjzuvsx4AmvNXgiM+VHSmF3N3UxLFNbcL8dwwHVVezQJb/8ZPRyongOSruEhaXF1aJz2T350cxfhuEeHk/LYwpVV+N5We5UBN1iHjeB9WSdhOSQePzjRe9pjbwWB7dHkx1vO66Fvu3/C6IOOjpUdG2G5zVPABs5QzA12RMk3Owb8ZqGEGiQ9fwir5KTe140xbjeG/2cDGMFBDdukD8RV8zBPyaHVEQ5CZwpqtZvXMxPm67f9NCSjJUGA/6j0K0ee2NVhVRoktET965OpLtbrB8e9qReJdP4BPej6NLxHSySY8MDxddmc91q/hCQtb/yqLBmGt6q0Sa47s7bujAT8A6VQ4ledsMjzu/VVz5t+mNrDZol+9P6U6sg0O0QIHVe9S3HTXFjGZ5ocnlp37NvOqv+eLApj2s66PQZP6mlFHtgoOqmTCg4pq1+McDUC+DP/5y+7uAcnWNtIuFO6jimIQLTbyWhKcV1iWVi2snWREHpTI2MNSl6VZAqWmuyd1Drl5ATrQMmcTuO/jmq9ldED2vKOOBe0T0ovGfHFP+H4V7ZgKi4DE/WSVX6OWgBGnc+lv1VIUVQt0CvmJ/5pIClslwrW9JLxT6CVkgTa1fQVsfq9vEBgFwxStMq3oBPdWxsJAmthaOFBOjsILoUzZtAw4hSyneYvOhDz65dU0KYU/nZNW1t6j3SO6Rlt8f5oTpQ5iCQ/IUShluhBBJXvP+YwjtpNFh+w9lIEFHpWQ7L/hw4dLaOEwfvjfNnOQUQNyWbbeNHHLMWsolTCwMRDc3iYoKZQyBKWqyB0ZwPeRxitM6ujFnMKr9cEbFJd1wxPZgpzu23lzf4Xtyg+2+Kq17Swx6zIznH/j/AyEvumE9M2ndyenGPuq9/EUQtDiQsvBxmwhYD198EuebLOIiWG+qqUzGMaiWpXG2HiiHiq6aDNZjotbyYipRhuZI1g=="
+        },
+        "function": {
+         "arguments": "{\"period\": \"week\", \"category\": \"Food & Dining\"}",
+         "name": "get_spending_breakdown"
+        },
+        "id": "call_1670418__thought__Et8KCtwKAWkUfRPmuGgHRLwt1hX798TmOY+e4uTxQN76+vPh3uO1ZY6Tt4Wzx578YwSXr4wXWOAzSdZtirQL3zX53D1WOigF/2mJdDil5ZhOEsg0tNszg6B15JxCvJ1n+P2ow2tIjgnuMjBdaMfTPjUrj2uhd14mBbTvE7myh7DQP57PczJdEmJoByNNLX2skTFKvc0vjJ9Kc9chKwsLVkKdmI5qJHsSXKBy1r9XBnOumfswjwFvAZ/UalwqVcE5T4eu5yR2GmT40U4U1LDgkvIJTNdXPiXl10gS2fX9qmZQNjoYW1nFaPc+SKgiprvk05IS4LY26AGvM1nAJSyV3ybf++paWnKlO7JZAw9gUHq+wM69CFCe9HSd640f39rS2AXjvKFRZxZG7NuSSS3HiF1p9HXXZ8MW0CM1MMac8a3zLJnoeKt3T3lcnBEMPQ9MEfr3+pCAGpvSadhUpwNiv0FbJHs/2LZBsomknJg0en9bLNAv2muh32rUC858mvQ89CD+MiFNH9d2HjuKCJ1vfh5OvBLUGK14t7zFyCjE9QyJwqiNLB9LUMo01c5j1v6s2OGXXsUGy7RR40DAFu8zqmREvsuJ22U0+KyXCgSJa/ScPoiUj84TCTOXG8dLmPzwud3O1d2L9HpXANpMtdRLIQGgK2n7EE/NpWl5oeUUmTp1YYWKaM8McRHoWDolfe7zqKwgd9D4dw/aXTWSUL7dciEpyiQPGomBl9UGDKucjZribWSROO3L72bst5rJHarcihEUhWiiwaoD/ex5Mgbtah7Hzh6rnYDacmK9E1OeUHedcP1dQoucT0G1JfLRhmICjgA3kMZ6fSIVttJLCPpe/3xy24PNLdyihov3XXRP3MlU/ekaGZNO7lGjzuvsx4AmvNXgiM+VHSmF3N3UxLFNbcL8dwwHVVezQJb/8ZPRyongOSruEhaXF1aJz2T350cxfhuEeHk/LYwpVV+N5We5UBN1iHjeB9WSdhOSQePzjRe9pjbwWB7dHkx1vO66Fvu3/C6IOOjpUdG2G5zVPABs5QzA12RMk3Owb8ZqGEGiQ9fwir5KTe140xbjeG/2cDGMFBDdukD8RV8zBPyaHVEQ5CZwpqtZvXMxPm67f9NCSjJUGA/6j0K0ee2NVhVRoktET965OpLtbrB8e9qReJdP4BPej6NLxHSySY8MDxddmc91q/hCQtb/yqLBmGt6q0Sa47s7bujAT8A6VQ4ledsMjzu/VVz5t+mNrDZol+9P6U6sg0O0QIHVe9S3HTXFjGZ5ocnlp37NvOqv+eLApj2s66PQZP6mlFHtgoOqmTCg4pq1+McDUC+DP/5y+7uAcnWNtIuFO6jimIQLTbyWhKcV1iWVi2snWREHpTI2MNSl6VZAqWmuyd1Drl5ATrQMmcTuO/jmq9ldED2vKOOBe0T0ovGfHFP+H4V7ZgKi4DE/WSVX6OWgBGnc+lv1VIUVQt0CvmJ/5pIClslwrW9JLxT6CVkgTa1fQVsfq9vEBgFwxStMq3oBPdWxsJAmthaOFBOjsILoUzZtAw4hSyneYvOhDz65dU0KYU/nZNW1t6j3SO6Rlt8f5oTpQ5iCQ/IUShluhBBJXvP+YwjtpNFh+w9lIEFHpWQ7L/hw4dLaOEwfvjfNnOQUQNyWbbeNHHLMWsolTCwMRDc3iYoKZQyBKWqyB0ZwPeRxitM6ujFnMKr9cEbFJd1wxPZgpzu23lzf4Xtyg+2+Kq17Swx6zIznH/j/AyEvumE9M2ndyenGPuq9/EUQtDiQsvBxmwhYD198EuebLOIiWG+qqUzGMaiWpXG2HiiHiq6aDNZjotbyYipRhuZI1g==",
+        "type": "function"
+       }
+      ],
+      "function_call": null,
+      "images": [],
+      "thinking_blocks": [],
+      "provider_specific_fields": {
+       "thought_signatures": [
+        "Et8KCtwKAWkUfRPmuGgHRLwt1hX798TmOY+e4uTxQN76+vPh3uO1ZY6Tt4Wzx578YwSXr4wXWOAzSdZtirQL3zX53D1WOigF/2mJdDil5ZhOEsg0tNszg6B15JxCvJ1n+P2ow2tIjgnuMjBdaMfTPjUrj2uhd14mBbTvE7myh7DQP57PczJdEmJoByNNLX2skTFKvc0vjJ9Kc9chKwsLVkKdmI5qJHsSXKBy1r9XBnOumfswjwFvAZ/UalwqVcE5T4eu5yR2GmT40U4U1LDgkvIJTNdXPiXl10gS2fX9qmZQNjoYW1nFaPc+SKgiprvk05IS4LY26AGvM1nAJSyV3ybf++paWnKlO7JZAw9gUHq+wM69CFCe9HSd640f39rS2AXjvKFRZxZG7NuSSS3HiF1p9HXXZ8MW0CM1MMac8a3zLJnoeKt3T3lcnBEMPQ9MEfr3+pCAGpvSadhUpwNiv0FbJHs/2LZBsomknJg0en9bLNAv2muh32rUC858mvQ89CD+MiFNH9d2HjuKCJ1vfh5OvBLUGK14t7zFyCjE9QyJwqiNLB9LUMo01c5j1v6s2OGXXsUGy7RR40DAFu8zqmREvsuJ22U0+KyXCgSJa/ScPoiUj84TCTOXG8dLmPzwud3O1d2L9HpXANpMtdRLIQGgK2n7EE/NpWl5oeUUmTp1YYWKaM8McRHoWDolfe7zqKwgd9D4dw/aXTWSUL7dciEpyiQPGomBl9UGDKucjZribWSROO3L72bst5rJHarcihEUhWiiwaoD/ex5Mgbtah7Hzh6rnYDacmK9E1OeUHedcP1dQoucT0G1JfLRhmICjgA3kMZ6fSIVttJLCPpe/3xy24PNLdyihov3XXRP3MlU/ekaGZNO7lGjzuvsx4AmvNXgiM+VHSmF3N3UxLFNbcL8dwwHVVezQJb/8ZPRyongOSruEhaXF1aJz2T350cxfhuEeHk/LYwpVV+N5We5UBN1iHjeB9WSdhOSQePzjRe9pjbwWB7dHkx1vO66Fvu3/C6IOOjpUdG2G5zVPABs5QzA12RMk3Owb8ZqGEGiQ9fwir5KTe140xbjeG/2cDGMFBDdukD8RV8zBPyaHVEQ5CZwpqtZvXMxPm67f9NCSjJUGA/6j0K0ee2NVhVRoktET965OpLtbrB8e9qReJdP4BPej6NLxHSySY8MDxddmc91q/hCQtb/yqLBmGt6q0Sa47s7bujAT8A6VQ4ledsMjzu/VVz5t+mNrDZol+9P6U6sg0O0QIHVe9S3HTXFjGZ5ocnlp37NvOqv+eLApj2s66PQZP6mlFHtgoOqmTCg4pq1+McDUC+DP/5y+7uAcnWNtIuFO6jimIQLTbyWhKcV1iWVi2snWREHpTI2MNSl6VZAqWmuyd1Drl5ATrQMmcTuO/jmq9ldED2vKOOBe0T0ovGfHFP+H4V7ZgKi4DE/WSVX6OWgBGnc+lv1VIUVQt0CvmJ/5pIClslwrW9JLxT6CVkgTa1fQVsfq9vEBgFwxStMq3oBPdWxsJAmthaOFBOjsILoUzZtAw4hSyneYvOhDz65dU0KYU/nZNW1t6j3SO6Rlt8f5oTpQ5iCQ/IUShluhBBJXvP+YwjtpNFh+w9lIEFHpWQ7L/hw4dLaOEwfvjfNnOQUQNyWbbeNHHLMWsolTCwMRDc3iYoKZQyBKWqyB0ZwPeRxitM6ujFnMKr9cEbFJd1wxPZgpzu23lzf4Xtyg+2+Kq17Swx6zIznH/j/AyEvumE9M2ndyenGPuq9/EUQtDiQsvBxmwhYD198EuebLOIiWG+qqUzGMaiWpXG2HiiHiq6aDNZjotbyYipRhuZI1g=="
+       ]
+      }
+     },
+     "provider_specific_fields": {
+      "native_finish_reason": "STOP"
+     }
+    }
+   ],
+   "usage": {
+    "completion_tokens": 425,
+    "prompt_tokens": 5086,
+    "total_tokens": 5511,
+    "completion_tokens_details": {
+     "reasoning_tokens": 398,
+     "text_tokens": 27
+    },
+    "prompt_tokens_details": {
+     "audio_tokens": null,
+     "cached_tokens": null,
+     "text_tokens": 5086,
+     "image_tokens": null,
+     "video_tokens": null
+    },
+    "cache_read_input_tokens": null
+   },
+   "vertex_ai_grounding_metadata": [],
+   "vertex_ai_url_context_metadata": [],
+   "vertex_ai_safety_results": [],
+   "vertex_ai_citation_metadata": [],
+   "service_tier": "default"
+  }
+ }
+]
