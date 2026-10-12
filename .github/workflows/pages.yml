@@ -11,6 +11,7 @@ on:
     branches: [main]
     paths:
       - "site/**"
+      - "docs/**"
       - "app/**"
       - "scripts/**"
       - "tests/**"
@@ -49,6 +50,9 @@ jobs:
 
       - name: Rebuild the project map and explorer
         run: uv run --no-project python scripts/build_map.py
+
+      - name: Build the docs pages (Markdown to the website; not committed)
+        run: uv run --no-project --with markdown python scripts/build_docs.py
 
       - name: Commit the refreshed map (only if it changed)
         run: |

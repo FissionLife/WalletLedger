@@ -172,6 +172,15 @@ NOTES: dict[str, tuple[str, str]] = {
     "scripts/seed_demo_data.py": ("ops", "90 days of believable demo data for a chat."),
     "scripts/inspect_statement.py": ("ops", "Shows how a statement PDF is read, line by line."),
     "scripts/generate_schema.py": ("ops", "Regenerates `sql/schema.sql` from the models."),
+    "scripts/build_docs.py": (
+        "ops",
+        "Turns the Markdown docs into pages of the website (shared header, diagrams); CI runs it, nothing is committed.",
+    ),
+    "scripts/docs_template.html": ("ops", "The layout of the docs pages on the website."),
+    "tests/test_build_docs.py": (
+        "tests",
+        "Docs become website pages: links, diagrams, shared header.",
+    ),
     "scripts/tunnel.py": (
         "ops",
         "One command: starts a Cloudflare Tunnel and the server, so /dashboard opens inside Telegram.",
