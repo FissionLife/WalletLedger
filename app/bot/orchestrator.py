@@ -14,14 +14,13 @@ Guard rails (kept deliberately small so they are easy to explain):
 
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 from dataclasses import dataclass, field
 from typing import Any
 
 from app.services_ai import ai_gateway as gw
-from app.services_ai.mcp_server import execute_tool
+from app.services_ai import tool_client
 
 logger = logging.getLogger(__name__)
 
@@ -157,7 +156,7 @@ async def run(
             else:
                 out.tools_run += 1
                 try:
-                    body = await asyncio.to_thread(execute_tool, name, **args)
+                    body = await tool_client.call_tool(name, **args)
                     out.tool_results.append(
                         {"tool_name": name, "tool_args": args, "result": body, "error": None}
                     )

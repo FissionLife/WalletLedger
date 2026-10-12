@@ -145,6 +145,17 @@ def step_database() -> None:
         say("  Start it with:  docker compose up -d   (settings are in .env: POSTGRES_*)")
 
 
+def step_tool_mode() -> None:
+    say("\nHow the AI calls ledger tools")
+    say("  direct = plain function calls inside the bot (recommended, fastest).")
+    say("  mcp    = through the real MCP server, started next to the bot (for demos).")
+    current = envfile.read_env(ENV).get("TOOL_MODE", "direct") or "direct"
+    mode = ask("  Choose direct or mcp", current).lower()
+    if mode not in ("direct", "mcp"):
+        mode = "direct"
+    envfile.set_values(ENV, {"TOOL_MODE": mode})
+
+
 def step_ai_key() -> None:
     say("\nAI key (optional, unlocks free-form chat and advice)")
     say("  Without one the bot still works with built-in rules. Gemini keys start with AIza or AQ.")
@@ -214,6 +225,7 @@ def doctor() -> int:
         ok = False
         say(f"WARN  {p}")
     say(f"OK    Storage: {describe_database()}")
+    say(f"OK    Tool mode: {settings.tool_mode}")
     try:
         path = asyncio.run(health.ai_path("__doctor__"))
     except Exception:  # fresh database: tables are created the first time the server starts
@@ -245,6 +257,7 @@ def main() -> int:
     token = step_telegram()
     step_owner(token)
     step_database()
+    step_tool_mode()
     step_ai_key()
     step_profile()
     say("\nAll set. Start the bot with:")

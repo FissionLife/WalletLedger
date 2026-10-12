@@ -5,12 +5,14 @@ The shared registry gives both integrations one stable dispatch point.
 
 from __future__ import annotations
 
+import functools
 from collections.abc import Callable
 from datetime import datetime, timedelta
 from itertools import islice
 from typing import Any
 
 from mcp.server.mcpserver import MCPServer
+from mcp.server.mcpserver.exceptions import ToolError
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -562,7 +564,18 @@ def savings_plan(user_id: str, target_amount: float, months: int) -> dict[str, A
     return _with_db(run, user_id=user_id)
 
 
+def financial_advice_bundle(user_id: str) -> dict[str, Any]:
+    """Recurring bills, budget alerts, emergency runway and this month's spending in one call."""
+    return {
+        "recurring": skill_recurring_bill_detector(user_id),
+        "budget": skill_budget_alert_check(user_id),
+        "emergency": skill_emergency_fund_calculator(user_id),
+        "breakdown": get_spending_breakdown(user_id, period="month"),
+    }
+
+
 TOOL_REGISTRY: dict[str, Callable[..., dict[str, Any]]] = {
+    "financial_advice_bundle": financial_advice_bundle,
     "get_financial_snapshot": get_financial_snapshot,
     "savings_plan": savings_plan,
     "log_expense": log_expense,
@@ -589,8 +602,25 @@ mcp = MCPServer(
     ),
 )
 
+
+def _expected_errors_visible(handler: Callable[..., dict[str, Any]]) -> Callable[..., dict]:
+    """Send a tool's own ValueError text (e.g. "amount must be greater than zero") to MCP clients.
+
+    MCPServer hides the text of unexpected exceptions; validation errors are meant for the caller.
+    """
+
+    @functools.wraps(handler)
+    def wrapper(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        try:
+            return handler(*args, **kwargs)
+        except ValueError as exc:
+            raise ToolError(str(exc)) from exc
+
+    return wrapper
+
+
 for name, handler in TOOL_REGISTRY.items():
-    mcp.tool(name=name)(handler)
+    mcp.tool(name=name)(_expected_errors_visible(handler))
 
 
 def execute_tool(tool_name: str, **kwargs: Any) -> dict[str, Any]:

@@ -30,6 +30,7 @@ from app.bot.keys import save_keys
 from app.db import SessionLocal
 from app.models import ChatMessage, User
 from app.services.ledger import get_or_create_user
+from app.services_ai import tool_client
 from app.services_ai.ai_gateway import (
     NoAPIKeyError,
     ask_llm,
@@ -39,7 +40,6 @@ from app.services_ai.ai_gateway import (
     has_server_keys,
     mask_key,
 )
-from app.services_ai.mcp_server import execute_tool
 from app.services_ai.prompts import detect_mode, get_persona, resolve_mode
 
 logger = logging.getLogger(__name__)
@@ -587,7 +587,7 @@ async def _run_llm_analysis(
                 user_id=user_id,
                 system_prompt=SYSTEM_AGENT_PROMPT,
                 user_prompt=message,
-                tools=TOOLS_SCHEMA,
+                tools=tool_client.available_tools(TOOLS_SCHEMA),
                 messages_history=history,
             )
             choice = res.choices[0]
@@ -1168,7 +1168,7 @@ async def _orchestrate(
             chat_id,
             message,
             history,
-            tools=TOOLS_SCHEMA,
+            tools=tool_client.available_tools(TOOLS_SCHEMA),
             system_prompt=SYSTEM_AGENT_PROMPT,
             transfer_threshold=CONFIRMATION_TRANSFER_THRESHOLD,
         )
@@ -1380,20 +1380,7 @@ async def tool_executor_node(state: AgentState) -> dict[str, Any]:
         if not t_name:
             continue
         try:
-            if t_name == "financial_advice_bundle":
-                uid = t_args.get("user_id", "")
-                recurring = execute_tool("skill_recurring_bill_detector", user_id=uid)
-                budget = execute_tool("skill_budget_alert_check", user_id=uid)
-                emergency = execute_tool("skill_emergency_fund_calculator", user_id=uid)
-                breakdown = execute_tool("get_spending_breakdown", user_id=uid, period="month")
-                res = {
-                    "recurring": recurring,
-                    "budget": budget,
-                    "emergency": emergency,
-                    "breakdown": breakdown,
-                }
-            else:
-                res = execute_tool(t_name, **t_args)
+            res = await tool_client.call_tool(t_name, **t_args)
             results.append({"tool_name": t_name, "tool_args": t_args, "result": res, "error": None})
         except Exception as e:
             logger.error(f"Error executing MCP tool {t_name}: {e}", exc_info=True)
