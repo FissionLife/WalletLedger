@@ -39,3 +39,6 @@ htmlcov/
 out_charts/
 *.png
 !site/**/*.png
+walletledger.db-shm
+walletledger.db-wal
+
