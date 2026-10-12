@@ -268,6 +268,10 @@ NOTES: dict[str, tuple[str, str]] = {
         "TOOL_MODE direct vs mcp: starts the real MCP server process against a throwaway database.",
     ),
     "tests/test_transaction_parser.py": ("tests", "Statement parsing basics."),
+    "tests/test_evals.py": (
+        "tests",
+        "The agent evaluation: scoring rules, the golden file's shape, a small rules-tier run.",
+    ),
     "site/index.html": ("site", "The landing page."),
     "site/styles.css": ("site", "Landing page styling and the colour tokens."),
     "site/app.js": ("site", "Small landing page behaviours (theme, copy buttons)."),
