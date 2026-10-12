@@ -584,13 +584,11 @@ class TestCompleteShape(ContractTestCase):
             },
         )
 
-    def test_none_content_becomes_empty_string_and_dict_response_supported(self):
+    def test_none_content_becomes_empty_string(self):
+        # LiteLLM always returns a ModelResponse object; dict responses are not supported.
         os.environ["GEMINI_API_KEYS"] = "gem-1"
         with patch.object(gw.litellm, "acompletion", AsyncMock(return_value=fake_response(None))):
             self.assertEqual(run(gw.complete("x", MESSAGES)), "")
-        as_dict = {"choices": [{"message": {"content": " from dict "}}]}
-        with patch.object(gw.litellm, "acompletion", AsyncMock(return_value=as_dict)):
-            self.assertEqual(run(gw.complete("x", MESSAGES)), "from dict")
 
     def test_tools_return_full_response_with_tool_choice_auto(self):
         os.environ["GEMINI_API_KEYS"] = "gem-1"
