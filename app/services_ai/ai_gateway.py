@@ -83,34 +83,23 @@ PROVIDER_LABELS = {
     "ollama": "Ollama",
 }
 
-# provider -> standard single-key env var (used after the *_API_KEYS list for that provider)
+# provider -> standard single-key env var (used after the *_API_KEYS list for that provider),
+# e.g. GEMINI_API_KEYS -> GEMINI_API_KEY.
 SINGLE_KEY_ENV: dict[str, str] = {
-    "gemini": "GEMINI_API_KEY",
-    "openai": "OPENAI_API_KEY",
-    "anthropic": "ANTHROPIC_API_KEY",
-    "groq": "GROQ_API_KEY",
-    "openrouter": "OPENROUTER_API_KEY",
-    "xai": "XAI_API_KEY",
-    "deepseek": "DEEPSEEK_API_KEY",
-    "mistral": "MISTRAL_API_KEY",
+    provider: env_name.removesuffix("S")
+    for provider, (_, env_name) in PROVIDERS.items()
+    if env_name
 }
 
+# Every provider name maps to itself, plus common nicknames.
 PROVIDER_ALIASES = {
-    "openrouter": "openrouter",
-    "xai": "xai",
+    **{provider: provider for provider in PROVIDERS},
     "grok": "xai",
-    "deepseek": "deepseek",
-    "mistral": "mistral",
     "mistralai": "mistral",
     "google": "gemini",
-    "gemini": "gemini",
-    "openai": "openai",
     "gpt": "openai",
     "chatgpt": "openai",
-    "anthropic": "anthropic",
     "claude": "anthropic",
-    "groq": "groq",
-    "ollama": "ollama",
 }
 
 # Recognisable key formats, used when a user pastes keys into chat.
@@ -273,14 +262,22 @@ def _find_or_create_user(db: Session, user_id: str) -> User:
     return user
 
 
+def _owned_key(db: Session, user_id: str, key_id: str) -> ApiKey | None:
+    """The ApiKey row ``key_id`` if it belongs to ``user_id``, else None."""
+    user = _find_user(db, user_id)
+    record = db.get(ApiKey, key_id)
+    if user is None or record is None or record.user_id != user.id:
+        return None
+    return record
+
+
 def add_api_key(user_id: str, provider: str, api_key: str) -> dict[str, Any]:
     """Encrypt and store one key. Re-adding an existing key just re-activates it."""
     provider = normalize_provider(provider)
     api_key = (api_key or "").strip()
     if not api_key:
         raise ValueError("api_key is required")
-    db = _session()
-    try:
+    with _session() as db:
         user = _find_or_create_user(db, user_id)
         for record in db.scalars(
             select(ApiKey).where(ApiKey.user_id == user.id, ApiKey.provider == provider)
@@ -307,8 +304,6 @@ def add_api_key(user_id: str, provider: str, api_key: str) -> dict[str, Any]:
             "provider": provider,
             "masked_key": mask_key(api_key),
         }
-    finally:
-        db.close()
 
 
 def add_api_keys_from_text(
@@ -324,8 +319,7 @@ def add_api_keys_from_text(
 
 def list_api_keys(user_id: str) -> list[dict[str, Any]]:
     """Masked view of a user's keys - never returns the plain key."""
-    db = _session()
-    try:
+    with _session() as db:
         user = _find_user(db, user_id)
         if user is None:
             return []
@@ -347,22 +341,16 @@ def list_api_keys(user_id: str) -> list[dict[str, Any]]:
                 }
             )
         return result
-    finally:
-        db.close()
 
 
 def _set_key_active(user_id: str, key_id: str, active: bool) -> bool:
-    db = _session()
-    try:
-        user = _find_user(db, user_id)
-        record = db.get(ApiKey, key_id)
-        if user is None or record is None or record.user_id != user.id:
+    with _session() as db:
+        record = _owned_key(db, user_id, key_id)
+        if record is None:
             return False
         record.is_active = active
         db.commit()
         return True
-    finally:
-        db.close()
 
 
 def deactivate_api_key(user_id: str, key_id: str) -> bool:
@@ -374,17 +362,13 @@ def activate_api_key(user_id: str, key_id: str) -> bool:
 
 
 def delete_api_key(user_id: str, key_id: str) -> bool:
-    db = _session()
-    try:
-        user = _find_user(db, user_id)
-        record = db.get(ApiKey, key_id)
-        if user is None or record is None or record.user_id != user.id:
+    with _session() as db:
+        record = _owned_key(db, user_id, key_id)
+        if record is None:
             return False
         db.delete(record)
         db.commit()
         return True
-    finally:
-        db.close()
 
 
 # --------------------------------------------------------------------------------------
@@ -473,8 +457,7 @@ SHARED_OWNER = "__shared__"  # pseudo-user that owns the admin-managed shared ke
 
 
 def _load_user_keys(user_id: str, source: str = "user") -> list[KeyCandidate]:
-    db = _session()
-    try:
+    with _session() as db:
         user = _find_user(db, user_id)
         if user is None:
             return []
@@ -493,14 +476,29 @@ def _load_user_keys(user_id: str, source: str = "user") -> list[KeyCandidate]:
             except InvalidToken, ValueError:
                 logger.warning("Skipping unusable api key %s", record.id)
         return keys
-    finally:
-        db.close()
 
 
 def get_user_api_keys(user_id: str) -> list[tuple[str, str]]:
     """Convenience helper: returns active (provider, plain_key) pairs."""
     candidates = build_candidates(user_id)
     return [(c.provider, c.api_key) for c in candidates if c.api_key]
+
+
+def _grouped_rotated(
+    keys: list[KeyCandidate], preferred: str, pool_prefix: str
+) -> list[KeyCandidate]:
+    """Group keys by provider (preferred provider first), each group round-robin rotated.
+
+    The rotation pool for a provider is ``f"{pool_prefix}:{provider}"``.
+    """
+    by_provider: dict[str, list[KeyCandidate]] = {}
+    for key in keys:
+        by_provider.setdefault(key.provider, []).append(key)
+    order = [preferred] + [p for p in by_provider if p != preferred]
+    result: list[KeyCandidate] = []
+    for provider in order:
+        result += _rotate(by_provider.get(provider, []), f"{pool_prefix}:{provider}")
+    return result
 
 
 def build_candidates(
@@ -511,23 +509,12 @@ def build_candidates(
     The user's own keys come first. The team's server keys always follow as a fallback, so a
     user key that is wrong, revoked or out of quota never leaves the user without AI.
     """
-    candidates: list[KeyCandidate] = []
-
-    by_provider: dict[str, list[KeyCandidate]] = {}
-    for key in _load_user_keys(user_id):
-        by_provider.setdefault(key.provider, []).append(key)
-    order = [preferred_provider] + [p for p in by_provider if p != preferred_provider]
-    for provider in order:
-        candidates += _rotate(by_provider.get(provider, []), f"user:{user_id}:{provider}")
+    candidates = _grouped_rotated(_load_user_keys(user_id), preferred_provider, f"user:{user_id}")
 
     # Shared keys managed by the admin from Telegram (stored encrypted in the database).
-    shared_by_provider: dict[str, list[KeyCandidate]] = {}
-    for key in _load_user_keys(SHARED_OWNER, source="shared"):
-        shared_by_provider.setdefault(key.provider, []).append(key)
-    for provider in [preferred_provider] + [
-        p for p in shared_by_provider if p != preferred_provider
-    ]:
-        candidates += _rotate(shared_by_provider.get(provider, []), f"shared:{provider}")
+    candidates += _grouped_rotated(
+        _load_user_keys(SHARED_OWNER, source="shared"), preferred_provider, "shared"
+    )
 
     # Server keys from .env, grouped by provider so the preferred provider is always tried first.
     # Within a provider: the rotated GEMINI_API_KEYS-style list, then the single
@@ -548,8 +535,10 @@ def build_candidates(
             seen.add((c.provider, c.api_key))
             unique.append(c)
 
-    ready = [c for c in unique if not _rotation.is_cooling(c.fingerprint)]
-    cooling = [c for c in unique if _rotation.is_cooling(c.fingerprint)]
+    ready: list[KeyCandidate] = []
+    cooling: list[KeyCandidate] = []
+    for c in unique:
+        (cooling if _rotation.is_cooling(c.fingerprint) else ready).append(c)
     return ready + cooling
 
 
@@ -683,27 +672,8 @@ async def _candidate_models(
     return [_model_for(candidate, provider, model)]
 
 
-async def _candidate_model(
-    candidate: KeyCandidate, provider: str, model: str, dynamic: bool
-) -> str:
-    """Model for this key: discovered from the provider's own model list when possible.
-
-    Order: explicit model from the caller > AI_MODEL_<PROVIDER> override > discovered model for
-    this key > static default. Discovery failing (offline, bad key) silently uses the default.
-    """
-    if dynamic and settings.dynamic_models and not _env(f"AI_MODEL_{candidate.provider.upper()}"):
-        base = _env("OLLAMA_API_BASE") or "http://localhost:11434"
-        found = await model_catalog.best_model(candidate.provider, candidate.api_key, base)
-        if found:
-            return found
-    return _model_for(candidate, provider, model)
-
-
 def _extract_text(response: Any) -> str:
-    try:
-        content = response.choices[0].message.content
-    except AttributeError, IndexError, KeyError, TypeError:
-        content = response["choices"][0]["message"]["content"]
+    content = response.choices[0].message.content
     return (content or "").strip()
 
 
@@ -864,11 +834,14 @@ async def validate_api_key(provider: str, api_key: str) -> KeyCheck:
             kind = _classify(exc)
             if kind == "rate_limit":
                 return KeyCheck("rate_limited", "quota or rate limit reached right now")
-            if kind == "auth":
-                return KeyCheck("invalid", _explain_rejection(provider, exc))
-            if _is_model_problem(exc):
+            # A retired/unknown model (e.g. "model not found", which _KEY_HINTS also matches)
+            # says nothing about the key: try the next model. Real auth error classes still
+            # mean the key itself was rejected.
+            if _is_model_problem(exc) and not isinstance(exc, _AUTH_ERRORS):
                 last_exc = exc  # this model is busy/retired for this key: try the next one
                 continue
+            if kind == "auth":
+                return KeyCheck("invalid", _explain_rejection(provider, exc))
             return KeyCheck("unverified", _short_error(exc))
         model_catalog.remember_working(provider, api_key, model.split("/", 1)[-1])
         return KeyCheck("valid")
@@ -907,35 +880,27 @@ async def add_validated_keys(user_id: str, text: str) -> list[dict[str, Any]]:
 def replace_api_key(user_id: str, key_id: str, provider: str, api_key: str) -> bool:
     """Swap the stored secret of an existing key (edit in place). False if it is not theirs."""
     provider = normalize_provider(provider)
-    db = _session()
-    try:
-        user = _find_user(db, user_id)
-        record = db.get(ApiKey, key_id)
-        if user is None or record is None or record.user_id != user.id:
+    with _session() as db:
+        record = _owned_key(db, user_id, key_id)
+        if record is None:
             return False
         record.provider = provider
         record.encrypted_key = encrypt_api_key(api_key.strip())
         record.is_active = True
         db.commit()
         return True
-    finally:
-        db.close()
 
 
 def get_plain_key(user_id: str, key_id: str) -> tuple[str, str] | None:
     """(provider, plain key) for one of the user's own keys, or None. For re-testing only."""
-    db = _session()
-    try:
-        user = _find_user(db, user_id)
-        record = db.get(ApiKey, key_id)
-        if user is None or record is None or record.user_id != user.id:
+    with _session() as db:
+        record = _owned_key(db, user_id, key_id)
+        if record is None:
             return None
         try:
             return record.provider, decrypt_api_key(record.encrypted_key)
         except InvalidToken:
             return None
-    finally:
-        db.close()
 
 
 async def ask_llm(

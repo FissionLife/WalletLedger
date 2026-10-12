@@ -235,6 +235,10 @@ NOTES: dict[str, tuple[str, str]] = {
     ),
     "tests/test_agent.py": ("tests", "The agent: confirmations, tool use, fallbacks."),
     "tests/test_ai_gateway.py": ("tests", "Key order, rotation, live key tests."),
+    "tests/test_gateway_contract.py": (
+        "tests",
+        "Contract tests for the AI gateway: provider tables, key order, key ownership, key checks.",
+    ),
     "tests/test_analytics.py": ("tests", "Periods, filters, breakdowns, projections, charts."),
     "tests/test_bot.py": ("tests", "Commands, imports, replies end to end."),
     "tests/test_bot_profile.py": ("tests", "The Telegram menu stays in sync with the code."),
