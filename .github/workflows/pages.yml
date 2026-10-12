@@ -45,7 +45,7 @@ jobs:
       - name: Install uv (Python 3.14, to read the code the same way the app does)
         uses: astral-sh/setup-uv@v5
         with:
-          python-version-file: ".python-version"
+          python-version: "3.14"
 
       - name: Rebuild the project map and explorer
         run: uv run --no-project python scripts/build_map.py
