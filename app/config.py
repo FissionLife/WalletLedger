@@ -36,6 +36,11 @@ class Settings(BaseSettings):
     # Full SQLAlchemy URL. Empty = build it from DB_MODE. If set, DB_MODE is inferred from it.
     database_url: str = ""
 
+    # How the AI's ledger tools are called (app/services_ai/tool_client.py):
+    #   direct -> plain Python function calls in this process (default, fastest).
+    #   mcp    -> through the real MCP server, started as a child process over stdio.
+    tool_mode: Literal["direct", "mcp"] = "direct"
+
     # Telegram bot (token from BotFather). Empty token = bot disabled, /bot/simulate_chat still works.
     telegram_bot_token: str = ""
     # False = long polling (local dev). True = webhook (production, needs a public HTTPS URL).

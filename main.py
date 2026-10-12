@@ -9,6 +9,7 @@ from app.bot import telegram
 from app.bot.main import bot_router
 from app.config import INSECURE_DEV_KEY, settings
 from app.db import init_db
+from app.services_ai import tool_client
 from app.web.dashboard import STATIC
 from app.web.dashboard import router as dashboard_router
 
@@ -23,12 +24,15 @@ async def lifespan(app: FastAPI):
         logging.getLogger(__name__).warning(
             "SECRET_KEY is the public default: set a random one before storing real user API keys"
         )
+    # Ledger tools: direct Python calls, or the MCP server over stdio when TOOL_MODE=mcp
+    app.state.tool_mode = await tool_client.start()
     # Telegram bot: off without a token, polling locally, webhook when USE_WEBHOOK=true
     app.state.telegram_mode = await telegram.start()
     try:
         yield
     finally:
         await telegram.stop()
+        await tool_client.stop()
 
 
 app = FastAPI(
@@ -57,7 +61,11 @@ def root():
 
 @app.get("/health")
 def health():
-    return {"status": "healthy", "telegram": getattr(app.state, "telegram_mode", "off")}
+    return {
+        "status": "healthy",
+        "telegram": getattr(app.state, "telegram_mode", "off"),
+        "tools": getattr(app.state, "tool_mode", "direct"),
+    }
 
 
 def start_dev():

@@ -25,8 +25,11 @@ flowchart LR
     AG -->|clear message| NLU[Rules: nlu.py<br/>no AI call]
     AG -->|goal or question| ORCH[Multi-step helper<br/>orchestrator.py]
 
-    AG --> MCP[Tool registry<br/>mcp_server.execute_tool]
-    ORCH --> MCP
+    AG --> TC[tool_client.call_tool<br/>TOOL_MODE=direct or mcp]
+    TC -->|direct: Python call| MCP[Tool registry<br/>mcp_server.TOOL_REGISTRY]
+    TC -->|mcp: stdio JSON-RPC| MCPS[MCP server process<br/>mcp_transport]
+    MCPS --> MCP
+    ORCH --> TC
     AG <-->|prompt + context| GW[AI Gateway<br/>LiteLLM]
     ORCH <--> GW
     GW <--> LLM[(Gemini / OpenAI / Claude / Groq /<br/>OpenRouter / Grok / DeepSeek / Mistral / Ollama)]

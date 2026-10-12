@@ -31,8 +31,8 @@ from app.db import SessionLocal
 from app.health import user_status_text
 from app.models import Transaction
 from app.services.ledger import get_or_create_user
+from app.services_ai import tool_client
 from app.services_ai.ai_gateway import extract_api_keys
-from app.services_ai.mcp_server import execute_tool
 from app.services_ai.transaction_parser import parse_statement_file, summarize_statement
 
 PRIVATE_BOT_TEXT = "🔒 This bot is private."
@@ -165,7 +165,7 @@ async def handle_incoming(chat_id: str, text: str) -> Reply:
     if pending:
         decision = classify_reply(clean)
         if decision:
-            done = _finish_import(chat_id, decision)
+            done = await _finish_import(chat_id, decision)
             rows = [[ui.Btn("📊 Stats", "go:stats"), ui.Btn("🧾 History", "go:history")]]
             return Reply(done, rows=rows if "Imported" in done else [])
         _pending_imports.pop(chat_id, None)  # unrelated message: drop the pending import
@@ -381,7 +381,7 @@ def _drop_already_imported(chat_id: str, rows: list[dict[str, Any]]) -> tuple[li
     return fresh, duplicates
 
 
-def _finish_import(chat_id: str, decision: str) -> str:
+async def _finish_import(chat_id: str, decision: str) -> str:
     pending = _pending_imports.pop(chat_id, None)
     if pending is None:
         return "⌛ That import expired. Please upload the statement again."
@@ -393,7 +393,7 @@ def _finish_import(chat_id: str, decision: str) -> str:
     for row in rows:
         try:
             if row.get("type") == "income":
-                execute_tool(
+                await tool_client.call_tool(
                     "log_income",
                     user_id=chat_id,
                     amount=row["amount"],
@@ -404,7 +404,7 @@ def _finish_import(chat_id: str, decision: str) -> str:
                     date=row.get("date"),
                 )
             else:
-                execute_tool(
+                await tool_client.call_tool(
                     "log_expense",
                     user_id=chat_id,
                     amount=row["amount"],
