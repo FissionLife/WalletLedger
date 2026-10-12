@@ -15,3 +15,6 @@ env/
 .idea/
 *.log
 .devprune.json
+walletledger.db-shm
+walletledger.db-wal
+
