@@ -108,6 +108,8 @@ uv run python scripts/seed_demo_data.py --chat-id <your id>   # 90 days of demo 
 uv run python scripts/inspect_statement.py file.pdf --text    # see how a statement PDF is read
 ```
 
+**New to the code?** Open the [interactive explorer](https://fissionlife.github.io/WalletLedger/explore/) (guided tours, a clickable map, search), or read [docs/PROJECT_MAP.md](docs/PROJECT_MAP.md), a one-page index.
+
 Docs: **[Project guide: what is where and how it works](docs/PROJECT_GUIDE.md)** ·
 [How it works](docs/HOW_IT_WORKS.md) · [Demo script](docs/DEMO.md) ·
 [Architecture diagrams](docs/ARCHITECTURE.md) · [Security & data storage](docs/SECURITY.md) ·

@@ -7,6 +7,8 @@ after that use it as a map. Shorter companions: [HOW_IT_WORKS](HOW_IT_WORKS.md) 
 
 ---
 
+> **Fastest route in:** the [interactive explorer](https://fissionlife.github.io/WalletLedger/explore/) (guided tours, clickable map, search) or the one-page index [PROJECT_MAP.md](PROJECT_MAP.md). Both are generated from the code and refresh themselves on every push, so they are never out of date (see section 10).
+
 ## 1. What it is
 
 WalletLedger is an expense tracker you talk to. It runs as a Telegram bot. You type
@@ -325,6 +327,10 @@ without AI.
 `WALLETLEDGER_TESTING=1` and `LITELLM_MODE=PRODUCTION` first, so tests never read your `.env` or call a
 real AI, and each uses its own temporary database. GitHub Actions (`lint.yml`) runs the tests and ruff on
 every push; `pages.yml` publishes `site/` to GitHub Pages when it changes.
+
+## 10b. The project map stays current by itself
+
+`scripts/build_map.py` reads every Python file (with the standard `ast` module: no AI, no network) and writes `docs/PROJECT_MAP.md` (compact index), `docs/project-map.json` (same data) and `site/explore/index.html` (the explorer). The **Pages workflow** runs it on every push that touches code, commits the refreshed files if they changed, and deploys the page. Functions, line numbers, imports, commands and tables therefore always match the code. The only hand-written part is one plain-language sentence per file (`NOTES` in the script); `tests/test_project_map.py` fails if you add a file without one. Run it yourself any time: `uv run python scripts/build_map.py`.
 
 ## 11. Glossary
 

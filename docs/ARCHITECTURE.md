@@ -290,5 +290,5 @@ flowchart LR
     RP --> ED[edit the existing message<br/>instead of sending a new one]
 ```
 
-Where each box lives in the code, with the reasons behind it, is in the
+The same map, clickable and generated from the code, is the [explorer](https://fissionlife.github.io/WalletLedger/explore/). Where each box lives in the code, with the reasons behind it, is in the
 [project guide](PROJECT_GUIDE.md).

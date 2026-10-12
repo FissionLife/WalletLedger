@@ -1,5 +1,9 @@
-# Publishes the landing page in site/ to GitHub Pages.
+# Publishes the landing page in site/ (and the code explorer at /explore/) to GitHub Pages.
 # One-time setup: repository Settings > Pages > Source: "GitHub Actions".
+#
+# The explorer and the project map are generated from the code by scripts/build_map.py. This workflow
+# rebuilds them on every push that touches code, commits the refreshed files if they changed (so
+# docs/PROJECT_MAP.md never goes stale), and deploys the fresh page. Nobody has to remember to run it.
 name: Deploy site to GitHub Pages
 
 on:
@@ -7,11 +11,17 @@ on:
     branches: [main]
     paths:
       - "site/**"
-      - ".github/workflows/pages.yml"
+      - "app/**"
+      - "scripts/**"
+      - "tests/**"
+      - "main.py"
+      - "Dockerfile"
+      - "CLAUDE.md"
+      - ".github/workflows/**"
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
   pages: write
   id-token: write
 
@@ -29,6 +39,30 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          ref: main
+
+      - name: Install uv (Python 3.14, to read the code the same way the app does)
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version-file: ".python-version"
+
+      - name: Rebuild the project map and explorer
+        run: uv run --no-project python scripts/build_map.py
+
+      - name: Commit the refreshed map (only if it changed)
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add docs/PROJECT_MAP.md docs/project-map.json site/explore/index.html
+          if git diff --cached --quiet; then
+            echo "Project map already up to date."
+          else
+            git commit -m "chore(docs): refresh project map and explorer [skip ci]"
+            git pull --rebase origin main || true
+            git push origin HEAD:main || echo "Push skipped (main moved); the deployed page is still fresh."
+          fi
+
       - name: Configure Pages
         uses: actions/configure-pages@v6
       - name: Upload site

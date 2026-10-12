@@ -35,7 +35,9 @@ Start with the [project guide](PROJECT_GUIDE.md) (what is where, how it works). 
 | `scripts/seed_demo_data.py` | 90 days of demo data for a chat (`--chat-id`, `--reset`) |
 | `scripts/protect_data.py` | encrypt older rows, show progress, rotate `SECRET_KEY` |
 | `Dockerfile` | one container for any host (see [DEPLOYMENT.md](DEPLOYMENT.md)) |
-| `site/` | the landing page published on GitHub Pages |
+| `site/` | the landing page published on GitHub Pages; `site/explore/` is the generated code explorer |
+| `scripts/build_map.py` | builds `docs/PROJECT_MAP.md`, `docs/project-map.json` and the explorer from the code (CI runs it on every push) |
+| `CLAUDE.md` | orientation for AI coding assistants: read the map first, the rules, the commands |
 
 ## Endpoints
 
