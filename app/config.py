@@ -43,6 +43,9 @@ class Settings(BaseSettings):
 
     # Telegram bot (token from BotFather). Empty token = bot disabled, /bot/simulate_chat still works.
     telegram_bot_token: str = ""
+    # More bots on the same backend: comma-separated tokens, in addition to TELEGRAM_BOT_TOKEN.
+    # Every bot shares one ledger: a person's data follows their Telegram chat id, whichever bot they use.
+    telegram_bot_tokens: str = ""
     # False = long polling (local dev). True = webhook (production, needs a public HTTPS URL).
     use_webhook: bool = False
     # Full public URL Telegram should call, e.g. https://example.com/bot/webhook
@@ -140,7 +143,17 @@ def is_admin(chat_id: str) -> bool:
     return str(chat_id) in admins
 
 
+def bot_tokens() -> list[str]:
+    """Every configured bot token (TELEGRAM_BOT_TOKEN first, then TELEGRAM_BOT_TOKENS), no duplicates."""
+    found: list[str] = []
+    for raw in [settings.telegram_bot_token, *settings.telegram_bot_tokens.split(",")]:
+        token = raw.strip()
+        if token and token not in found:
+            found.append(token)
+    return found
+
+
 def dev_endpoints_enabled() -> bool:
     if settings.enable_dev_endpoints is not None:
         return settings.enable_dev_endpoints
-    return not settings.telegram_bot_token
+    return not bot_tokens()

@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 
-from app.config import settings
+from app.config import bot_tokens, settings
 from app.crypto import weak_secret_key
 from app.db import describe_database
 from app.services_ai import ai_gateway as gw
@@ -66,7 +66,7 @@ async def user_status_text(chat_id: str) -> str:
 def setup_problems() -> list[str]:
     """Things that make the bot unsafe or unusable, in plain words (empty list = healthy)."""
     problems = []
-    if not settings.telegram_bot_token.strip():
+    if not bot_tokens():
         problems.append("TELEGRAM_BOT_TOKEN is empty, so the bot is off.")
     if weak_secret_key():
         problems.append(

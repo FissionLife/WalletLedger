@@ -35,6 +35,21 @@ TELEGRAM_WEBHOOK_SECRET=<long random string>      # optional; derived from the t
 The server registers the webhook with Telegram on start. On a scale-to-zero host, use **Postgres**
 (not SQLite), because the local disk disappears when the instance stops.
 
+### Several bots, one backend
+
+Put extra tokens in `TELEGRAM_BOT_TOKENS` (comma-separated, each from its own @BotFather chat) next to
+`TELEGRAM_BOT_TOKEN`. One server, one database and one set of AI keys then serve all of them: separate
+bots for separate teams, a demo bot next to the real one, or a rename without losing users.
+
+- **Same person, same ledger.** Data follows the Telegram chat id, so someone who talks to two of your
+  bots sees one set of accounts and transactions. (Two different people never share anything.)
+- **Polling** needs nothing else. **Webhooks**: each bot gets its own address, `WEBHOOK_URL/<bot id>`
+  (a single bot keeps `WEBHOOK_URL` exactly as before), and its own secret unless you set
+  `TELEGRAM_WEBHOOK_SECRET`, which is then shared.
+- `scripts/setup_bot.py` publishes the command menu to every bot, and the dashboard Mini App signs in from
+  whichever bot opened it.
+- `ALLOWED_CHAT_IDS` and `ADMIN_CHAT_IDS` apply to all of them. There are no per-bot rules.
+
 ### Docker / serverless hosts
 
 A `Dockerfile` is included, so any host that runs containers works (Google Cloud Run, Fly.io, Render,

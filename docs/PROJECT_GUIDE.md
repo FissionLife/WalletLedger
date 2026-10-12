@@ -291,7 +291,7 @@ Details and a command to prove it: [SECURITY §4b](SECURITY.md).
 
 | Setting | Meaning |
 |---|---|
-| `TELEGRAM_BOT_TOKEN`, `USE_WEBHOOK`, `WEBHOOK_URL` | the bot, polling vs webhook |
+| `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_TOKENS`, `USE_WEBHOOK`, `WEBHOOK_URL` | the bot (and any extra bots), polling vs webhook |
 | `DB_MODE` (`sqlite`/`postgres`), `SQLITE_PATH`, `POSTGRES_*`, `DATABASE_URL` | where data lives |
 | `SECRET_KEY`, `SECRET_KEY_OLD` | encryption secret, and previous ones during rotation |
 | `ALLOWED_CHAT_IDS` | empty = anyone may use the bot (each chat only sees its own data) |

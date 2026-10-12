@@ -85,6 +85,7 @@ The ones you will actually touch:
 | Setting | Meaning |
 |---|---|
 | `TELEGRAM_BOT_TOKEN` | from @BotFather |
+| `TELEGRAM_BOT_TOKENS` | optional: more bots on the same backend (comma-separated) |
 | `ALLOWED_CHAT_IDS` | who may use the bot (empty = anyone: set this) |
 | `ADMIN_CHAT_IDS` | who may use `/admin` |
 | `SECRET_KEY` | encrypts saved AI keys, chat history and notes (the wizard generates it) |

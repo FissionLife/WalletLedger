@@ -225,6 +225,10 @@ NOTES: dict[str, tuple[str, str]] = {
         "tests",
         "Runs before every test: makes sure tests never reach the real Telegram or read your `.env`.",
     ),
+    "tests/test_multi_bot.py": (
+        "tests",
+        "Several Telegram bots on one backend: tokens, webhook addresses and secrets, start/stop, shared ledger.",
+    ),
     "tests/test_audit_fixes.py": (
         "tests",
         "Regression tests for the bugs found in the code audit: lost balance updates, junk entries, undo order, dashboard.",

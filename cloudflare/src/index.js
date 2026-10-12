@@ -10,6 +10,7 @@ import { Container } from "@cloudflare/containers";
 // Secrets set with `npx wrangler secret put NAME`. Only the ones you set are passed on.
 const PASS_THROUGH = [
   "TELEGRAM_BOT_TOKEN",
+  "TELEGRAM_BOT_TOKENS", // optional: extra bots on the same backend, comma-separated
   "SECRET_KEY",
   "DATABASE_URL", // postgresql://user:password@host:5432/dbname?sslmode=require
   "TELEGRAM_WEBHOOK_SECRET",

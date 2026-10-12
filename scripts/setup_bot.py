@@ -21,7 +21,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from aiogram import Bot  # noqa: E402
 
 from app.bot import profile  # noqa: E402
-from app.config import settings  # noqa: E402
+from app.config import bot_tokens  # noqa: E402
 
 
 def show(info: dict) -> None:
@@ -47,8 +47,8 @@ async def main() -> int:
     ap.add_argument("--name", help="also set the bot's display name")
     args = ap.parse_args()
 
-    token = settings.telegram_bot_token.strip()
-    if not token:
+    tokens = bot_tokens()
+    if not tokens:
         print("TELEGRAM_BOT_TOKEN is not set. Add it to .env first (token from @BotFather).")
         return 2
 
@@ -57,20 +57,26 @@ async def main() -> int:
         print("Profile is invalid:\n  - " + "\n  - ".join(problems))
         return 2
 
-    bot = Bot(token=token)
-    try:
-        if args.show:
+    code = 0
+    for token in tokens:
+        bot = Bot(token=token)
+        try:
+            if len(tokens) > 1:
+                print(f"\n=== bot {token.split(':')[0]} ===")
+            if args.show:
+                show(await profile.read_profile(bot))
+                continue
+            results = await profile.apply_profile(bot, name=args.name, reset=args.reset)
+            for step, outcome in results.items():
+                ok = outcome == "ok"
+                print(f"{'OK  ' if ok else 'FAIL'} {step}" + ("" if ok else f"  -> {outcome}"))
+            print()
             show(await profile.read_profile(bot))
-            return 0
-        results = await profile.apply_profile(bot, name=args.name, reset=args.reset)
-        for step, outcome in results.items():
-            ok = outcome == "ok"
-            print(f"{'OK  ' if ok else 'FAIL'} {step}" + ("" if ok else f"  -> {outcome}"))
-        print()
-        show(await profile.read_profile(bot))
-        return 0 if all(v == "ok" for v in results.values()) else 1
-    finally:
-        await bot.session.close()
+            if not all(v == "ok" for v in results.values()):
+                code = 1
+        finally:
+            await bot.session.close()
+    return code
 
 
 if __name__ == "__main__":

@@ -184,9 +184,9 @@ def step_ai_key() -> None:
 
 
 def step_profile() -> None:
-    from app.config import settings
+    from app.config import bot_tokens
 
-    if not settings.telegram_bot_token.strip():
+    if not bot_tokens():
         return
     say("\nPublishing the bot's command menu...")
     from aiogram import Bot
@@ -194,11 +194,19 @@ def step_profile() -> None:
     from app.bot import profile
 
     async def go():
-        bot = Bot(token=settings.telegram_bot_token)
-        try:
-            return await profile.apply_profile(bot)
-        finally:
-            await bot.session.close()
+        out = {}
+        for token in bot_tokens():
+            bot = Bot(token=token)
+            try:
+                out.update(
+                    {
+                        f"{token.split(':')[0]}/{k}": v
+                        for k, v in (await profile.apply_profile(bot)).items()
+                    }
+                )
+            finally:
+                await bot.session.close()
+        return out
 
     results = asyncio.run(go())
     bad = {k: v for k, v in results.items() if v != "ok"}
@@ -214,13 +222,18 @@ def doctor() -> int:
     say("WalletLedger health check\n")
     problems = health.setup_problems()
     ok = True
-    if settings.telegram_bot_token.strip():
+    from app.config import bot_tokens
+
+    for number, token in enumerate(bot_tokens(), start=1):
+        label = (
+            "Telegram token" if number == 1 and len(bot_tokens()) == 1 else f"Telegram bot {number}"
+        )
         try:
-            me = asyncio.run(check_token(settings.telegram_bot_token))
-            say(f"OK    Telegram token works (@{me.username})")
+            me = asyncio.run(check_token(token))
+            say(f"OK    {label} works (@{me.username})")
         except Exception as exc:
             ok = False
-            say(f"FAIL  Telegram token rejected ({type(exc).__name__})")
+            say(f"FAIL  {label} rejected ({type(exc).__name__})")
     for p in problems:
         ok = False
         say(f"WARN  {p}")

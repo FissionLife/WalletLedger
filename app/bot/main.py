@@ -10,6 +10,7 @@ Every channel uses the same logic so there is one code path:
 from __future__ import annotations
 
 import difflib
+import hmac
 import logging
 from collections import Counter
 from dataclasses import dataclass, field
@@ -438,6 +439,16 @@ class SimulateMessageRequest(BaseModel):
 
 @bot_router.post("/webhook")
 async def telegram_webhook(request: Request):
+    return await _webhook(request, None)
+
+
+@bot_router.post("/webhook/{bot_id}")
+async def telegram_webhook_for_bot(bot_id: str, request: Request):
+    """Same as /webhook, for one of several bots (each bot's own address is WEBHOOK_URL/<bot id>)."""
+    return await _webhook(request, bot_id)
+
+
+async def _webhook(request: Request, bot_id: str | None):
     """Telegram webhook.
 
     Webhook mode with a bot token: verified with the secret header, then handled by aiogram,
@@ -450,10 +461,13 @@ async def telegram_webhook(request: Request):
         raise HTTPException(status_code=404, detail="Not found")
     update = await request.json()
     if telegram.webhook_active():
+        token = telegram.token_for(bot_id)
+        if token is None and bot_id is not None:
+            raise HTTPException(status_code=404, detail="Not found")
         header = request.headers.get("X-Telegram-Bot-Api-Secret-Token", "")
-        if header != telegram.webhook_secret():
+        if not hmac.compare_digest(header, telegram.webhook_secret(token)):
             raise HTTPException(status_code=403, detail="invalid webhook secret")
-        await telegram.feed_webhook_update(update)
+        await telegram.feed_webhook_update(update, bot_id)
         return {"ok": True}
 
     message = update.get("message") or {}

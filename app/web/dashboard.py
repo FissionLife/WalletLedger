@@ -27,7 +27,7 @@ from fastapi.responses import FileResponse, JSONResponse, Response
 from pydantic import BaseModel
 from sqlalchemy import select
 
-from app.config import is_chat_allowed, settings
+from app.config import bot_tokens, is_chat_allowed
 from app.db import SessionLocal
 from app.models import Account, Category, Merchant
 from app.services import analytics, ledger
@@ -288,10 +288,13 @@ class InitData(BaseModel):
 @router.post("/api/webapp/auth")
 async def webapp_auth(body: InitData):
     """Sign in from inside Telegram: verifies Telegram's signature and returns a short-lived token."""
-    bot_token = settings.telegram_bot_token.strip()
-    if not bot_token:
+    configured = bot_tokens()
+    if not configured:
         raise HTTPException(status_code=404, detail="Telegram is not configured")
-    user = tokens.validate_init_data(body.initData, bot_token)
+    # With several bots, the page was opened from one of them: its signature is the one that matches
+    user = next(
+        (u for u in (tokens.validate_init_data(body.initData, t) for t in configured) if u), None
+    )
     if user is None:
         raise HTTPException(status_code=401, detail="Could not verify the Telegram sign-in")
     chat_id = str(user["id"])  # in a private chat the chat id equals the user id

@@ -45,6 +45,9 @@ There are no passwords or logins. **Identity = Telegram chat id**, and all data 
   They are enabled automatically only while **no bot token is configured** (local dev). When a token
   is set they return 404 unless you explicitly set `ENABLE_DEV_ENDPOINTS=true`. Never enable them on
   a reachable server.
+- **Several bots:** with `TELEGRAM_BOT_TOKENS` every bot shares one database, and a person is identified
+  by their chat id, so the same person sees the same data through any of them. Each bot's webhook has its
+  own address and its own secret (compared in constant time) unless you set one shared secret.
 - **Private bot:** set `ALLOWED_CHAT_IDS=123,456` to restrict the bot to specific people. Empty means
   anyone who finds the bot can create an account.
 - Telegram chats are encrypted client-to-server only, not end-to-end. Telegram can read messages.

@@ -1,9 +1,12 @@
 """Real Telegram connection via aiogram (polling for local dev, webhook for production).
 
 Lifecycle (called from main.py's FastAPI lifespan):
-    no TELEGRAM_BOT_TOKEN        -> bot off; /bot/simulate_chat still works
+    no bot token                 -> bot off; /bot/simulate_chat still works
     USE_WEBHOOK=false (default)  -> long polling in a background task
     USE_WEBHOOK=true             -> register WEBHOOK_URL with Telegram; /bot/webhook feeds aiogram
+
+Several bots (TELEGRAM_BOT_TOKEN plus TELEGRAM_BOT_TOKENS) run side by side on one dispatcher and one
+ledger. With webhooks each bot gets its own address: WEBHOOK_URL/<bot id> (one bot keeps WEBHOOK_URL).
 
 All handlers delegate to app.bot.main (handle_text / handle_document) so Telegram, the dev
 webhook and /bot/simulate_chat share one code path.
@@ -43,7 +46,7 @@ from app.bot.main import (
 )
 from app.bot.profile import apply_profile
 from app.bot.ui import Btn, Reply
-from app.config import settings
+from app.config import bot_tokens, settings
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +54,7 @@ TELEGRAM_LIMIT = 4096
 CHUNK_SIZE = 4000  # leave room so Markdown fallbacks never exceed the limit
 
 
-_bot: Bot | None = None
+_bots: dict[str, Bot] = {}  # bot id (the number before ":" in the token) -> Bot
 _dispatcher: Dispatcher | None = None
 _polling_task: asyncio.Task | None = None
 _mode: str = "off"
@@ -183,21 +186,49 @@ async def update_message(message: Message, reply: Reply) -> None:
     await deliver(message, reply)
 
 
-def webhook_secret() -> str:
-    """Secret Telegram must echo in X-Telegram-Bot-Api-Secret-Token on every webhook call."""
+def bot_id(token: str) -> str:
+    """Telegram bot tokens look like 123456:ABC...; the number is the bot's id (not secret)."""
+    return token.split(":", 1)[0]
+
+
+def webhook_secret(token: str | None = None) -> str:
+    """Secret Telegram must echo in X-Telegram-Bot-Api-Secret-Token on every webhook call.
+
+    An explicit TELEGRAM_WEBHOOK_SECRET is used for every bot; otherwise each bot gets its own,
+    derived from its token.
+    """
     if settings.telegram_webhook_secret:
         return settings.telegram_webhook_secret
-    return hashlib.sha256(f"walletledger:{settings.telegram_bot_token}".encode()).hexdigest()[:48]
+    token = token or (bot_tokens() or [""])[0]
+    return hashlib.sha256(f"walletledger:{token}".encode()).hexdigest()[:48]
+
+
+def webhook_url_for(token: str) -> str:
+    """One bot: WEBHOOK_URL as given. Several: WEBHOOK_URL/<bot id>, so each bot has its own address."""
+    base = settings.webhook_url.rstrip("/")
+    return base if len(bot_tokens()) <= 1 else f"{base}/{bot_id(token)}"
 
 
 def webhook_active() -> bool:
-    return _mode == "webhook" and _bot is not None and _dispatcher is not None
+    return _mode == "webhook" and bool(_bots) and _dispatcher is not None
 
 
-async def feed_webhook_update(update: dict[str, Any]) -> None:
+def token_for(bot_id_: str | None) -> str | None:
+    """The configured token of this bot id (None = the first bot), or None if there is no such bot."""
+    tokens = bot_tokens()
+    if bot_id_ is None:
+        return tokens[0] if tokens else None
+    return next((t for t in tokens if bot_id(t) == bot_id_), None)
+
+
+async def feed_webhook_update(update: dict[str, Any], bot_id_: str | None = None) -> None:
     if not webhook_active():
         raise RuntimeError("Telegram webhook mode is not running")
-    await _dispatcher.feed_webhook_update(_bot, update)
+    token = token_for(bot_id_)
+    bot = _bots.get(bot_id(token)) if token else None
+    if bot is None:
+        raise RuntimeError(f"No such bot: {bot_id_}")
+    await _dispatcher.feed_webhook_update(bot, update)
 
 
 # ---------------------------------------------------------------------------
@@ -310,53 +341,68 @@ async def _publish_profile(bot: Bot) -> None:
 
 
 async def start() -> str:
-    """Start the bot according to settings. Returns the mode: off, polling or webhook."""
-    global _bot, _dispatcher, _polling_task, _mode
-    token = settings.telegram_bot_token.strip()
-    if not token:
-        logger.info("TELEGRAM_BOT_TOKEN not set; Telegram bot disabled (/bot/simulate_chat works).")
+    """Start the bot(s) according to settings. Returns the mode: off, polling or webhook."""
+    global _dispatcher, _polling_task, _mode
+    tokens = bot_tokens()
+    if not tokens:
+        logger.info("No Telegram bot token set; Telegram bot disabled (/bot/simulate_chat works).")
         _mode = "off"
         return _mode
 
-    _bot = Bot(token=token)
+    _bots.clear()
+    for token in tokens:
+        _bots[bot_id(token)] = Bot(token=token)
     _dispatcher = Dispatcher()
     _dispatcher.include_router(build_router())
-    me = await _bot.get_me()
-    await _publish_profile(_bot)
+    names = {}
+    for key, bot in _bots.items():
+        names[key] = (await bot.get_me()).username
+        await _publish_profile(bot)
 
     if settings.use_webhook:
         if not settings.webhook_url:
             raise RuntimeError(
                 "USE_WEBHOOK=true requires WEBHOOK_URL (e.g. https://host/bot/webhook)"
             )
-        await _bot.set_webhook(
-            settings.webhook_url,
-            secret_token=webhook_secret(),
-            allowed_updates=_dispatcher.resolve_used_update_types(),
-            drop_pending_updates=False,
-        )
+        for token in tokens:
+            url = webhook_url_for(token)
+            await _bots[bot_id(token)].set_webhook(
+                url,
+                secret_token=webhook_secret(token),
+                allowed_updates=_dispatcher.resolve_used_update_types(),
+                drop_pending_updates=False,
+            )
+            logger.info("Telegram bot @%s: webhook registered at %s", names[bot_id(token)], url)
         _mode = "webhook"
-        logger.info("Telegram bot @%s: webhook registered at %s", me.username, settings.webhook_url)
     else:
         # A webhook left over from production would block polling, so clear it first.
-        await _bot.delete_webhook(drop_pending_updates=False)
+        for bot in _bots.values():
+            await bot.delete_webhook(drop_pending_updates=False)
         _polling_task = asyncio.create_task(
-            _dispatcher.start_polling(_bot, handle_signals=False, close_bot_session=False),
+            _dispatcher.start_polling(
+                *_bots.values(), handle_signals=False, close_bot_session=False
+            ),
             name="telegram-polling",
         )
         _mode = "polling"
-        logger.info("Telegram bot @%s: polling started", me.username)
+        logger.info("Telegram polling started for %s", ", ".join(f"@{n}" for n in names.values()))
     return _mode
 
 
+def running_bots() -> int:
+    return len(_bots)
+
+
 async def stop() -> None:
-    """Stop polling and close the HTTP session. The webhook stays registered on purpose."""
-    global _bot, _dispatcher, _polling_task, _mode
+    """Stop polling and close the HTTP sessions. The webhooks stay registered on purpose."""
+    global _dispatcher, _polling_task, _mode
     if _dispatcher is not None and _polling_task is not None:
         with contextlib.suppress(Exception):
             await _dispatcher.stop_polling()
         with contextlib.suppress(asyncio.CancelledError, Exception):
             await asyncio.wait_for(_polling_task, timeout=10)
-    if _bot is not None:
-        await _bot.session.close()
-    _bot, _dispatcher, _polling_task, _mode = None, None, None, "off"
+    for bot in _bots.values():
+        with contextlib.suppress(Exception):
+            await bot.session.close()
+    _bots.clear()
+    _dispatcher, _polling_task, _mode = None, None, "off"
