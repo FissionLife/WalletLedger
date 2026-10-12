@@ -1,5 +1,8 @@
 # WalletLedger - SDLC, Team Division & Integration Contracts
 
+> **Historical document.** This was the original hackathon planning/hand-off note and describes the
+> project as first designed. For how things work **today**, see [PROJECT_GUIDE.md](PROJECT_GUIDE.md).
+
 WalletLedger is a **comprehensive personal expense tracker and financial intelligence assistant** (inspired by Fold App). It models user finances as a **Tank & Pipes** system to track *what* was paid, *how much*, *to whom* (merchants), *where* it was spent (categories), *income pipes*, and *transfers between accounts*.
 
 ---

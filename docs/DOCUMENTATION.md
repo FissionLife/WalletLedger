@@ -1,6 +1,7 @@
 # Code map
 
-Plain-language overview: [HOW_IT_WORKS.md](HOW_IT_WORKS.md). Diagrams: [ARCHITECTURE.md](ARCHITECTURE.md).
+Start with the [project guide](PROJECT_GUIDE.md) (what is where, how it works). Plain-language overview:
+[HOW_IT_WORKS.md](HOW_IT_WORKS.md). Diagrams: [ARCHITECTURE.md](ARCHITECTURE.md). This page is the file table.
 
 | Path | Responsibility |
 |---|---|

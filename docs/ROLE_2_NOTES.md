@@ -1,4 +1,8 @@
 # 🧠 Role 2: LangGraph Agent Brain — Implementation & Hand-off Summary
+
+> **Historical document.** This was the original hackathon planning/hand-off note and describes the
+> project as first designed. For how things work **today**, see [PROJECT_GUIDE.md](PROJECT_GUIDE.md).
+
 **Assignee:** Gopal (Role 2)
 **Component:** `app/bot/agent.py`, `app/models.py`, `app/services_ai/ai_gateway.py`
 **Feature Branch:** `feature/role-2-langgraph-agent`

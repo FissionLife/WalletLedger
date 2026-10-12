@@ -84,7 +84,7 @@ disk, a database admin or hosting provider who can read tables but does not have
 operator, the AI provider (it receives the prompt in plain text), Telegram, or a weak / leaked
 `SECRET_KEY`.
 
-Known software gaps: money is stored as floats (rounded to 2 decimals), there is no rate limiting,
+Known software gaps: money is stored as floats (rounded to 2 decimals), there is no rate limiting on the chat itself (the dashboard API is rate limited),
 no database migrations, and confirmation state is held in process memory (use one worker).
 
 ## 4. How the encryption works
@@ -145,6 +145,46 @@ uv run python scripts/protect_data.py rotate            # after changing SECRET_
 It works on SQLite and Postgres through the app's own database settings, in batches, and never
 prints user text. It is safe to run twice. Deploy the new version of the app **before** running
 `encrypt`: an older version would show `enc1:...` instead of the text. The undo is your backup.
+
+## 4b. "Can I read the encrypted data?" (a plain answer)
+
+**Anyone holding the database file but not `SECRET_KEY`: no.** Open `walletledger.db` in a SQLite
+viewer and the private text looks like this:
+
+```
+transactions.description  ->  enc1:gAAAAABqzF9Fd4mqnKOOgNl0IFa7CIMD9_qA_-F...
+chat_messages.content     ->  enc1:gAAAAABqzF7rQz1qGzjPewK2TYt2LNMArQT...
+api_keys.encrypted_key    ->  gAAAAABk...
+```
+
+Without the key this is random-looking bytes: AES-encrypted, authenticated, and different every time
+even for identical text. It cannot be searched or guessed at.
+
+**You, the person running the server, with `SECRET_KEY` in `.env`: yes.** The bot itself decrypts
+these values on every request (it must, to answer you), and so can any script that loads the same
+`.env`. That is deliberate: "encrypted even from the operator" would mean the bot could not read your
+history or notes either. What the encryption buys you is protection for **copies** of the data:
+a leaked or stolen `.db` file, a backup in the cloud, a database admin, a SQL-injection dump.
+A quick way to see both sides on your own machine (prints only the notes of your own database):
+
+```bash
+# 1. what is stored (ciphertext) and 2. what the app can read with SECRET_KEY
+uv run python -c "
+import sqlite3
+from app import crypto
+c = sqlite3.connect('file:walletledger.db?mode=ro', uri=True)
+for raw, in c.execute('select description from transactions where description is not null limit 3'):
+    print(raw[:40], '...  ->  ', crypto.decrypt_text(raw))
+"
+```
+
+Keep `SECRET_KEY` out of the repo and out of the database backup (store it in a password manager or
+the host's secret settings), because **the file and the key together are the data**. If the key is
+lost the encrypted columns cannot be recovered; if it changes without `SECRET_KEY_OLD`, they show as
+`[unreadable: encrypted with a different key]`.
+
+If you ever need "even the operator cannot read it" (end-to-end), that requires a different design
+(keys held only on the user's device) and is listed under "Private mode" below as not implemented.
 
 ## 5. How to protect the rest of the data (recommended order)
 

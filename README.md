@@ -108,7 +108,8 @@ uv run python scripts/seed_demo_data.py --chat-id <your id>   # 90 days of demo 
 uv run python scripts/inspect_statement.py file.pdf --text    # see how a statement PDF is read
 ```
 
-Docs: [How it works](docs/HOW_IT_WORKS.md) · [Demo script](docs/DEMO.md) ·
+Docs: **[Project guide: what is where and how it works](docs/PROJECT_GUIDE.md)** ·
+[How it works](docs/HOW_IT_WORKS.md) · [Demo script](docs/DEMO.md) ·
 [Architecture diagrams](docs/ARCHITECTURE.md) · [Security & data storage](docs/SECURITY.md) ·
 [Deployment](docs/DEPLOYMENT.md) · [Code map](docs/DOCUMENTATION.md)
 

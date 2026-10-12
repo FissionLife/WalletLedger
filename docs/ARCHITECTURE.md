@@ -1,6 +1,7 @@
 # WalletLedger Architecture
 
-GitHub, VS Code and most Markdown viewers render the Mermaid blocks below.
+GitHub, VS Code and most Markdown viewers render the Mermaid blocks below. For a guided tour of the
+code with the file map, read the [project guide](PROJECT_GUIDE.md) first.
 
 ## 1. System overview
 
@@ -161,13 +162,17 @@ erDiagram
     TRANSACTIONS { float amount
                    string transaction_type
                    string source
-                   datetime created_at }
+                   datetime created_at
+                   text description "ENCRYPTED" }
     API_KEYS { string provider
-               text encrypted_key
+               text encrypted_key "ENCRYPTED (vault key)"
                bool is_active }
     CHAT_MESSAGES { string role
-                    text content }
+                    text content "ENCRYPTED" }
 ```
+
+Columns marked ENCRYPTED hold `enc1:...` ciphertext in the file (section 9). Everything else is
+readable by the database so it can add up, filter and group.
 
 ## 6. Statement import (confirm before saving)
 
@@ -177,10 +182,12 @@ flowchart TD
     B -- no --> X[Reject with message]
     B -- yes --> C[Download via Bot API]
     C --> D[Extract text and parse rows<br/>PDF via PyPDF2]
-    D --> E[Preview: N rows found]
-    E --> F{User replies yes / no}
+    D --> D2[Detect format: PhonePe, GPay, Paytm, BHIM,<br/>bank table or SMS. Keep the statement's own dates]
+    D2 --> E[Preview: N rows, date range, totals, top categories]
+    E --> F{User taps Import / Cancel}
     F -- no --> X2[Discard]
-    F -- yes --> G[record_transaction per row, source=pdf]
+    F -- yes --> DD[Skip rows already in the ledger<br/>same type, amount, date and note]
+    DD --> G[record_transaction per row, source=pdf, dated as in the statement]
     G --> H[Reply: imported count]
 ```
 
@@ -217,3 +224,68 @@ flowchart LR
       ENV[(Secrets from env / vault:<br/>BOT TOKEN, SECRET_KEY, webhook secret)] --> P1
     end
 ```
+
+## 9. Data at rest and encryption
+
+```mermaid
+flowchart LR
+    S[SECRET_KEY<br/>from .env] --> H1[HKDF-SHA256<br/>label: field/v1]
+    S --> H2[HKDF-SHA256<br/>label: api-key-vault/v1]
+    H1 --> F1[Fernet<br/>AES-128-CBC + HMAC, random IV]
+    H2 --> F2[Fernet]
+    APP[App code<br/>sees plain text] <-->|EncryptedText column type| F1
+    APP <-->|encrypt_vault / decrypt_vault| F2
+    F1 --> D1[(transactions.description<br/>chat_messages.content<br/>stored as enc1:gAAAA...)]
+    F2 --> D2[(api_keys.encrypted_key<br/>stored as gAAAA...)]
+    D1 --- FILE[(walletledger.db / Postgres)]
+    D2 --- FILE
+    PLAIN[amounts, dates, accounts, categories,<br/>merchants, chat id: plain columns] --- FILE
+```
+
+Whoever has the file **and** `SECRET_KEY` can read everything; the file alone shows only ciphertext
+and the plain columns. Rotation: put the old secret in `SECRET_KEY_OLD`, run
+`scripts/protect_data.py rotate`. Full explanation: [SECURITY.md](SECURITY.md).
+
+## 10. Web dashboard and Mini App sign-in
+
+```mermaid
+sequenceDiagram
+    actor U as User
+    participant B as Bot (/dashboard)
+    participant W as Browser or Telegram Mini App
+    participant S as Server (app/web)
+    participant A as analytics.report
+    U->>B: /dashboard
+    B->>B: token = base64(chat id, expiry) + HMAC(SECRET_KEY-derived key)
+    B-->>U: PUBLIC_URL/d/token (button opens the Mini App if https)
+    U->>W: open link
+    W->>S: GET /d/token  (page only, no data)
+    S-->>W: dashboard.html + js + css
+    W->>S: GET /api/dashboard?period=90d  (token in a header)
+    S->>S: verify signature, expiry, rate limit
+    S->>A: report(chat id, Query)
+    A-->>S: one dictionary of numbers
+    S-->>W: JSON, no-store, strict CSP
+    W->>W: draw 12 SVG charts, filters, table
+    Note over W,S: In Telegram the sign-in is instead Telegram's signed initData, verified by /api/webapp/auth
+```
+
+## 11. Button taps
+
+```mermaid
+flowchart LR
+    TAP[User taps a button<br/>callback data e.g. st:30d, ch:trend:90d, undo:ab12, ask:yes] --> CB[telegram.on_callback]
+    CB --> HC[callbacks.handle_callback<br/>allow-list check, parse action]
+    HC -->|go / st / ch / hi / ex| VW[views.* screens]
+    HC -->|undo| LD[ledger.undo_transaction]
+    HC -->|ask / imp| PEND[pending confirmation<br/>agent or statement import]
+    HC -->|key| KM[keys.py]
+    VW --> RP[Reply: text, image, buttons]
+    LD --> RP
+    PEND --> RP
+    KM --> RP
+    RP --> ED[edit the existing message<br/>instead of sending a new one]
+```
+
+Where each box lives in the code, with the reasons behind it, is in the
+[project guide](PROJECT_GUIDE.md).

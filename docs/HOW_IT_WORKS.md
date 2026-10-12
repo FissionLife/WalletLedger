@@ -1,5 +1,7 @@
 # How WalletLedger works, in plain words
 
+*Short version. The full tour of the code, the data and the encryption is the [project guide](PROJECT_GUIDE.md).*
+
 ## The idea
 
 Most expense apps ask you to open the app, pick a category, type an amount. WalletLedger lets you just
