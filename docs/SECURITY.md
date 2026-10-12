@@ -58,6 +58,9 @@ There are no passwords or logins. **Identity = Telegram chat id**, and all data 
   the server instead verifies Telegram's own signed sign-in data. Anyone who is *sent* a link can open
   it until it expires, so do not forward it. Using `https` (`PUBLIC_URL`) keeps links from being read
   in transit.
+- **Placeholder key on a public address:** dashboard links are signed with `SECRET_KEY`, so a published
+  placeholder would let anyone sign a link for any chat id. The server therefore **refuses to start** when
+  `SECRET_KEY` is a placeholder (or too short) and `PUBLIC_URL` is an https address.
 - **AI helper limits:** the multi-step helper can only call the bot's own tools, always acts on the
   chat it was started for (an id the AI makes up is overwritten), can never read or save API keys, and
   a transfer of ₹5,000 or more waits for your tap on Yes.

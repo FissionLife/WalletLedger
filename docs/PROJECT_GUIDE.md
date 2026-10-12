@@ -161,7 +161,8 @@ Example: you send **"Spent 200 on chai, 80 on auto yesterday"**.
    button (callback `undo:<id>`), and ticks the original message with a reaction.
 8. The user and bot messages are saved to `chat_messages` (encrypted, API keys redacted first).
 
-Transfers of ₹5,000 or more do not run immediately: the agent stores a *pending action*, asks
+Transfers of ₹5,000 or more do not run immediately: the agent stores a *pending action* (holding every
+entry from that message, so none is dropped), asks
 "Transfer ₹9,000 from Bank to Cash? [Yes] [Cancel]", and only runs it on Yes (pending actions expire
 after 5 minutes and live in memory).
 
@@ -197,7 +198,11 @@ in `TOOLS_SCHEMA`.
 ### 5.5 Ledger (`ledger.py`)
 `record_transaction`, `transfer_between_pipes`, `undo_transaction` (reverses the balance; accepts a
 short id prefix), `recent_transactions`, `get_account_balances`. Transactions can be back-dated (used by
-"yesterday" and statement imports). On PostgreSQL, row locks (`SELECT ... FOR UPDATE`, taken in a fixed order) keep simultaneous requests from corrupting a balance.
+"yesterday" and statement imports). Balances change with one database statement
+(`balance = balance + delta`), so two entries made at the same moment are both counted; on PostgreSQL row
+locks are taken as well. Each transaction has a purchase date (`created_at`) and a time it was typed in
+(`entered_at`); `/undo` removes the one you entered last, even if its date is older. Databases made before
+`entered_at` existed get the column added automatically on start.
 
 ### 5.6 Analytics and charts (`analytics.py`, `charts.py`)
 `analytics.report(db, user, Query)` returns one dictionary with everything: summary vs the previous

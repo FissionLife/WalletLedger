@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 
 from app.db import SessionLocal
 from app.models import Account, ApiKey, Category, Merchant, Transaction, User
+from app.services.ledger import _adjust_balance as adjust_balance
 from app.services.ledger import (
     get_account_balances,
     get_or_create_account,
@@ -26,6 +27,8 @@ from app.services.ledger import (
     get_spending_summary,
     record_transaction,
     transfer_between_pipes,
+    validate_amount,
+    validate_when,
 )
 
 
@@ -46,10 +49,8 @@ def _resolve_user(db: Session, user_id: str) -> User:
 
 
 def _positive_amount(amount: float) -> float:
-    amount = float(amount)
-    if amount <= 0:
-        raise ValueError("amount must be greater than zero")
-    return amount
+    """The ledger's own check: a real, finite number above zero and not absurdly large."""
+    return validate_amount(amount)
 
 
 def log_expense(
@@ -275,10 +276,7 @@ def edit_transaction(
         amount = _positive_amount(amount)
     if transaction_type not in (None, "expense", "income"):
         raise ValueError("transaction_type may be expense or income")
-    try:
-        parsed_date = datetime.fromisoformat(transaction_date) if transaction_date else None
-    except ValueError as exc:
-        raise ValueError("transaction_date must be an ISO-8601 date or datetime") from exc
+    parsed_date = validate_when(transaction_date)  # same rules as logging: real, not in the future
 
     def run(db: Session, user_id: str) -> dict[str, Any]:
         uid = _resolve_user(db, user_id).id
@@ -308,9 +306,9 @@ def edit_transaction(
         )
         # Reverse the old posting, then apply the corrected posting.
         if old_account:
-            old_account.balance += old_amount if old_type == "expense" else -old_amount
+            adjust_balance(db, old_account.id, old_amount if old_type == "expense" else -old_amount)
         if new_account:
-            new_account.balance += -new_amount if new_type == "expense" else new_amount
+            adjust_balance(db, new_account.id, -new_amount if new_type == "expense" else new_amount)
         tx.account_id, tx.transaction_type, tx.amount = (
             (new_account.id if new_account else None),
             new_type,
@@ -526,15 +524,6 @@ def save_user_api_key(user_id: str, provider: str, api_key: str) -> dict[str, An
         return {"status": "success", "provider": record.provider, "key_id": record.id}
 
     return _with_db(run, user_id=user_id)
-
-
-# Legacy function names retained for any in-progress agent integration.
-def get_balance_tool(customer_id: str) -> dict[str, Any]:
-    return get_pipe_balances(customer_id)
-
-
-def log_expense_tool(customer_id: str, amount: float, category: str) -> dict[str, Any]:
-    return log_expense(customer_id, amount, category)
 
 
 def get_financial_snapshot(user_id: str, days: int = 30) -> dict[str, Any]:

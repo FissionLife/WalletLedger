@@ -1,5 +1,3 @@
-# Role 1: Telegram Bot Core
-# Assigned to: Krishna
 """Real Telegram connection via aiogram (polling for local dev, webhook for production).
 
 Lifecycle (called from main.py's FastAPI lifespan):

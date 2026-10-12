@@ -127,7 +127,13 @@ class Transaction(Base):
     source: Mapped[str] = mapped_column(
         String(20), default="chat"
     )  # 'chat', 'pdf', 'sms', 'manual'
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow
+    )  # the date of the purchase
+    # when it was typed in (created_at can be a past date); /undo removes the latest one entered
+    entered_at: Mapped[datetime | None] = mapped_column(
+        DateTime, default=datetime.utcnow, nullable=True
+    )
 
     user: Mapped[User] = relationship("User", back_populates="transactions")
     category: Mapped[Category | None] = relationship("Category", foreign_keys=[category_id])

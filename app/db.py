@@ -56,9 +56,29 @@ def describe_database() -> str:
     return f"PostgreSQL ({engine.url.render_as_string(hide_password=True)})"
 
 
+# Columns added after the first release. `create_all` never alters an existing table, and the project has
+# no migration tool, so a database made by an older version gets these added here (safe to repeat).
+_ADDED_COLUMNS = [("transactions", "entered_at", "TIMESTAMP")]
+
+
+def _add_missing_columns() -> None:
+    from sqlalchemy import inspect, text
+
+    inspector = inspect(engine)
+    for table, column, ddl_type in _ADDED_COLUMNS:
+        if table not in inspector.get_table_names():
+            continue
+        if column in {c["name"] for c in inspector.get_columns(table)}:
+            continue
+        with engine.begin() as conn:
+            conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {ddl_type}"))
+        logger.info("Database upgraded: added %s.%s", table, column)
+
+
 def init_db():
     """Initializes tables in database."""
     Base.metadata.create_all(bind=engine)
+    _add_missing_columns()
     logger.info("Database ready: %s", describe_database())
 
 

@@ -118,6 +118,11 @@ QUESTION_NEEDS_AI = (
     "To answer questions like this I need an AI key: /setkey\n"
     "To log something, say it plainly: Spent 640 on dinner."
 )
+NOT_UNDERSTOOD = (
+    "I couldn't read that as an entry, so I didn't record anything.\n"
+    "Try: Spent 450 on dinner via Bank, or Received 60000 salary.\n"
+    "To understand free-form messages, add your AI key: /setkey"
+)
 NO_AI_HINT = (
     "💡 For free-form questions and advice, add your own AI key: /setkey\n"
     "(a free Gemini key takes a minute: aistudio.google.com/apikey)"

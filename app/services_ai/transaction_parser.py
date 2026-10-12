@@ -1,4 +1,4 @@
-"""Offline-first statement/receipt ingestion and financial insights for Role 5.
+"""Offline-first statement and receipt ingestion (no AI, no network).
 
 Statement import pipeline (no AI, no network):
 
@@ -25,7 +25,6 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.db import SessionLocal
 from app.models import Category, Merchant, Transaction
 
 # ---------------------------------------------------------------------------
@@ -1506,22 +1505,6 @@ async def parse_statement_file(
     return parse_statement_text(text, source=source, user_id=user_id, db=db).rows
 
 
-def parse_phonepe_pdf(
-    file_bytes: bytes, *, user_id: str | None = None, db: Session | None = None
-) -> list[dict[str, Any]]:
-    """Backward-compatible synchronous PDF parser (any supported layout)."""
-    text, _ = statement_text_from_file(file_bytes, "pdf")
-    return parse_statement_text(text, user_id=user_id, db=db).rows
-
-
-def parse_chat_expense(
-    text: str, *, user_id: str | None = None, db: Session | None = None
-) -> dict[str, Any] | None:
-    """Extract one expense/income from a short chat message without an LLM."""
-    rows = parse_receipt_text(text, user_id=user_id, db=db)
-    return rows[0] if rows else None
-
-
 def _insights_for_session(db: Session, user_id: str) -> dict[str, Any]:
     transactions = list(
         db.scalars(
@@ -1584,20 +1567,3 @@ def _insights_for_session(db: Session, user_id: str) -> dict[str, Any]:
         "reduce_money_tips": tips
         or ["Record more expenses to receive personalized savings suggestions."],
     }
-
-
-def generate_financial_insights(
-    user_id: str, mode: str = "summary", db: Session | None = None
-) -> dict[str, Any]:
-    """Return top spending, recurring-charge, and actionable savings insights."""
-    if mode not in {"summary", "reduce_money"}:
-        raise ValueError("mode must be 'summary' or 'reduce_money'")
-    owns_session = db is None
-    db = db or SessionLocal()
-    try:
-        result = _insights_for_session(db, user_id)
-        result["mode"] = mode
-        return result
-    finally:
-        if owns_session:
-            db.close()

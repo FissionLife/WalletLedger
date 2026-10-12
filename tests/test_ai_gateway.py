@@ -306,12 +306,6 @@ class TestRotationAndFallback(GatewayTestCase):
         self.assertIn("Ruthless Budgeter", system)
         self.assertIn('"food": 9000', system)
 
-    def test_legacy_class_facade(self):
-        chat_id = self._add_user_keys()
-        mock = AsyncMock(return_value=fake_response("legacy ok"))
-        with patch.object(gw.litellm, "acompletion", mock):
-            self.assertEqual(run(gw.AIGateway().generate_response(chat_id, "hi")), "legacy ok")
-
 
 class TestPrompts(unittest.TestCase):
     def test_three_personas_exist(self):

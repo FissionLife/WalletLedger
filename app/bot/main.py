@@ -1,12 +1,10 @@
-# Role 1: Telegram Bot Core
-# Assigned to: Krishna
 """Telegram entry point: commands, statement uploads, and the shared message handler.
 
 Every channel uses the same logic so there is one code path:
     real Telegram (aiogram polling or webhook, see app/bot/telegram.py)
     /bot/webhook without a configured bot (dev curl testing)
     /bot/simulate_chat (teammates without a bot token)
-        -> handle_text() / handle_document() -> Gopal's agent (Contract 1) and the ledger.
+        -> handle_incoming() / handle_document() -> the agent (agent.py) and the ledger.
 """
 
 from __future__ import annotations
@@ -91,7 +89,7 @@ HELP_TEXT = (
     "/balance · /stats · /history · /budget · /plan · /dashboard · /export\n"
     "Try: /stats 90d food · /stats last month · /chart categories\n\n"
     "**Fix**\n"
-    "/undo removes the last entry (or tap ↩️ Undo)\n\n"
+    "/undo removes the last entry you made (or tap ↩️ Undo)\n\n"
     "**Advice**\n"
     "/coach · /budgeter · /summary\n\n"
     "**AI**\n"
@@ -266,7 +264,7 @@ def _ensure_user(chat_id: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Statement upload -> Surya's parser (Contract 5) -> preview -> Meet's tools on "yes"
+# Statement upload -> the parser (transaction_parser.py) -> preview -> the ledger on "yes"
 # ---------------------------------------------------------------------------
 
 

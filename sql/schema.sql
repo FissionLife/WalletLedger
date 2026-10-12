@@ -89,6 +89,7 @@ CREATE TABLE IF NOT EXISTS transactions (
     description TEXT,
     source VARCHAR(20) NOT NULL,
     created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL,
+    entered_at TIMESTAMP WITHOUT TIME ZONE,
     PRIMARY KEY (id),
     FOREIGN KEY(user_id) REFERENCES users (id) ON DELETE CASCADE,
     FOREIGN KEY(account_id) REFERENCES accounts (id) ON DELETE SET NULL,

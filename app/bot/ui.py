@@ -97,10 +97,29 @@ def import_rows() -> list[list[Btn]]:
     return [[Btn("✅ Import", "imp:yes"), Btn("✖ Skip", "imp:no")]]
 
 
+# Telegram limits a button's data to 64 bytes. Up to 6 ids fit in the button itself; a bigger batch
+# (a statement import, a long message) is remembered here and the button carries a short key instead.
+_UNDO_BATCHES: dict[str, list[str]] = {}
+_UNDO_BATCH_LIMIT = 500
+
+
+def undo_batch(key: str) -> list[str] | None:
+    return _UNDO_BATCHES.get(key)
+
+
 def undo_row(tx_ids: list[str]) -> list[Btn]:
     if len(tx_ids) == 1:
         return [Btn("↩️ Undo", f"undo:{tx_ids[0][:12]}")]
-    return [Btn(f"↩️ Undo ({len(tx_ids)})", "undo:" + ",".join(t[:8] for t in tx_ids)[:55])]
+    label = f"↩️ Undo ({len(tx_ids)})"
+    if len(tx_ids) <= 6:
+        return [Btn(label, "undo:" + ",".join(t[:8] for t in tx_ids))]
+    import secrets
+
+    key = secrets.token_hex(4)
+    if len(_UNDO_BATCHES) >= _UNDO_BATCH_LIMIT:
+        _UNDO_BATCHES.pop(next(iter(_UNDO_BATCHES)))  # forget the oldest
+    _UNDO_BATCHES[key] = list(tx_ids)
+    return [Btn(label, f"undo:b{key}")]
 
 
 def history_rows(page: int, pages: int) -> list[list[Btn]]:

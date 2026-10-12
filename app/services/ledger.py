@@ -1,7 +1,8 @@
+import re
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session, joinedload
 
 from app.models import Account, Category, Merchant, Transaction, User
@@ -12,6 +13,21 @@ MAX_AMOUNT = 10_000_000_000.0
 
 def _now() -> datetime:
     return datetime.now(UTC).replace(tzinfo=None)
+
+
+def _adjust_balance(db: Session, account_id: str, delta: float) -> None:
+    """Add `delta` to an account's balance inside the database, in one statement.
+
+    Reading the balance into Python, adding, and writing it back loses updates when two requests run at
+    once (both read 100, both write 90). `balance = balance + delta` is applied by the database itself,
+    so every change counts.
+    """
+    db.execute(
+        update(Account)
+        .where(Account.id == account_id)
+        .values(balance=Account.balance + delta)
+        .execution_options(synchronize_session=False)
+    )
 
 
 def parse_when(value: Any) -> datetime | None:
@@ -39,6 +55,11 @@ def _validate_date(value: Any) -> datetime | None:
     if when > _now() + timedelta(days=1):
         raise LedgerError("Date is in the future")
     return when
+
+
+def validate_when(value: Any) -> datetime | None:
+    """A date from the user or the AI: readable, after 1999 and not in the future (or None)."""
+    return _validate_date(value)
 
 
 class LedgerError(ValueError):
@@ -190,11 +211,8 @@ def record_transaction(
         if not cat_id and merchant.default_category_id:
             cat_id = merchant.default_category_id
 
-    # Update balance according to Pipe flow
-    if tx_type == "expense":
-        account.balance = round(account.balance - amount, 2)
-    else:
-        account.balance = round(account.balance + amount, 2)
+    # Update balance according to Pipe flow (atomically, see _adjust_balance)
+    _adjust_balance(db, account.id, -amount if tx_type == "expense" else amount)
 
     tx = Transaction(
         user_id=user_id,
@@ -249,8 +267,8 @@ def transfer_between_pipes(
     from_account = locked[from_account_name.strip().lower()]
     to_account = locked[to_account_name.strip().lower()]
 
-    from_account.balance = round(from_account.balance - amount, 2)
-    to_account.balance = round(to_account.balance + amount, 2)
+    _adjust_balance(db, from_account.id, -amount)
+    _adjust_balance(db, to_account.id, amount)
 
     tx = Transaction(
         user_id=user_id,
@@ -334,6 +352,8 @@ def undo_transaction(db: Session, user_id: str, transaction_id: str) -> dict[str
     ident = (transaction_id or "").strip()
     if len(ident) < 6:
         raise LedgerError("Transaction id is too short")
+    if not re.fullmatch(r"[0-9a-fA-F-]+", ident):  # ids are UUIDs; also keeps LIKE wildcards out
+        raise LedgerError("That is not a transaction id")
     stmt = select(Transaction).where(Transaction.user_id == user_id)
     stmt = (
         stmt.where(Transaction.id == ident)
@@ -349,14 +369,17 @@ def undo_transaction(db: Session, user_id: str, transaction_id: str) -> dict[str
     src = db.get(Account, tx.account_id) if tx.account_id else None
     dst = db.get(Account, tx.to_account_id) if tx.to_account_id else None
     if tx.transaction_type == "expense" and src:
-        src.balance = round(src.balance + tx.amount, 2)
+        _adjust_balance(db, src.id, tx.amount)
     elif tx.transaction_type == "income" and src:
-        src.balance = round(src.balance - tx.amount, 2)
+        _adjust_balance(db, src.id, -tx.amount)
     elif tx.transaction_type == "transfer":
         if src:
-            src.balance = round(src.balance + tx.amount, 2)
+            _adjust_balance(db, src.id, tx.amount)
         if dst:
-            dst.balance = round(dst.balance - tx.amount, 2)
+            _adjust_balance(db, dst.id, -tx.amount)
+    db.flush()
+    if src:
+        db.refresh(src)  # the update above bypassed the object; read the real balance
     summary = {
         "status": "success",
         "transaction_id": tx.id,
@@ -374,6 +397,20 @@ def undo_transaction(db: Session, user_id: str, transaction_id: str) -> dict[str
         db.rollback()
         raise
     return summary
+
+
+def last_entered_transaction_id(db: Session, user_id: str) -> str | None:
+    """The transaction the user entered most recently (not the one with the latest date).
+
+    "Spent 20 on chai yesterday" is entered after "Spent 500 on rent today", so /undo must remove the
+    chai. Rows from before `entered_at` existed fall back to their date.
+    """
+    return db.scalar(
+        select(Transaction.id)
+        .where(Transaction.user_id == user_id)
+        .order_by(func.coalesce(Transaction.entered_at, Transaction.created_at).desc())
+        .limit(1)
+    )
 
 
 def recent_transactions(

@@ -12,8 +12,10 @@ only reads; it cannot change anything. Responses are never cached.
 
 from __future__ import annotations
 
+import asyncio
 import csv
 import io
+import math
 import time
 from collections import defaultdict, deque
 from dataclasses import replace
@@ -32,6 +34,8 @@ from app.services import analytics, ledger
 from app.web import tokens
 
 router = APIRouter(tags=["Dashboard"])
+
+
 STATIC = Path(__file__).parent / "static"
 
 SECURITY_HEADERS = {
@@ -80,9 +84,12 @@ def _csv_list(value: str | None) -> tuple[str, ...]:
 
 def _float(value: str | None) -> float | None:
     try:
-        return float(value) if value not in (None, "") else None
+        number = float(value) if value not in (None, "") else None
     except ValueError:
         raise HTTPException(status_code=400, detail="Amounts must be numbers") from None
+    if number is not None and not math.isfinite(number):  # "inf" and "nan" parse as floats
+        raise HTTPException(status_code=400, detail="Amounts must be ordinary numbers")
+    return number
 
 
 def build_query(
@@ -162,10 +169,15 @@ async def dashboard_data(request: Request, x_dashboard_token: str | None = Heade
     chat_id = _chat_from(x_dashboard_token)
     q = _query_from_request(request)
     compare = request.query_params.get("compare", "1") != "0"
-    with SessionLocal() as db:
-        uid = ledger.get_or_create_user(db, chat_id).id
-        rep = analytics.report(db, uid, q, compare=compare)
-        rep["options"] = _options(db, uid)
+
+    def work() -> dict:
+        with SessionLocal() as db:
+            uid = ledger.get_or_create_user(db, chat_id).id
+            rep = analytics.report(db, uid, q, compare=compare)
+            rep["options"] = _options(db, uid)
+            return rep
+
+    rep = await asyncio.to_thread(work)
     rep["applied"] = {
         "period": request.query_params.get("period", "30d"),
         "categories": list(q.categories),
@@ -192,9 +204,12 @@ async def transactions(request: Request, x_dashboard_token: str | None = Header(
     except ValueError:
         raise HTTPException(status_code=400, detail="page and per_page must be numbers") from None
     kind = p.get("type")
-    with SessionLocal() as db:
-        uid = ledger.get_or_create_user(db, chat_id).id
-        rows = analytics.load_rows(db, uid, q)
+
+    def load() -> list:
+        with SessionLocal() as db:
+            return analytics.load_rows(db, ledger.get_or_create_user(db, chat_id).id, q)
+
+    rows = await asyncio.to_thread(load)
     if kind in ("expense", "income", "transfer"):
         rows = [r for r in rows if r.kind == kind]
     if search:
@@ -243,9 +258,12 @@ async def transactions(request: Request, x_dashboard_token: str | None = Header(
 async def export_csv(request: Request, x_dashboard_token: str | None = Header(default=None)):
     chat_id = _chat_from(x_dashboard_token)
     q = _query_from_request(request)
-    with SessionLocal() as db:
-        uid = ledger.get_or_create_user(db, chat_id).id
-        rows = analytics.load_rows(db, uid, q)
+
+    def load() -> list:
+        with SessionLocal() as db:
+            return analytics.load_rows(db, ledger.get_or_create_user(db, chat_id).id, q)
+
+    rows = await asyncio.to_thread(load)
     buf = io.StringIO()
     w = csv.writer(buf)
     w.writerow(["Date", "Type", "Amount", "Category", "Merchant", "Account", "Note"])
@@ -255,10 +273,7 @@ async def export_csv(request: Request, x_dashboard_token: str | None = Header(de
                 r.when.strftime("%Y-%m-%d"),
                 r.kind,
                 f"{r.amount:.2f}",
-                r.category,
-                r.merchant,
-                r.account,
-                r.note,
+                *(analytics.csv_safe(v) for v in (r.category, r.merchant, r.account, r.note)),
             ]
         )
     name = f"walletledger-{datetime.now().strftime('%Y%m%d')}.csv"

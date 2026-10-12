@@ -1,13 +1,10 @@
-"""Role 2: LangGraph Agent Brain
-Assigned to: Gopal
+"""The agent: reads a message, picks ledger tools, asks for confirmation when needed, writes the reply.
 
-Fully LLM-dependent and Agent-driven conversational StateGraph workflow for WalletLedger.
-Uses LiteLLM / LangGraph tool calling to dynamically reason about user queries, extract
-financial entities, invoke MCP ledger tools, handle human-in-the-loop confirmations,
-and synthesize rich financial intelligence responses.
-
-Stores complete conversation history permanently in the configured database (PostgreSQL / SQLite).
-No hardcoded keyword matching or static category dictionaries are used.
+A small LangGraph flowchart (llm_reasoning -> confirmation -> tool_executor -> response_synthesizer).
+Clear messages are read by the rules in nlu.py with no AI; goals and questions go to the multi-step
+helper in orchestrator.py when the user has an AI key; without one only fixed requests (balance,
+spending, advice) work and anything else gets a short hint, never a guessed expense.
+Conversation history is saved in the database (encrypted, API keys redacted).
 """
 
 from __future__ import annotations
@@ -479,6 +476,7 @@ Key Guidelines:
 class PendingAction(TypedDict, total=False):
     tool_name: str
     tool_args: dict[str, Any]
+    tool_calls: list[dict[str, Any]]  # everything from the same message, run together on Yes
     description: str
     created_at: str
 
@@ -614,284 +612,17 @@ async def _run_llm_analysis(
         )
 
     # Dynamic fallback structured reasoning
-    analysis = _dynamic_llm_json_reasoning(message)
+    analysis = _offline_intent(message)
     if offline_reason:
         analysis["offline_reason"] = offline_reason
     return analysis
 
 
-def _clean_token(t: str) -> str:
-    return re.sub(r"[^\w\s]", "", t).strip()
-
-
-STOP_WORDS = {
-    "spent", "paid", "for", "on", "via", "to", "in", "from", "the", "with",
-    "rs", "inr", "i", "me", "my", "we", "our", "you", "your", "got", "stipend",
-    "stifend", "salary", "this", "that", "and", "of", "a", "an", "is", "was",
-    "have", "had", "buy", "bought", "spend", "expense", "expenses",
-}  # fmt: skip
-
-
-def _infer_category_and_merchant(text: str) -> tuple[str, str | None]:
-    """Infers an intelligent category and merchant from raw text without hardcoding."""
-    lower = text.lower()
-    raw_words = [w for w in re.findall(r"[a-zA-Z]+", text) if w.lower() not in STOP_WORDS]
-
-    cat = "General"
-    if any(
-        k in lower
-        for k in [
-            "pizza",
-            "dosa",
-            "idly",
-            "biryani",
-            "lunch",
-            "dinner",
-            "nasta",
-            "breakfast",
-            "food",
-            "tea",
-            "coffee",
-            "restaurant",
-            "burger",
-            "cafe",
-            "swiggy",
-            "zomato",
-        ]
-    ):
-        cat = "Food"
-    elif any(
-        k in lower
-        for k in [
-            "petrol",
-            "diesel",
-            "fuel",
-            "uber",
-            "ola",
-            "cab",
-            "auto",
-            "metro",
-            "bus",
-            "train",
-            "flight",
-            "toll",
-        ]
-    ):
-        cat = "Transport"
-    elif any(
-        k in lower
-        for k in [
-            "water",
-            "milk",
-            "groceries",
-            "vegetables",
-            "fruits",
-            "mart",
-            "bigbasket",
-            "blinkit",
-            "zepto",
-        ]
-    ):
-        cat = "Groceries"
-    elif any(
-        k in lower
-        for k in [
-            "haircut",
-            "salon",
-            "spa",
-            "grooming",
-            "shampoo",
-            "medicine",
-            "doctor",
-            "pharmacy",
-            "health",
-        ]
-    ):
-        cat = "Personal Care"
-    elif any(
-        k in lower
-        for k in [
-            "gift",
-            "present",
-            "chocaltes",
-            "chocolates",
-            "shopping",
-            "clothes",
-            "amazon",
-            "flipkart",
-            "myntra",
-        ]
-    ):
-        cat = "Shopping" if "gift" not in lower else "Gifts"
-    elif any(
-        k in lower
-        for k in ["recharge", "wifi", "broadband", "electricity", "bill", "rent", "maintenance"]
-    ):
-        cat = "Utilities"
-    elif any(k in lower for k in ["netflix", "prime", "spotify", "movie", "cinema", "game"]):
-        cat = "Entertainment"
-    elif raw_words:
-        cat = raw_words[0].title()
-
-    merchant = raw_words[0].title() if raw_words else None
-    return cat, merchant
-
-
-def _dynamic_llm_json_reasoning(message: str) -> dict[str, Any]:
-    """Pure dynamic agent fallback reasoning: extracts structured entities and operations from user messages."""
-    clean = message.strip()
-    lower = clean.lower()
-
-    # 0. A question that mentions an amount ("is 640 too much for dinner?") is not an expense.
-    if nlu.is_question(clean) and re.search(r"\d", clean):
-        return {"type": "direct_text", "content": replies.QUESTION_NEEDS_AI}
-
-    # 1. Multi-line or Multi-item Batch Ingestion
-    lines = [line.strip() for line in clean.splitlines() if line.strip()]
-    batch_calls: list[dict[str, Any]] = []
-
-    # Check for income mentioned at top, e.g. "i got stifend of 15000"
-    income_match = re.search(
-        r"(?:got|received|earned|credited)?\s*(?:stipend|stifend|salary|freelance|income)\s*(?:of)?\s*(?:₹|rs\.?|inr)?\s*(\d+(?:\.\d{1,2})?)",
-        lines[0] if lines else clean,
-        re.I,
-    )
-    if income_match:
-        inc_amount = float(income_match.group(1))
-        inc_cat = (
-            "Salary"
-            if "salary" in lower
-            else "Stipend"
-            if any(s in lower for s in ["stipend", "stifend"])
-            else "Income"
-        )
-        batch_calls.append(
-            {
-                "tool_name": "log_income",
-                "tool_args": {
-                    "amount": inc_amount,
-                    "category": inc_cat,
-                    "source_account": "Bank",
-                    "description": f"{inc_cat} received",
-                },
-            }
-        )
-
-    # Parse each line for expenses (format: `190=poornima pizza Dosa`, `Poornima Dosa: 190`, `190 petrol`)
-    for line in lines:
-        line_clean = line.strip()
-        # Skip if line was solely the income statement
-        if income_match and line_clean.lower().startswith(
-            ("i got stipend", "i got stifend", "got salary", "received salary")
-        ):
-            # But line might contain trailing expense: "from that i spend this 190=..."
-            match_trailing = re.search(r"(\d+(?:\.\d{1,2})?)\s*=\s*(.+)", line_clean)
-            if not match_trailing:
-                continue
-            line_clean = match_trailing.group(0)
-
-        # Match pattern: 190=Item or 190 = Item or Item=190 or 190 Item
-        eq_match1 = re.match(
-            r"(?:₹|rs\.?|inr)?\s*(\d+(?:\.\d{1,2})?)\s*[=:-]\s*(.+)", line_clean, re.I
-        )
-        eq_match2 = re.match(
-            r"(.+?)\s*[=:-]\s*(?:₹|rs\.?|inr)?\s*(\d+(?:\.\d{1,2})?)", line_clean, re.I
-        )
-        space_match = re.match(
-            r"(?:₹|rs\.?|inr)?\s*(\d+(?:\.\d{1,2})?)\s+([a-zA-Z\s]+)", line_clean, re.I
-        )
-
-        if eq_match1:
-            amt = float(eq_match1.group(1))
-            desc = eq_match1.group(2).strip()
-            cat, merchant = _infer_category_and_merchant(desc)
-            batch_calls.append(
-                {
-                    "tool_name": "log_expense",
-                    "tool_args": {
-                        "amount": amt,
-                        "category": cat,
-                        "merchant": merchant,
-                        "account_name": "Cash",
-                        "description": desc,
-                    },
-                }
-            )
-        elif eq_match2:
-            desc = eq_match2.group(1).strip()
-            amt = float(eq_match2.group(2))
-            cat, merchant = _infer_category_and_merchant(desc)
-            batch_calls.append(
-                {
-                    "tool_name": "log_expense",
-                    "tool_args": {
-                        "amount": amt,
-                        "category": cat,
-                        "merchant": merchant,
-                        "account_name": "Cash",
-                        "description": desc,
-                    },
-                }
-            )
-        elif len(lines) > 1 and space_match:
-            amt = float(space_match.group(1))
-            desc = space_match.group(2).strip()
-            cat, merchant = _infer_category_and_merchant(desc)
-            batch_calls.append(
-                {
-                    "tool_name": "log_expense",
-                    "tool_args": {
-                        "amount": amt,
-                        "category": cat,
-                        "merchant": merchant,
-                        "account_name": "Cash",
-                        "description": desc,
-                    },
-                }
-            )
-
-    if batch_calls:
-        return {
-            "type": "tool_calls",
-            "tool_calls": batch_calls,
-            "tool_name": batch_calls[0]["tool_name"],
-            "tool_args": batch_calls[0]["tool_args"],
-        }
-
-    # 2. Transfer between accounts
-    transfer_match = re.search(
-        r"(?:transfer|transferred|move|moved|send|sent|shift)\s+(?:₹|rs\.?|inr)?\s*(\d+(?:\.\d{1,2})?)\s+(?:from\s+([a-zA-Z\s]+?)\s+to\s+([a-zA-Z\s]+)|to\s+([a-zA-Z\s]+?)\s+from\s+([a-zA-Z\s]+))",
-        clean,
-        re.I,
-    )
-    if transfer_match:
-        amount = float(transfer_match.group(1))
-        if transfer_match.group(2) and transfer_match.group(3):
-            from_acc = transfer_match.group(2).strip().title()
-            to_acc = transfer_match.group(3).strip().title()
-        else:
-            to_acc = transfer_match.group(4).strip().title()
-            from_acc = transfer_match.group(5).strip().title()
-        call = {
-            "tool_name": "transfer_funds",
-            "tool_args": {
-                "amount": amount,
-                "from_account": from_acc,
-                "to_account": to_acc,
-                "description": clean,
-            },
-        }
-        return {
-            "type": "tool_calls",
-            "tool_calls": [call],
-            "tool_name": call["tool_name"],
-            "tool_args": call["tool_args"],
-        }
-
-    # 3. Financial Skills & Advice
-    if any(
-        k in lower
-        for k in [
+# What a user with no AI key can still ask for in words. Logging is NOT here: the rules in nlu.py read
+# entries, and anything they can't read must not be guessed into an expense.
+_OFFLINE_INTENTS: list[tuple[tuple[str, ...], str, dict[str, Any]]] = [
+    (
+        (
             "reduce money",
             "reduce expense",
             "how to save",
@@ -899,63 +630,29 @@ def _dynamic_llm_json_reasoning(message: str) -> dict[str, Any]:
             "save money",
             "financial advice",
             "coach",
-        ]
-    ):
-        call = {"tool_name": "financial_advice_bundle", "tool_args": {}}
-        return {
-            "type": "tool_calls",
-            "tool_calls": [call],
-            "tool_name": call["tool_name"],
-            "tool_args": call["tool_args"],
-        }
-
-    if any(k in lower for k in ["budget alert", "budget cap", "over budget", "check budget"]):
-        call = {"tool_name": "skill_budget_alert_check", "tool_args": {}}
-        return {
-            "type": "tool_calls",
-            "tool_calls": [call],
-            "tool_name": call["tool_name"],
-            "tool_args": call["tool_args"],
-        }
-
-    if any(
-        k in lower
-        for k in ["recurring", "recurring bills", "subscriptions", "detect bills", "hidden bill"]
-    ):
-        call = {"tool_name": "skill_recurring_bill_detector", "tool_args": {}}
-        return {
-            "type": "tool_calls",
-            "tool_calls": [call],
-            "tool_name": call["tool_name"],
-            "tool_args": call["tool_args"],
-        }
-
-    if any(k in lower for k in ["emergency fund", "runway", "liquid fund", "survival fund"]):
-        call = {"tool_name": "skill_emergency_fund_calculator", "tool_args": {}}
-        return {
-            "type": "tool_calls",
-            "tool_calls": [call],
-            "tool_name": call["tool_name"],
-            "tool_args": call["tool_args"],
-        }
-
-    # 4. Balances & Spending Breakdown
-    if any(k in lower for k in ["balance", "balances", "net worth", "tank", "pipes"]):
-        call = {"tool_name": "get_pipe_balances", "tool_args": {}}
-        return {
-            "type": "tool_calls",
-            "tool_calls": [call],
-            "tool_name": call["tool_name"],
-            "tool_args": call["tool_args"],
-        }
-
-    if any(
-        k in lower
-        for k in [
+        ),
+        "financial_advice_bundle",
+        {},
+    ),
+    (("budget alert", "budget cap", "over budget", "check budget"), "skill_budget_alert_check", {}),
+    (
+        ("recurring", "subscriptions", "detect bills", "hidden bill"),
+        "skill_recurring_bill_detector",
+        {},
+    ),
+    (
+        ("emergency fund", "runway", "liquid fund", "survival fund"),
+        "skill_emergency_fund_calculator",
+        {},
+    ),
+    (("balance", "net worth", "tank", "pipes"), "get_pipe_balances", {}),
+    (
+        (
             "how much did i spend",
             "how much spent",
-            "how much total i spend",
             "how much i spend",
+            "how much total",
+            "total i spend",
             "total spent",
             "total spend",
             "spending breakdown",
@@ -963,113 +660,39 @@ def _dynamic_llm_json_reasoning(message: str) -> dict[str, Any]:
             "expense breakdown",
             "show expenses",
             "my expenses",
-        ]
-    ):
-        period = (
-            "week"
-            if "week" in lower
-            else "quarter"
-            if "quarter" in lower
-            else "year"
-            if "year" in lower
-            else "month"
-        )
-        call = {"tool_name": "get_spending_breakdown", "tool_args": {"period": period}}
-        return {
-            "type": "tool_calls",
-            "tool_calls": [call],
-            "tool_name": call["tool_name"],
-            "tool_args": call["tool_args"],
-        }
+        ),
+        "get_spending_breakdown",
+        {"period": "month"},
+    ),
+]
 
-    # 5. Single Income
-    if any(
-        k in lower
-        for k in ["received", "got salary", "earned", "credited", "income", "freelance salary"]
-    ):
-        amt_match = re.search(r"(?:₹|rs\.?|inr)?\s*(\d+(?:\.\d{1,2})?)", clean, re.I)
-        if amt_match:
-            amount = float(amt_match.group(1))
-            cat = (
-                "Salary" if "salary" in lower else "Freelance" if "freelance" in lower else "Income"
-            )
-            acc = (
-                "Bank"
-                if "bank" in lower
-                else "UPI Wallet"
-                if any(w in lower for w in ["upi", "gpay", "wallet", "phonepe"])
-                else "Cash"
-                if "cash" in lower
-                else "Bank"
-            )
-            call = {
-                "tool_name": "log_income",
-                "tool_args": {
-                    "amount": amount,
-                    "category": cat,
-                    "source_account": acc,
-                    "description": clean,
-                },
-            }
+
+def _offline_intent(message: str) -> dict[str, Any]:
+    """Without an AI key: a few fixed requests by keyword, otherwise a short, honest hint."""
+    lower = message.strip().lower()
+    if nlu.is_question(lower) and re.search(r"\d", lower):
+        return {"type": "direct_text", "content": replies.QUESTION_NEEDS_AI}
+    for keywords, tool, args in _OFFLINE_INTENTS:
+        if any(k in lower for k in keywords):
+            args = dict(args)
+            if tool == "get_spending_breakdown":
+                args["period"] = next(
+                    (w for w in ("week", "quarter", "year") if w in lower), "month"
+                )
+            call = {"tool_name": tool, "tool_args": args}
             return {
                 "type": "tool_calls",
                 "tool_calls": [call],
-                "tool_name": call["tool_name"],
-                "tool_args": call["tool_args"],
+                "tool_name": tool,
+                "tool_args": args,
             }
-
-    # 6. Single Expense
-    amt_match = re.search(r"(?:₹|rs\.?|inr)?\s*(\d+(?:\.\d{1,2})?)", clean, re.I)
-    if amt_match:
-        amount = float(amt_match.group(1))
-        if amount > 0:
-            acc = (
-                "UPI Wallet"
-                if any(w in lower for w in ["upi", "gpay", "phonepe", "paytm", "wallet"])
-                else "Bank"
-                if any(w in lower for w in ["bank", "hdfc", "card", "debit", "credit"])
-                else "Cash"
-            )
-            cat, merchant = _infer_category_and_merchant(clean)
-            call = {
-                "tool_name": "log_expense",
-                "tool_args": {
-                    "amount": amount,
-                    "category": cat,
-                    "merchant": merchant,
-                    "account_name": acc,
-                    "description": clean,
-                },
-            }
-            return {
-                "type": "tool_calls",
-                "tool_calls": [call],
-                "tool_name": call["tool_name"],
-                "tool_args": call["tool_args"],
-            }
-
-    # 7. Greetings / Help fallback
     if lower in {"/help", "help", "/start", "menu", "commands"}:
-        return {
-            "type": "direct_text",
-            "content": (
-                "📖 **WalletLedger Interaction Guide (LLM Brain):**\n\n"
-                "• **Log Expenses:** *'Spent 450 on dinner via Bank'* or list items:\n"
-                "  `190=pizza`\n  `80=dosa`\n"
-                "• **Log Incomes:** *'Received 60000 salary in Bank'*\n"
-                "• **Transfers:** *'Transfer 2000 from Bank to Cash'*\n"
-                "• **Balances:** *'What is my balance?'*\n"
-                "• **Spending Reports:** *'How much did I spend this month?'*\n"
-                "• **Financial Skills:** *'Check budget alerts'*, *'Find recurring bills'*, *'Emergency fund runway'*\n"
-                "• **AI Coach:** *'How can I reduce expenses?'*\n"
-                "• **Set API Key:** *'My Gemini key is AQ.... or AIza...'*"
-            ),
-        }
-
-    return {
-        "type": "direct_text",
-        "content": replies.GREETING,
-    }
+        return {"type": "direct_text", "content": replies.GREETING}
+    if re.search(
+        r"\d", lower
+    ):  # has a number but the rules could not read it: never guess an expense
+        return {"type": "direct_text", "content": replies.NOT_UNDERSTOOD}
+    return {"type": "direct_text", "content": replies.GREETING}
 
 
 # ---------------------------------------------------------------------------
@@ -1285,10 +908,17 @@ async def llm_reasoning_node(state: AgentState) -> dict[str, Any]:
                 amount = float(tc["tool_args"].get("amount", 0.0))
                 from_acc = tc["tool_args"].get("from_account", "Source")
                 to_acc = tc["tool_args"].get("to_account", "Destination")
+                others = len(tool_calls) - 1
+                extra = (
+                    f" (and {others} other entr{'y' if others == 1 else 'ies'} from your message)"
+                    if others
+                    else ""
+                )
                 pending_action: PendingAction = {
                     "tool_name": tc["tool_name"],
                     "tool_args": tc["tool_args"],
-                    "description": f"Transfer ₹{amount:,.2f} from {from_acc} to {to_acc}",
+                    "tool_calls": tool_calls,
+                    "description": f"Transfer ₹{amount:,.2f} from {from_acc} to {to_acc}{extra}",
                     "created_at": _utc_now().isoformat(),
                 }
                 session_store.set_pending(chat_id, pending_action)
@@ -1324,13 +954,6 @@ async def llm_reasoning_node(state: AgentState) -> dict[str, Any]:
     }
 
 
-def _key_help_text() -> str:
-    return (
-        "🔑 I couldn't find a valid API key in that message.\n"
-        "Paste the full key, e.g. *'my Gemini key is AQ....'* or *'AIza...'*."
-    )
-
-
 async def confirmation_node(state: AgentState) -> dict[str, Any]:
     """Node 2: Resolves confirmation or cancellation of a pending action."""
     chat_id = state.get("chat_id", "")
@@ -1341,7 +964,8 @@ async def confirmation_node(state: AgentState) -> dict[str, Any]:
         return {
             "tool_name": pending["tool_name"],
             "tool_args": pending["tool_args"],
-            "tool_calls": [{"tool_name": pending["tool_name"], "tool_args": pending["tool_args"]}],
+            "tool_calls": pending.get("tool_calls")
+            or [{"tool_name": pending["tool_name"], "tool_args": pending["tool_args"]}],
             "requires_confirmation": False,
             "confirmation_decision": "confirmed",
         }
@@ -1783,7 +1407,7 @@ def route_after_confirmation(state: AgentState) -> str:
 
 
 def build_agent_graph():
-    """Builds and compiles the StateGraph for Gopal's LLM Agent brain."""
+    """Builds and compiles the agent's StateGraph."""
     workflow = StateGraph(AgentState)
 
     # 1. Add Nodes
@@ -1849,7 +1473,7 @@ async def process_user_interaction_ex(
     chat_id: str, text: str, attachments: list[Any] | None = None
 ) -> Outcome:
     """
-    Contract 1: Primary entrypoint for Telegram Bot (Krishna) to interact with LangGraph agent.
+    Entry point for the Telegram bot.
     Loads the recent conversation history, runs the graph, and persists both messages.
     """
     clean_text = (text or "").strip()
@@ -1885,19 +1509,3 @@ async def process_user_interaction_ex(
     except Exception as e:
         logger.error(f"Error executing LLM Agent StateGraph: {e}", exc_info=True)
         return Outcome("⚠️ Something went wrong on my side. Please try again in a moment.")
-
-
-def process_message(chat_id: str, text: str) -> str:
-    """Synchronous backward-compatible wrapper."""
-    import asyncio
-
-    try:
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            import nest_asyncio
-
-            nest_asyncio.apply()
-            return loop.run_until_complete(process_user_interaction(chat_id, text))
-        return asyncio.run(process_user_interaction(chat_id, text))
-    except Exception:
-        return asyncio.run(process_user_interaction(chat_id, text))

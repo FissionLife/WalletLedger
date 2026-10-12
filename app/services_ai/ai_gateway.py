@@ -1,4 +1,4 @@
-"""Role 3: AI Gateway (provider agnostic).
+"""AI gateway: one entry point for every LLM call, whatever the provider.
 
 One entry point for every LLM call in WalletLedger:
 
@@ -970,57 +970,3 @@ async def ask_persona(
     return await ask_llm(
         user_id, build_system_prompt(chosen, context), user_prompt, model_preference
     )
-
-
-class AIGateway:
-    """Object-style facade over the module functions (kept for backward compatibility)."""
-
-    def __init__(self, model_preference: str | None = None):
-        self.default_model = model_preference or default_model(DEFAULT_PROVIDER)
-
-    async def ask(
-        self,
-        user_id: str,
-        system_prompt: str,
-        user_prompt: str,
-        model_preference: str | None = None,
-        tools: list[dict[str, Any]] | None = None,
-        messages_history: list[dict[str, str]] | None = None,
-    ) -> Any:
-        return await ask_llm(
-            user_id,
-            system_prompt,
-            user_prompt,
-            model_preference or self.default_model,
-            tools=tools,
-            messages_history=messages_history,
-        )
-
-    async def generate_response(
-        self,
-        user_id: str,
-        system_prompt: str = "",
-        user_prompt: str = "",
-        prompt: str | None = None,
-        tools: list[dict[str, Any]] | None = None,
-        model_preference: str | None = None,
-        messages_history: list[dict[str, str]] | None = None,
-    ) -> Any:
-        text = user_prompt or prompt or ""
-        return await self.ask(
-            user_id,
-            system_prompt,
-            text,
-            model_preference=model_preference,
-            tools=tools,
-            messages_history=messages_history,
-        )
-
-    add_key = staticmethod(add_api_key)
-    add_keys_from_text = staticmethod(add_api_keys_from_text)
-    list_keys = staticmethod(list_api_keys)
-    deactivate_key = staticmethod(deactivate_api_key)
-    delete_key = staticmethod(delete_api_key)
-
-
-ai_gateway = AIGateway()

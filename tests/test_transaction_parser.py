@@ -3,16 +3,13 @@ import os
 os.environ["WALLETLEDGER_TESTING"] = "1"  # never read the real .env in tests
 os.environ["LITELLM_MODE"] = "PRODUCTION"  # litellm would otherwise load .env (real keys!)
 import unittest
-from datetime import datetime
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from app.models import Base, Category, Merchant, Transaction, User
+from app.models import Base, Category, Merchant, User
 from app.services_ai.transaction_parser import (
     categorize_transaction,
-    generate_financial_insights,
-    parse_chat_expense,
     parse_receipt_text,
 )
 
@@ -33,13 +30,6 @@ class TransactionParserTests(unittest.TestCase):
             parse_receipt_text("Your A/c XX1234 debited Rs. 99 to Zqx Traders")[0]["category"],
             "Uncategorized",
         )
-
-    def test_parses_chat_expense(self):
-        row = parse_chat_expense("Spent Rs 200 at Uber on 02-10-2026")
-        self.assertIsNotNone(row)
-        self.assertEqual(row["amount"], 200.0)
-        self.assertEqual(row["merchant"], "Uber")
-        self.assertEqual(row["category"], "Transport")
 
     def test_income_and_unknown_category_are_safe(self):
         rows = parse_receipt_text("Salary credited INR 100000 from Acme Corp")
@@ -63,30 +53,4 @@ class TransactionParserTests(unittest.TestCase):
         self.assertEqual(
             categorize_transaction("netflix", user_id=user.id, db=session), "Entertainment"
         )
-        session.add_all(
-            [
-                Transaction(
-                    user_id=user.id,
-                    category_id=category.id,
-                    merchant_id=merchant.id,
-                    amount=199,
-                    transaction_type="expense",
-                    created_at=datetime.utcnow(),
-                ),
-                Transaction(
-                    user_id=user.id,
-                    category_id=category.id,
-                    merchant_id=merchant.id,
-                    amount=199,
-                    transaction_type="expense",
-                    created_at=datetime.utcnow(),
-                ),
-            ]
-        )
-        session.commit()
-        insights = generate_financial_insights(user.id, mode="reduce_money", db=session)
-        self.assertEqual(insights["total_expenses"], 398.0)
-        self.assertEqual(insights["top_merchants"][0]["merchant"], "Netflix")
-        self.assertEqual(insights["recurring_subscriptions"][0]["occurrences"], 2)
-        self.assertTrue(insights["reduce_money_tips"])
         session.close()

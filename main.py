@@ -20,6 +20,16 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name
 async def lifespan(app: FastAPI):
     # Initialize database tables on startup
     init_db()
+    from app import crypto
+    from app.web import tokens
+
+    if crypto.weak_secret_key() and tokens.is_https():
+        # Dashboard links are signed with SECRET_KEY. A public placeholder means anyone could sign one
+        # for any chat id, and the address is reachable from the internet. Refuse to run that way.
+        raise RuntimeError(
+            "SECRET_KEY is empty, a placeholder or too short, but PUBLIC_URL is a public https address. "
+            'Set a long random SECRET_KEY first: python -c "import secrets; print(secrets.token_urlsafe(48))"'
+        )
     if settings.secret_key == INSECURE_DEV_KEY:
         logging.getLogger(__name__).warning(
             "SECRET_KEY is the public default: set a random one before storing real user API keys"

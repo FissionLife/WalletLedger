@@ -1,4 +1,4 @@
-"""Role 3: System prompts & mode personas for the WalletLedger AI.
+"""System prompts and the three advice personas.
 
 Three personas are available:
 
@@ -6,7 +6,7 @@ Three personas are available:
 * ``budgeter`` - Ruthless Budgeter: direct, stern feedback when discretionary spend runs high.
 * ``summary``  - Telegram Quick-Summary: compact emoji bullet points for mobile chat.
 
-Typical use from the agent (Role 2)::
+Typical use from the agent::
 
     from app.services_ai.prompts import build_system_prompt, detect_mode
 

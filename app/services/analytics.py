@@ -61,6 +61,18 @@ class Query:
     def days(self) -> int:
         return max(1, (self.end - self.start).days)
 
+    def effective_days(self, first_day: date | None = None) -> int:
+        """Days the figures really cover: not past today, and not before the first entry.
+
+        "all" starts in the year 2000, and a brand-new user has weeks of empty window, so dividing
+        by the nominal length would make every daily average look tiny.
+        """
+        end = min(self.end.date(), _now().date() + timedelta(days=1))
+        start = self.start.date()
+        if first_day is not None and first_day > start:
+            start = first_day
+        return max(1, (end - start).days)
+
     @property
     def filtered(self) -> bool:
         return bool(
@@ -267,6 +279,15 @@ def _income(rows):
     return [r for r in rows if r.kind == "income"]
 
 
+LEADING_FORMULA_CHARS = ("=", "+", "-", "@", chr(9), chr(13))
+
+
+def csv_safe(value: str) -> str:
+    """Spreadsheets run cells that start with = + - @ as formulas; a leading quote makes them text."""
+    text = str(value or "")
+    return "'" + text if text[:1] in LEADING_FORMULA_CHARS else text
+
+
 def _change(now: float, before: float) -> float | None:
     """Percent change versus the previous period, or None when it would mislead.
 
@@ -289,6 +310,7 @@ def summary(rows: list[Row], q: Query, prev_rows: list[Row] | None = None) -> di
     earned = sum(r.amount for r in inc)
     amounts = [r.amount for r in exp]
     active_days = len({r.day for r in exp})
+    days = q.effective_days(min((r.day for r in rows), default=None))
     out: dict[str, Any] = {
         "spent": _r(spent),
         "earned": _r(earned),
@@ -297,12 +319,12 @@ def summary(rows: list[Row], q: Query, prev_rows: list[Row] | None = None) -> di
         "transactions": len(exp) + len(inc),
         "expense_count": len(exp),
         "transfers": sum(1 for r in rows if r.kind == "transfer"),
-        "avg_per_day": _r(spent / q.days),
+        "avg_per_day": _r(spent / days),
         "avg_expense": _r(spent / len(exp)) if exp else 0.0,
         "median_expense": _r(statistics.median(amounts)) if amounts else 0.0,
         "largest_expense": _r(max(amounts)) if amounts else 0.0,
         "active_days": active_days,
-        "no_spend_days": max(0, q.days - active_days),
+        "no_spend_days": max(0, days - active_days),
     }
     if prev_rows is not None:
         pspent = sum(r.amount for r in _expenses(prev_rows))

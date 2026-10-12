@@ -10,12 +10,16 @@ import asyncio
 import csv
 import io
 import logging
+import re
 from collections import OrderedDict
 from datetime import datetime
+
+from sqlalchemy import select
 
 from app.bot import fmt, ui
 from app.bot.ui import Btn, Reply
 from app.db import SessionLocal
+from app.models import Category
 from app.services import analytics, ledger
 from app.web import tokens
 
@@ -224,10 +228,7 @@ def _csv(chat_id: str, period: str) -> tuple[bytes, int]:
                 r.when.strftime("%Y-%m-%d"),
                 r.kind,
                 f"{r.amount:.2f}",
-                r.category,
-                r.merchant,
-                r.account,
-                r.note,
+                *(analytics.csv_safe(v) for v in (r.category, r.merchant, r.account, r.note)),
             ]
         )
     return ("﻿" + buf.getvalue()).encode("utf-8"), len(rows)  # BOM so Excel reads ₹ and accents
@@ -247,7 +248,16 @@ async def export_csv(chat_id: str, period: str = "30d") -> Reply:
 def _set_budget(chat_id: str, category: str, amount: float | None) -> str:
     with SessionLocal() as db:
         uid = _user_id(db, chat_id)
-        cat = ledger.get_or_create_category(db, uid, category, "expense")
+        # "food" means the user's "Food & Dining": reuse the category their entries are filed under
+        key = category.strip().lower()
+        mine = list(
+            db.scalars(select(Category).where(Category.user_id == uid, Category.type == "expense"))
+        )
+        cat = next((c for c in mine if c.name.lower() == key), None) or next(
+            (c for c in mine if len(key) >= 3 and key in c.name.lower()), None
+        )
+        if cat is None:
+            cat = ledger.get_or_create_category(db, uid, category, "expense")
         cat.budget_limit = amount
         db.commit()
         return cat.name
@@ -355,10 +365,18 @@ def _undo(chat_id: str, ident: str) -> Reply:
     with SessionLocal() as db:
         uid = _user_id(db, chat_id)
         if ident in ("", "last"):
-            recent, _ = ledger.recent_transactions(db, uid, 1)
-            if not recent:
+            latest = ledger.last_entered_transaction_id(db, uid)
+            if not latest:
                 return Reply("Nothing to undo yet.")
-            ident = recent[0]["id"]
+            ident = latest
+        elif re.fullmatch(r"b[0-9a-f]{8}", ident):  # a big batch remembered by ui.undo_row
+            batch = ui.undo_batch(ident[1:])
+            if batch is None:
+                return Reply(
+                    "That undo button has expired. Use /history to remove entries.",
+                    notice="Expired",
+                )
+            ident = ",".join(batch)
         done, failed = [], []
         for part in ident.split(","):
             try:
@@ -379,6 +397,8 @@ def _undo(chat_id: str, ident: str) -> Reply:
     last = done[-1]
     if last.get("new_balance") is not None and last["type"] != "transfer":
         lines.append(f"{last['account']} is back to {fmt.inr(last['new_balance'])}")
+    if failed:
+        lines.append(f"⚠️ {len(failed)} could not be undone (already removed?)")
     return Reply("\n".join(lines), notice="Undone", edit=True)
 
 

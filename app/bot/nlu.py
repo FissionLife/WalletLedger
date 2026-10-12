@@ -167,8 +167,8 @@ _TRANSFER = re.compile(
 _WITHDRAW = re.compile(r"\b(withdr[ae]w|withdrawn|atm)\b", re.I)
 _DEPOSIT_CASH = re.compile(r"\bdeposit(?:ed)?\b.*\bcash\b|\bcash\b.*\bdeposit(?:ed)?\b", re.I)
 _EXPENSE = re.compile(
-    r"\b(spent|spend|paid|pay|bought|buy|purchased?|ordered|cost|gave|donated?|recharged?|booked|"
-    r"took|rented|charged|lost|fine[d]?)\b",
+    r"\b(spent|spend|paid|pay|bought|buy|purchased?|ordered|cost|gave|donated?|recharged?|"
+    r"rented|charged|lost|fine[d]?)\b",
     re.I,
 )
 _SPLIT = re.compile(
@@ -372,9 +372,7 @@ def _short_item(text: str) -> bool:
 
 def _parse_clause(raw: str, ctx: Context, inherit_kind: str | None) -> Entry | None:
     when, text = extract_date(raw, ctx.today)
-    amounts = [
-        (m, _to_amount(m.group(1), m.group(2))) for m in _MONEY.finditer(text) if _plausible(m)
-    ]
+    amounts = [(m, _to_amount(m.group(1), m.group(2))) for m in _money_matches(text)]
     amounts = [(m, a) for m, a in amounts if 0 < a <= 1_000_000_000]
     if not amounts:
         return None
@@ -504,14 +502,39 @@ _DATE_PHRASES = re.compile(
 )
 
 
+_COUNTED = re.compile(
+    r"\s+(?:[a-z]{2,}s|kgs?|gms?|grams?|litres?|liters?|ml|pcs|pieces|dozen|x)\b", re.I
+)
+
+
+def _quantities(matches: list[re.Match], text: str) -> set[int]:
+    """Indexes of small counts that sit next to a bigger amount: the 3 in "3 shirts for 1500"."""
+    if len(matches) < 2:
+        return set()
+    biggest = max(_to_amount(m.group(1), m.group(2)) for m in matches)
+    out = set()
+    for i, m in enumerate(matches):
+        value = _to_amount(m.group(1), m.group(2))
+        bare = (
+            not m.group(2)
+            and "." not in m.group(1)
+            and not re.search(r"(?:\u20b9|rs\.?|inr)\s*$", text[: m.start()], re.I)
+        )
+        if bare and value <= 100 and value < biggest and _COUNTED.match(text, m.end()):
+            out.add(i)
+    return out
+
+
 def _money_matches(text: str) -> list[re.Match]:
-    """Money amounts in the text, ignoring numbers that are part of a date ('5 days ago')."""
+    """Money amounts in the text, ignoring dates ('5 days ago') and counts ('3 shirts')."""
     spans = [m.span() for m in _DATE_PHRASES.finditer(text)]
-    return [
+    found = [
         m
         for m in _MONEY.finditer(text)
         if _plausible(m) and not any(a <= m.start() < b for a, b in spans)
     ]
+    skip = _quantities(found, text)
+    return [m for i, m in enumerate(found) if i not in skip]
 
 
 def _split_multi(clause: str) -> list[str]:
@@ -570,12 +593,18 @@ def parse_entries(text: str, ctx: Context | None = None) -> list[Entry]:
     text = (text or "").strip()
     if not text or len(text) > 3000 or is_question(text):
         return []
-    clauses = split_clauses(text)
+    lines = [line for line in text.split("\n") if line.strip()]
+    per_line = [split_clauses(line) for line in lines]
+    clauses = [c for group in per_line for c in group]
     if not clauses or len(clauses) > 40:
         return []
     entries: list[Entry] = []
     inherit: str | None = None
-    for clause in clauses:
+    fresh = {id(group[0]) for group in per_line if group}
+    first_of_line = {i for i, c in enumerate(clauses) if id(c) in fresh}
+    for index, clause in enumerate(clauses):
+        if index in first_of_line:
+            inherit = None  # a new line does not borrow "income" or "expense" from the line above
         entry = _parse_clause(clause, ctx, inherit)
         if entry is None:
             if _money_matches(clause) and re.search(r"[A-Za-z]{3,}", clause):

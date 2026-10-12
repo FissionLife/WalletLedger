@@ -7,6 +7,9 @@
   const $ = (sel, el = document) => el.querySelector(sel);
   const SVG_NS = "http://www.w3.org/2000/svg";
   const COLORS = Array.from({ length: 10 }, (_, i) => `var(--c${i})`);
+  const catColor = (name, i) => (name === "Other" ? COLORS[9] : COLORS[i % 9]);
+  // "Other" and "Uncategorized" are groupings, not real categories: filtering on them would match nothing
+  const canFilter = (name) => name !== "Other" && name !== "Uncategorized";
 
   function h(tag, attrs, ...kids) {
     const el = document.createElement(tag);
@@ -14,6 +17,7 @@
       if (v === null || v === undefined || v === false) continue;
       if (k === "class") el.className = v;
       else if (k === "text") el.textContent = v;
+      else if (k === "style") el.style.cssText = v; // not setAttribute: the CSP blocks inline style attributes
       else if (k.startsWith("on")) el.addEventListener(k.slice(2), v);
       else el.setAttribute(k, v === true ? "" : v);
     }
@@ -25,6 +29,7 @@
     for (const [k, v] of Object.entries(attrs || {})) {
       if (v === null || v === undefined) continue;
       if (k === "text") el.textContent = v;
+      else if (k === "style") el.style.cssText = v;
       else if (k.startsWith("on")) el.addEventListener(k.slice(2), v);
       else el.setAttribute(k, v);
     }
@@ -292,14 +297,14 @@
       const [x1, y1] = p(R, angle), [x2, y2] = p(R, a2), [x3, y3] = p(r, a2), [x4, y4] = p(r, angle);
       const d = frac >= 0.9999 ? `M${C},${C - R} A${R},${R} 0 1 1 ${C - 0.01},${C - R} L${C - 0.01},${C - r} A${r},${r} 0 1 0 ${C},${C - r} Z`
         : `M${x1},${y1} A${R},${R} 0 ${big} 1 ${x2},${y2} L${x3},${y3} A${r},${r} 0 ${big} 0 ${x4},${y4} Z`;
-      svg.append(s("path", { class: "slice", d, fill: COLORS[i % 10], "data-tip": `${c.category}: ${inr(c.amount)} (${c.share_pct.toFixed(0)}%)`, onclick: () => toggleFilter("categories", c.category) }));
+      svg.append(s("path", { class: "slice", d, fill: catColor(c.category, i), "data-tip": `${c.category}: ${inr(c.amount)} (${c.share_pct.toFixed(0)}%)`, onclick: () => canFilter(c.category) && toggleFilter("categories", c.category) }));
       angle += frac * Math.PI * 2;
     });
     svg.append(s("text", { x: C, y: C - 2, "text-anchor": "middle", "font-size": 12, fill: "var(--on-surface-variant)", text: "Spent" }), s("text", { x: C, y: C + 18, "text-anchor": "middle", "font-size": 19, "font-weight": 700, fill: "var(--on-surface)", text: short(total) }));
     const legend = h("div", { class: "legend" }, cats.map((c, i) => {
       const ch = pctTxt(c.change_pct);
-      return h("button", { type: "button", onclick: () => c.category !== "Other" && toggleFilter("categories", c.category) },
-        h("i", { style: `background:${COLORS[i % 10]}` }), h("span", { text: c.category }), h("span", { class: "amt", text: short(c.amount) }),
+      return h("button", { type: "button", onclick: () => canFilter(c.category) && toggleFilter("categories", c.category) },
+        h("i", { style: `background:${catColor(c.category, i)}` }), h("span", { text: c.category }), h("span", { class: "amt", text: short(c.amount) }),
         h("span", { class: `chg ${ch.startsWith("▲") ? "up-bad" : "down-good"}`, text: ch || `${c.share_pct.toFixed(0)}%` }));
     }));
     clear(el).append(svg, legend);
@@ -356,7 +361,7 @@
     series[0].values = p.last_month.concat(Array(Math.max(0, days - p.last_month.length)).fill(p.last_month.at(-1) || 0)).slice(0, days);
     series[1].values = p.this_month;
     const ymax = Math.max(p.projected, ...p.last_month, 1);
-    lineChart(el, [{ values: [ymax * 0.0], color: "transparent" }, ...series], cw(el), hh(cw(el)), { l: 50, r: 12, t: 16, b: 30 }, Array.from({ length: days }, (_, i) => String(i + 1)), short, (svg, xs, ys) => {
+    lineChart(el, [{ values: [ymax], color: "transparent" }, ...series], cw(el), hh(cw(el)), { l: 50, r: 12, t: 16, b: 30 }, Array.from({ length: days }, (_, i) => String(i + 1)), short, (svg, xs, ys) => {
       svg.append(s("path", { d: `M${xs(p.day - 1)},${ys(p.spent)} L${xs(days - 1)},${ys(p.projected)}`, fill: "none", stroke: "var(--primary)", "stroke-width": 2, "stroke-dasharray": "2 5" }),
         s("text", { x: xs(days - 1), y: ys(p.projected) - 8, "text-anchor": "end", "font-size": 11, fill: "var(--link)", text: short(p.projected) }));
     });
@@ -379,7 +384,7 @@
       });
     });
     xLabels(svg, st.periods.map((p) => p.label), xs, H, m);
-    clear(el).append(svg, h("div", { class: "stack-legend" }, st.categories.map((c, i) => h("span", {}, h("i", { style: `background:${COLORS[i % 10]}` }), c))));
+    clear(el).append(svg, h("div", { class: "stack-legend" }, st.categories.map((c, i) => h("span", {}, h("i", { style: `background:${catColor(c, i)}` }), c))));
   }
 
   function drawWeekdays(el, rep) {
@@ -449,7 +454,7 @@
   function drawSizes(el, rep) {
     const z = rep.sizes;
     if (!z.some((x) => x.count)) return empty(clear(el), "No expenses in this period");
-    const W = cw(el), H = hh(W), m = { l: 40, r: 10, t: 16, b: 30 }, ymax = niceMax(Math.max(...z.map((x) => x.count))), svg = frame(W, H, m, ymax, (v) => String(Math.round(v)));
+    const W = cw(el), H = hh(W), m = { l: 40, r: 10, t: 16, b: 30 }, ymax = Math.max(4, Math.ceil(niceMax(Math.max(...z.map((x) => x.count))) / 4) * 4), svg = frame(W, H, m, ymax, (v) => String(Math.round(v)));
     const bw = (W - m.l - m.r) / z.length, xs = (i) => m.l + bw * (i + 0.5);
     z.forEach((b, i) => { const hgt = (H - m.t - m.b) * (b.count / ymax); svg.append(s("rect", { class: "bar", x: xs(i) - bw * 0.3, width: bw * 0.6, y: H - m.b - hgt, height: hgt, rx: 3, fill: "var(--c1)", "data-tip": `${b.band}: ${b.count} purchases, ${inr(b.total)}` })); });
     xLabels(svg, z.map((b) => b.band), xs, H, m);

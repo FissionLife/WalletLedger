@@ -43,6 +43,9 @@ it runs now; the tunnel only lets Telegram open your **dashboard** as a Mini App
    server with `PUBLIC_URL` set to it, and prints it. Send `/dashboard` in Telegram: it opens inside the app.
    `Ctrl+C` stops both.
 
+The server refuses to start behind a public address with the placeholder `SECRET_KEY`, so run the
+setup wizard (`uv run python scripts/setup.py`) first; it generates a strong one.
+
 Good to know about **quick tunnels**: free, no account, but the address is **new every run** (old dashboard
 links stop working) and Cloudflare describes them as for testing (about 200 simultaneous requests).
 Perfect for a demo. Add `--webhook` to let Telegram push messages through the tunnel instead of polling.

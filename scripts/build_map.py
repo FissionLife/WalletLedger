@@ -172,10 +172,6 @@ NOTES: dict[str, tuple[str, str]] = {
     "scripts/seed_demo_data.py": ("ops", "90 days of believable demo data for a chat."),
     "scripts/inspect_statement.py": ("ops", "Shows how a statement PDF is read, line by line."),
     "scripts/generate_schema.py": ("ops", "Regenerates `sql/schema.sql` from the models."),
-    "scripts/test_agent_scenarios.py": (
-        "ops",
-        "Hand-run scenario script for the agent (not part of the test suite).",
-    ),
     "scripts/tunnel.py": (
         "ops",
         "One command: starts a Cloudflare Tunnel and the server, so /dashboard opens inside Telegram.",
@@ -219,6 +215,10 @@ NOTES: dict[str, tuple[str, str]] = {
     "tests/__init__.py": (
         "tests",
         "Runs before every test: makes sure tests never reach the real Telegram or read your `.env`.",
+    ),
+    "tests/test_audit_fixes.py": (
+        "tests",
+        "Regression tests for the bugs found in the code audit: lost balance updates, junk entries, undo order, dashboard.",
     ),
     "tests/test_agent.py": ("tests", "The agent: confirmations, tool use, fallbacks."),
     "tests/test_ai_gateway.py": ("tests", "Key order, rotation, live key tests."),
