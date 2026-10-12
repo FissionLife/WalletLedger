@@ -93,8 +93,8 @@ flowchart TD
     R -->|tool chosen or needs confirmation| T[tool_executor]
     R -->|plain conversation| Y[response_synthesizer]
     C -->|confirmed| T
-    C -->|declined / unclear| Y
     T --> Y
+    C -->|declined / unclear| Y
     Y --> E([END: reply text])
 ```
 
@@ -154,9 +154,9 @@ erDiagram
     USERS ||--o{ CHAT_MESSAGES : has
     USERS ||--o{ SUBSCRIPTIONS : owns
     ACCOUNTS ||--o{ TRANSACTIONS : "source (account_id)"
+    MERCHANTS ||--o{ TRANSACTIONS : "paid to"
     ACCOUNTS ||--o{ TRANSACTIONS : "destination (to_account_id)"
     CATEGORIES ||--o{ TRANSACTIONS : classifies
-    MERCHANTS ||--o{ TRANSACTIONS : "paid to"
     USERS { string id PK
             string telegram_chat_id UK }
     ACCOUNTS { string name
@@ -235,9 +235,9 @@ flowchart LR
     S[SECRET_KEY<br/>from .env] --> H1[HKDF-SHA256<br/>label: field/v1]
     S --> H2[HKDF-SHA256<br/>label: api-key-vault/v1]
     H1 --> F1[Fernet<br/>AES-128-CBC + HMAC, random IV]
-    H2 --> F2[Fernet]
     APP[App code<br/>sees plain text] <-->|EncryptedText column type| F1
     APP <-->|encrypt_vault / decrypt_vault| F2
+    H2 --> F2[Fernet]
     F1 --> D1[(transactions.description<br/>chat_messages.content<br/>stored as enc1:gAAAA...)]
     F2 --> D2[(api_keys.encrypted_key<br/>stored as gAAAA...)]
     D1 --- FILE[(walletledger.db / Postgres)]
