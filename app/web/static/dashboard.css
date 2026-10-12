@@ -1,23 +1,23 @@
 /*
-  WalletLedger dashboard: Material Design 3 structure with Cloudflare Kumo's blue as the only accent.
+  WalletLedger dashboard: Material Design 3 structure with Cloudflare orange as the only accent.
   Tokens are the same ones the landing page uses (site/styles.css): neutral white/grey surfaces in light
-  mode, neutral dark greys in dark mode, no navy anywhere. Light by default; the toggle remembers the
-  choice. Kumo blue source: github.com/cloudflare/kumo (theme-kumo.css), #056dff.
+  mode, neutral dark greys in dark mode, no blue in the interface. Light by default; the toggle
+  remembers the choice. Chart colours (--c0..--c9) are the validated palette described in site/styles.css.
 */
 :root {
   --surface: #ffffff;
-  --surface-variant: #f5f5f5;
+  --surface-variant: #f4f4f5;
   --surface-raised: #ffffff;
   --outline: #737373;
-  --outline-variant: #e5e5e5;
+  --outline-variant: #e4e4e7;
   --on-surface: #18181b;
   --on-surface-variant: #525252;
-  --primary: #056dff;
-  --primary-hover: #1447e6;
-  --on-primary: #ffffff;
-  --primary-container: #e5efff;
-  --on-primary-container: #0041a8;
-  --link: #0057d9;
+  --primary: #f6821f;
+  --primary-hover: #e5710a;
+  --on-primary: #18181b;
+  --primary-container: #fff0e0;
+  --on-primary-container: #7a3300;
+  --link: #b34700;
   --success: #006045;
   --success-container: #dcfce7;
   --warning: #8a4b00;
@@ -28,24 +28,24 @@
   --elev-2: 0 1px 2px rgba(0, 0, 0, 0.08), 0 2px 6px 2px rgba(0, 0, 0, 0.06);
   --elev-3: 0 2px 4px rgba(0, 0, 0, 0.06), 0 8px 24px 4px rgba(0, 0, 0, 0.08);
   --grid: #ececec;
-  --c0: #1d5fd1; --c1: #f2994a; --c2: #27ae88; --c3: #9b59d0; --c4: #e5546b;
-  --c5: #2d9cdb; --c6: #b8a100; --c7: #7f8c9b; --c8: #e07bb5; --c9: #5b6ee1;
+  --c0: #f6821f; --c1: #4a3aa7; --c2: #1baf7a; --c3: #e87ba4; --c4: #008300;
+  --c5: #eda100; --c6: #e34948; --c7: #2a78d6; --c8: #5f6b7a; --c9: #a8a29e;
   --font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif;
   --ease: cubic-bezier(0.2, 0, 0, 1);
   color-scheme: light;
 }
 :root[data-theme="dark"] {
-  --surface: #121212;
-  --surface-variant: #1e1e1e;
-  --surface-raised: #262626;
+  --surface: #121214;
+  --surface-variant: #1b1b1e;
+  --surface-raised: #252528;
   --outline: #8f8f8f;
-  --outline-variant: #333333;
+  --outline-variant: #323236;
   --on-surface: #ececec;
   --on-surface-variant: #b3b3b3;
-  --primary: #045ede;
-  --on-primary-container: #8cc2ff;
-  --primary-container: #2b2b2b;
-  --link: #6aafff;
+  --primary: #f6821f;
+  --on-primary-container: #ffb877;
+  --primary-container: #2a2a2e;
+  --link: #ff9e4a;
   --success: #86efac;
   --success-container: #1f2e25;
   --warning: #ffc46b;
@@ -55,7 +55,9 @@
   --elev-1: 0 1px 2px rgba(0, 0, 0, 0.5), 0 1px 3px 1px rgba(0, 0, 0, 0.3);
   --elev-2: 0 1px 2px rgba(0, 0, 0, 0.5), 0 2px 6px 2px rgba(0, 0, 0, 0.35);
   --elev-3: 0 2px 4px rgba(0, 0, 0, 0.5), 0 8px 24px 4px rgba(0, 0, 0, 0.4);
-  --grid: #2e2e2e;
+  --grid: #2e2e32;
+  --c0: #d95926; --c1: #9085e9; --c2: #199e70; --c3: #d55181; --c4: #008300;
+  --c5: #c98500; --c6: #e66767; --c7: #3987e5; --c8: #9aa0a6; --c9: #6b7076;
   color-scheme: dark;
 }
 
@@ -190,3 +192,12 @@ td .meta { color: var(--on-surface-variant); font-size: 12.5px; }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 
 [hidden] { display: none !important; }
+
+/* Phones: the period chips wrap to several rows, so a sticky bar would cover half the screen.
+   Let the bar scroll away and keep the chips on one swipeable row. */
+@media (max-width: 640px) {
+  .appbar { position: static; }
+  .periods { flex-wrap: nowrap; overflow-x: auto; flex-basis: 100%; order: 3; padding-bottom: 2px; scrollbar-width: none; }
+  .periods::-webkit-scrollbar { display: none; }
+  .pchip { flex: none; }
+}

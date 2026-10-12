@@ -275,7 +275,7 @@
       const [a, b] = bucketRange(p.key, group);
       svg.append(s("rect", { class: "bar", x: xs(i) - bw * 0.36, width: bw * 0.72, y: H - m.b - hgt, height: hgt, rx: 3, fill: "var(--primary)", "data-tip": `${p.label}: ${inr(p.spent)}`, onclick: () => { state.period = "custom"; state.start = a; state.end = b; syncInputs(); schedule(0); } }));
     });
-    if (pts.length > 3) svg.append(s("path", { d: pts.map((p, i) => `${i ? "L" : "M"}${xs(i).toFixed(1)},${ys(p.avg).toFixed(1)}`).join(" "), fill: "none", stroke: "#e39a2d", "stroke-width": 2.5, "stroke-linejoin": "round" }));
+    if (pts.length > 3) svg.append(s("path", { d: pts.map((p, i) => `${i ? "L" : "M"}${xs(i).toFixed(1)},${ys(p.avg).toFixed(1)}`).join(" "), fill: "none", stroke: "#8a8a8a", "stroke-dasharray": "6 4", "stroke-width": 2.5, "stroke-linejoin": "round" }));
     xLabels(svg, pts.map((p) => p.label), xs, H, m);
     clear(el).append(svg);
   }
@@ -389,7 +389,7 @@
     const bw = (W - m.l - m.r) / 7, xs = (i) => m.l + bw * (i + 0.5);
     w.forEach((d, i) => {
       const hgt = (H - m.t - m.b) * (d.avg / ymax);
-      svg.append(s("rect", { class: "bar", x: xs(i) - bw * 0.3, width: bw * 0.6, y: H - m.b - hgt, height: hgt, rx: 3, fill: d.avg === top ? "var(--primary)" : "var(--c5)", "fill-opacity": d.avg === top ? 1 : 0.55, "data-tip": `${d.day}: ${inr(d.avg)} on average` }));
+      svg.append(s("rect", { class: "bar", x: xs(i) - bw * 0.3, width: bw * 0.6, y: H - m.b - hgt, height: hgt, rx: 3, fill: "var(--primary)", "fill-opacity": d.avg === top ? 1 : 0.4, "data-tip": `${d.day}: ${inr(d.avg)} on average` }));
     });
     xLabels(svg, w.map((d) => d.day), xs, H, m);
     clear(el).append(svg);
@@ -451,7 +451,7 @@
     if (!z.some((x) => x.count)) return empty(clear(el), "No expenses in this period");
     const W = cw(el), H = hh(W), m = { l: 40, r: 10, t: 16, b: 30 }, ymax = niceMax(Math.max(...z.map((x) => x.count))), svg = frame(W, H, m, ymax, (v) => String(Math.round(v)));
     const bw = (W - m.l - m.r) / z.length, xs = (i) => m.l + bw * (i + 0.5);
-    z.forEach((b, i) => { const hgt = (H - m.t - m.b) * (b.count / ymax); svg.append(s("rect", { class: "bar", x: xs(i) - bw * 0.3, width: bw * 0.6, y: H - m.b - hgt, height: hgt, rx: 3, fill: "var(--c3)", "data-tip": `${b.band}: ${b.count} purchases, ${inr(b.total)}` })); });
+    z.forEach((b, i) => { const hgt = (H - m.t - m.b) * (b.count / ymax); svg.append(s("rect", { class: "bar", x: xs(i) - bw * 0.3, width: bw * 0.6, y: H - m.b - hgt, height: hgt, rx: 3, fill: "var(--c1)", "data-tip": `${b.band}: ${b.count} purchases, ${inr(b.total)}` })); });
     xLabels(svg, z.map((b) => b.band), xs, H, m);
     clear(el).append(svg);
   }
@@ -521,7 +521,7 @@
   function setTheme(t) {
     document.documentElement.dataset.theme = t;
     const meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) meta.content = t === "dark" ? "#121212" : "#ffffff";
+    if (meta) meta.content = t === "dark" ? "#121214" : "#ffffff";
   }
 
   let lastW = window.innerWidth;

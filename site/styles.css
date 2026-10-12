@@ -1,77 +1,57 @@
 /*
   ==========================================================================================
-  WALLETLEDGER COLOUR TOKENS  (copy these verbatim into the dashboard / charts)
+  WALLETLEDGER COLOUR TOKENS  (copied into the dashboard and the code explorer)
   ==========================================================================================
   Role                     Light       Dark        Used for
   -----------------------  ----------  ----------  -----------------------------------------
-  surface                  #ffffff     #121212     page background, cards in light mode
-  surface-variant          #f5f5f5     #1e1e1e     alternate sections, code areas, chips
+  surface                  #ffffff     #121214     page background, cards in light mode
+  surface-variant          #f4f4f5     #1b1b1e     alternate sections, code areas, chips
+  surface-raised           #ffffff     #252528     cards that sit on surface-variant
   outline                  #737373     #8f8f8f     outlined buttons, input borders (>= 3:1)
+  outline-variant          #e4e4e7     #323236     dividers, card hairlines (decorative)
   on-surface               #18181b     #ececec     main text
   on-surface-variant       #525252     #b3b3b3     secondary text
-  primary                  #056dff     #045ede     filled buttons, icons, user chat bubbles
-  primary-container        #e5efff     #2b2b2b     small highlights (icon tiles, info badges)
-  success                  #006045     #86efac     success text / icons
-  warning                  #8a4b00     #ffc46b     warning text / icons
-  error                    #b3261e     #ffb4ab     error text / icons
+  primary                  #f6821f     #f6821f     Cloudflare orange: filled buttons, icons, user chat bubbles
+  on-primary               #18181b     #18181b     DARK text on orange (white on orange is only 2.5:1)
+  primary-container        #fff0e0     #2a2a2e     small highlights (icon tiles, badges)
+  on-primary-container     #7a3300     #ffb877     text/icons on primary-container
+  link                     #b34700     #ff9e4a     orange TEXT on any surface (>= 5:1)
+  success / warning / error  unchanged; status colours never reuse the accent
 
-  Companion values (also safe to reuse):
-  on-primary               #ffffff     #ffffff     text on primary
-  on-primary-container     #0041a8     #8cc2ff     text/icons on primary-container
-  link                     #0057d9     #6aafff     blue TEXT on any surface (primary itself is
-                                                   only 4.1:1 on surface-variant, so text uses this)
-  outline-variant          #e5e5e5     #333333     dividers, card hairlines (decorative)
-  surface-raised           #ffffff     #262626     cards that sit on surface-variant
-  success-container        #dcfce7     #1f2e25
-  warning-container        #fff3d6     #33291a
-  error-container          #fde7e7     #3a2121
+  CHART COLOURS (checked with the dataviz palette validator: adjacent pairs, both modes)
+    light: #f6821f #4a3aa7 #1baf7a #e87ba4 #008300 #eda100 #e34948 #2a78d6, then greys for "other"
+    dark : #d95926 #9085e9 #199e70 #c98500 #d55181 #008300 #e66767 #3987e5
+  Orange leads because it is the brand accent. The other slots keep their order so a category keeps
+  the same colour everywhere (Telegram charts and the dashboard).
 
-  Contrast (WCAG 2.x), checked with a script: every text pair above is >= 4.5:1, e.g.
-  on-primary/primary 4.53 (light) and 5.74 (dark); on-surface-variant/surface-variant 7.17 / 7.95;
-  link/surface-variant 5.72 / 7.29; outline/surface 4.74 / 5.79.
-  ==========================================================================================
-
-  DESIGN APPROACH: Material Design 3 structure + Cloudflare Kumo blue
-  -------------------------------------------------------------------
-  - Accent: Kumo's brand blue is the ONLY accent colour.
-      Source: https://github.com/cloudflare/kumo/blob/main/packages/kumo/src/styles/theme-kumo.css
-      --color-kumo-brand: light-dark(oklch(0.5772 0.2324 260), <same mixed with 10% black>)
-      = #056dff (light) and #045ede (dark). Hover: Kumo blue-700 #1447e6.
-      Light-mode link #0057d9 is a slightly deeper step of the same blue, chosen for contrast.
-      Dark-mode link #6aafff sits next to Kumo's blue-400 (#51a2ff) and is a bit lighter for contrast.
-  - Neutrals: Kumo's neutral scale (white, neutral-100 #f5f5f5, neutral-200 #e5e5e5,
-    neutral-500 #737373, neutral-600 #525252, neutral-800 #262626, neutral-900 #18181b).
-    Dark mode uses Material's neutral dark surfaces (#121212, #1e1e1e). No surface is tinted
-    blue, and there is no navy anywhere: in dark mode even primary-container is neutral grey
-    and the blue lives only in text, icons, buttons and the user's chat bubbles.
-  - Material 3 shape: pill buttons (full radius), 8px chips, 16-20px cards, 28px large containers.
-  - Material 3 elevation: soft two-layer shadows (levels 1-3 below). In dark mode the raised
-    surfaces are also lighter greys (tonal elevation).
-  - Material 3 states: a "state layer" (a currentColor overlay) at 8% on hover, 10% on focus and
-    12% on press, plus a 2px blue focus ring for keyboard users.
-  - Kumo conventions kept: weight-500 button labels, pill badges with 12px text, 1px hairlines.
-  - Motion: 150-250ms, Material "standard" easing; all of it is switched off for people who ask
-    their system for reduced motion.
-  - Theme: LIGHT by default. The moon/sun button switches to dark and the choice is remembered
-    in this browser (localStorage).
+  DESIGN APPROACH: Material Design 3 structure + Cloudflare orange on neutral greys
+  ---------------------------------------------------------------------------------
+  - One accent: Cloudflare orange (#f6821f, the colour of the Cloudflare logo). Text on it is
+    near-black (#18181b, 7:1); orange used as text is the deeper #b34700 (5.5:1) in light mode.
+  - Neutrals only for surfaces: white and light greys, and a modern dark grey (#121214) in dark mode.
+    No surface is tinted, and there is no blue or navy anywhere in the interface.
+  - Material 3 shape: pill buttons, 8px chips, 16-20px cards, 28px large containers.
+  - Material 3 states: an 8% hover, 10% focus and 12% press overlay, plus a 2px orange focus ring.
+  - Motion: 150-250ms, Material "standard" easing; switched off for reduced-motion users.
+  - Theme: light by default; the moon/sun button switches and is remembered (localStorage).
   - Fonts: the system font stack only (nothing is downloaded).
 */
 
 :root {
   /* the tokens from the table above */
   --surface: #ffffff;
-  --surface-variant: #f5f5f5;
+  --surface-variant: #f4f4f5;
   --surface-raised: #ffffff;
   --outline: #737373;
-  --outline-variant: #e5e5e5;
+  --outline-variant: #e4e4e7;
   --on-surface: #18181b;
   --on-surface-variant: #525252;
-  --primary: #056dff;
-  --primary-hover: #1447e6;
-  --on-primary: #ffffff;
-  --primary-container: #e5efff;
-  --on-primary-container: #0041a8;
-  --link: #0057d9;
+  --primary: #f6821f;
+  --primary-hover: #e5710a;
+  --on-primary: #18181b;
+  --primary-container: #fff0e0;
+  --on-primary-container: #7a3300;
+  --link: #b34700;
   --success: #006045;
   --success-container: #dcfce7;
   --warning: #8a4b00;
@@ -85,7 +65,7 @@
   --elev-3: 0 2px 4px rgba(0, 0, 0, 0.06), 0 8px 24px 4px rgba(0, 0, 0, 0.08);
   --elev-phone: 0 2px 6px rgba(0, 0, 0, 0.1), 0 30px 60px -18px rgba(0, 0, 0, 0.28);
 
-  /* phone illustration (neutral greys + the primary blue for the user's bubbles) */
+  /* phone illustration (neutral greys + the orange accent for the user's bubbles) */
   --chat-bg: #eeeeee;
   --chat-in: #ffffff;
   --chat-meta: #6b6b6b;
@@ -115,19 +95,19 @@
 
 /* Dark theme: only when the visitor picks it with the toggle (light is the default). */
 :root[data-theme="dark"] {
-  --surface: #121212;
-  --surface-variant: #1e1e1e;
-  --surface-raised: #262626;
+  --surface: #121214;
+  --surface-variant: #1b1b1e;
+  --surface-raised: #252528;
   --outline: #8f8f8f;
-  --outline-variant: #333333;
+  --outline-variant: #323236;
   --on-surface: #ececec;
   --on-surface-variant: #b3b3b3;
-  --primary: #045ede;
-  --primary-hover: #1447e6;
-  --on-primary: #ffffff;
-  --primary-container: #2b2b2b;
-  --on-primary-container: #8cc2ff;
-  --link: #6aafff;
+  --primary: #f6821f;
+  --primary-hover: #ff9640;
+  --on-primary: #18181b;
+  --primary-container: #2a2a2e;
+  --on-primary-container: #ffb877;
+  --link: #ff9e4a;
   --success: #86efac;
   --success-container: #1f2e25;
   --warning: #ffc46b;
@@ -364,7 +344,7 @@ kbd {
 }
 
 :root[data-theme="dark"] .btn-tonal {
-  background: #2b2b2b; /* one tonal step above surface-variant so it reads on #121212 */
+  background: #2a2a2e; /* one tonal step above surface-variant so it reads on the dark surface */
 }
 
 .btn-outlined {
@@ -910,8 +890,8 @@ section {
   width: 38px;
   height: 38px;
   border-radius: 50%;
-  background: var(--on-primary);
-  color: #045ede;
+  background: #ffffff;
+  color: #b34700;
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.02em;

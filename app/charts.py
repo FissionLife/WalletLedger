@@ -18,27 +18,30 @@ from matplotlib.backends.backend_agg import FigureCanvasAgg
 from matplotlib.figure import Figure
 from matplotlib.ticker import FuncFormatter
 
-# Palette: a calm blue brand colour plus distinguishable, colour-blind-friendly companions.
-BLUE = "#1D5FD1"
-BLUE_LIGHT = "#8FB4F0"
-INK = "#1B2430"
-MUTED = "#6B7684"
-GRID = "#E6EAF0"
+# Palette: Cloudflare orange as the accent on neutral greys. The categorical colours are the same
+# validated set the dashboard uses (see the colour notes in site/styles.css), orange first.
+ACCENT = "#F6821F"
+ACCENT_LIGHT = "#FBC896"
+HEAT_LOW = "#FDE6CF"
+HEAT_HIGH = "#B34700"  # the deep end of the orange ramp; also used for orange text on white
+INK = "#18181B"
+MUTED = "#6B6B73"
+GRID = "#E7E7EA"
 BG = "#FFFFFF"
-GOOD = "#1F9D6B"
-BAD = "#D64545"
-WARN = "#E39A2D"
+GOOD = "#1BAF7A"
+BAD = "#E34948"
+WARN = "#EDA100"
 CATEGORY_COLORS = [
-    "#1D5FD1",
-    "#F2994A",
-    "#27AE88",
-    "#9B59D0",
-    "#E5546B",
-    "#2D9CDB",
-    "#B8A100",
-    "#7F8C9B",
-    "#E07BB5",
-    "#5B6EE1",
+    "#F6821F",
+    "#4A3AA7",
+    "#1BAF7A",
+    "#E87BA4",
+    "#008300",
+    "#EDA100",
+    "#E34948",
+    "#2A78D6",
+    "#5F6B7A",
+    "#A8A29E",
 ]
 
 KINDS = (
@@ -129,8 +132,27 @@ def _short(text: str, n: int = 16) -> str:
     return text if len(text) <= n else text[: n - 1] + "…"
 
 
-def _every(n_points: int, target: int = 8) -> int:
-    return max(1, n_points // target)
+def _every(n_points: int, target: int = 7) -> int:
+    """Show about `target` x-axis labels: never so many that neighbours touch."""
+    return max(1, -(-n_points // target))
+
+
+def _xlabels(ax, labels: list[str]) -> None:
+    """Evenly spaced x labels, rotated only when there are still many."""
+    step = _every(len(labels))
+    shown = list(range(0, len(labels), step))
+    ax.set_xticks(shown)
+    crowded = len(shown) > 7
+    ax.set_xticklabels(
+        [labels[i] for i in shown],
+        rotation=35 if crowded else 0,
+        ha="right" if crowded else "center",
+    )
+
+
+def _legend_above(ax, ncol: int = 3) -> None:
+    """Legend on the title row, right-aligned, so it never covers the data."""
+    ax.legend(frameon=False, fontsize=9, ncol=ncol, loc="lower right", bbox_to_anchor=(1.0, 1.0))
 
 
 # ---------------------------------------------------------------------------- individual charts
@@ -142,19 +164,14 @@ def chart_trend(ax, rep: dict) -> None:
     if not pts or not any(p["spent"] or p["earned"] for p in pts):
         return _empty(ax, "No transactions in this period")
     xs = list(range(len(pts)))
-    ax.bar(xs, [p["spent"] for p in pts], color=BLUE, width=0.72, label="Spent", zorder=3)
+    ax.bar(xs, [p["spent"] for p in pts], color=ACCENT, width=0.72, label="Spent", zorder=3)
     if len(pts) > 3:
-        ax.plot(xs, [p["avg"] for p in pts], color=WARN, linewidth=2, label="Trend", zorder=5)
-    step = _every(len(pts))
-    ax.set_xticks(xs[::step])
-    ax.set_xticklabels(
-        [pts[i]["label"] for i in xs[::step]],
-        rotation=0 if len(pts) < 16 else 35,
-        ha="center" if len(pts) < 16 else "right",
-    )
+        ax.plot(xs, [p["avg"] for p in pts], color=INK, linewidth=2, label="Trend", zorder=5)
+    _xlabels(ax, [p["label"] for p in pts])
     unit = {"day": "per day", "week": "per week", "month": "per month"}[group]
     _title(ax, "Spending over time", f"{rep['query']['describe']} · {unit}")
-    ax.legend(frameon=False, fontsize=9, ncol=2, loc="upper right")
+    ax.set_ylim(top=max([q["spent"] for q in pts] or [1]) * 1.1)
+    _legend_above(ax, 2)
 
 
 def chart_categories(ax, rep: dict) -> None:
@@ -163,8 +180,7 @@ def chart_categories(ax, rep: dict) -> None:
         return _empty(ax, "No spending in this period")
     names = [_short(c["category"], 20) for c in cats][::-1]
     vals = [c["amount"] for c in cats][::-1]
-    colors = [CATEGORY_COLORS[i % len(CATEGORY_COLORS)] for i in range(len(cats))][::-1]
-    bars = ax.barh(names, vals, color=colors, height=0.62, zorder=3)
+    bars = ax.barh(names, vals, color=ACCENT, height=0.62, zorder=3)
     ax.grid(axis="x", color=GRID)
     ax.grid(axis="y", visible=False)
     ax.yaxis.set_major_formatter(FuncFormatter(lambda v, p: ""))  # keep category names
@@ -193,7 +209,7 @@ def chart_merchants(ax, rep: dict) -> None:
         return _empty(ax, "No merchants recorded in this period")
     names = [_short(m["merchant"], 20) for m in ms][::-1]
     vals = [m["amount"] for m in ms][::-1]
-    bars = ax.barh(names, vals, color=BLUE, height=0.6, zorder=3)
+    bars = ax.barh(names, vals, color=ACCENT, height=0.6, zorder=3)
     ax.grid(axis="x", color=GRID)
     ax.grid(axis="y", visible=False)
     ax.set_yticks(range(len(names)))
@@ -232,19 +248,14 @@ def chart_monthly(ax, rep: dict) -> None:
         [x + w / 2 for x in xs],
         [p["spent"] for p in pts],
         width=w,
-        color=BLUE,
+        color=ACCENT,
         label="Spent",
         zorder=3,
     )
-    step = _every(len(pts))
-    ax.set_xticks(xs[::step])
-    ax.set_xticklabels(
-        [pts[i]["label"] for i in xs[::step]],
-        rotation=0 if len(pts) < 10 else 35,
-        ha="center" if len(pts) < 10 else "right",
-    )
+    _xlabels(ax, [p["label"] for p in pts])
     _title(ax, "Earned vs spent", rep["query"]["describe"])
-    ax.legend(frameon=False, fontsize=9, ncol=2, loc="upper right")
+    ax.set_ylim(top=max([q[k] for q in pts for k in ("earned", "spent")] or [1]) * 1.1)
+    _legend_above(ax, 2)
 
 
 def chart_pace(ax, rep: dict) -> None:
@@ -262,7 +273,7 @@ def chart_pace(ax, rep: dict) -> None:
     ax.plot(
         range(1, len(p["this_month"]) + 1),
         p["this_month"],
-        color=BLUE,
+        color=ACCENT,
         linewidth=2.6,
         label="This month",
     )
@@ -270,7 +281,7 @@ def chart_pace(ax, rep: dict) -> None:
         ax.plot(
             [p["day"], p["days_in_month"]],
             [p["spent"], p["projected"]],
-            color=BLUE,
+            color=ACCENT,
             linewidth=1.6,
             linestyle=":",
             label="Projected",
@@ -282,7 +293,7 @@ def chart_pace(ax, rep: dict) -> None:
             xytext=(-6, 8),
             ha="right",
             fontsize=9,
-            color=BLUE,
+            color=ACCENT,
         )
     ax.set_xlim(1, max(p["days_in_month"], len(p["last_month"])))
     _title(
@@ -290,7 +301,7 @@ def chart_pace(ax, rep: dict) -> None:
         "This month vs last month",
         f"Spent so far {inr(p['spent'])} · last month total {inr(p['last_month_total'])}",
     )
-    ax.legend(frameon=False, fontsize=9, ncol=3, loc="upper left")
+    ax.legend(frameon=False, fontsize=9, ncol=3, loc="upper center", bbox_to_anchor=(0.5, -0.1))
 
 
 def chart_weekdays(ax, rep: dict) -> None:
@@ -298,7 +309,7 @@ def chart_weekdays(ax, rep: dict) -> None:
     if not any(w["avg"] for w in wd):
         return _empty(ax, "Not enough spending to show a weekly pattern")
     top = max(w["avg"] for w in wd)
-    colors = [BLUE if w["avg"] == top else BLUE_LIGHT for w in wd]
+    colors = [ACCENT if w["avg"] == top else ACCENT_LIGHT for w in wd]
     ax.bar([w["day"] for w in wd], [w["avg"] for w in wd], color=colors, width=0.6, zorder=3)
     for i, w in enumerate(wd):
         ax.text(i, w["avg"] + top * 0.02, inr(w["avg"]), ha="center", fontsize=9, color=INK)
@@ -311,11 +322,10 @@ def chart_networth(ax, rep: dict) -> None:
         return _empty(ax, "Not enough history yet")
     xs = list(range(len(pts)))
     vals = [p["total"] for p in pts]
-    ax.plot(xs, vals, color=BLUE, linewidth=2.4, zorder=3)
+    ax.plot(xs, vals, color=ACCENT, linewidth=2.4, zorder=3)
     lo, hi = min(vals), max(vals)
     pad = (hi - lo) * 0.15 or max(abs(hi) * 0.05, 1)
     ax.set_ylim(lo - pad, hi + pad)
-    ax.fill_between(xs, vals, lo - pad, color=BLUE, alpha=0.10, zorder=2)
     step = _every(len(pts))
     ax.set_xticks(xs[::step])
     ax.set_xticklabels(
@@ -371,7 +381,7 @@ def chart_heatmap(ax, rep: dict) -> None:
     top = hm["max"]
     for c in hm["cells"]:
         shade = 0 if c["spent"] == 0 else 0.18 + 0.82 * min(1.0, c["spent"] / top)
-        color = "#EEF2F7" if shade == 0 else _blend(BLUE_LIGHT, BLUE, shade)
+        color = "#F1F1F3" if shade == 0 else _blend(HEAT_LOW, HEAT_HIGH, shade)
         ax.add_patch(_rect(c["week"], 6 - c["dow"], color))
     for i, d in enumerate(("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")):
         ax.text(-0.7, 6 - i + 0.45, d, ha="right", va="center", fontsize=8, color=MUTED)
@@ -430,16 +440,12 @@ def chart_stack(ax, rep: dict) -> None:
             color=CATEGORY_COLORS[i % len(CATEGORY_COLORS)],
             label=_short(cat, 16),
             width=0.7,
+            edgecolor=BG,
+            linewidth=0.8,
             zorder=3,
         )
         bottom = [b + v for b, v in zip(bottom, vals, strict=True)]
-    step = _every(len(xs))
-    ax.set_xticks(xs[::step])
-    ax.set_xticklabels(
-        [st["periods"][i]["label"] for i in xs[::step]],
-        rotation=0 if len(xs) < 10 else 35,
-        ha="center" if len(xs) < 10 else "right",
-    )
+    _xlabels(ax, [p["label"] for p in st["periods"]])
     _title(ax, "What you spent on, over time", rep["query"]["describe"])
     ax.legend(
         frameon=False,
@@ -454,7 +460,7 @@ def chart_sizes(ax, rep: dict) -> None:
     sz = rep["sizes"]
     if not any(s["count"] for s in sz):
         return _empty(ax, "No expenses in this period")
-    ax.bar([s["band"] for s in sz], [s["count"] for s in sz], color=BLUE, width=0.6, zorder=3)
+    ax.bar([s["band"] for s in sz], [s["count"] for s in sz], color=ACCENT, width=0.6, zorder=3)
     ax.yaxis.set_major_formatter(FuncFormatter(lambda v, p: f"{v:.0f}"))
     top = max(s["count"] for s in sz)
     for i, s in enumerate(sz):
@@ -467,7 +473,7 @@ def chart_hours(ax, rep: dict) -> None:
     hrs = rep["hours"]
     if not hrs:
         return _empty(ax, "Time of day is only known for chat-logged expenses")
-    ax.bar([h["hour"] for h in hrs], [h["total"] for h in hrs], color=BLUE, width=0.8, zorder=3)
+    ax.bar([h["hour"] for h in hrs], [h["total"] for h in hrs], color=ACCENT, width=0.8, zorder=3)
     ax.set_xticks(range(0, 24, 3))
     ax.set_xticklabels([f"{h:02d}:00" for h in range(0, 24, 3)])
     _title(ax, "Time of day", "When you spend")
@@ -492,7 +498,7 @@ def chart_accounts(ax, rep: dict) -> None:
         [x + w / 2 for x in xs],
         [a["spent"] for a in accs],
         width=w,
-        color=BLUE,
+        color=ACCENT,
         label="Out",
         zorder=3,
     )
@@ -542,7 +548,7 @@ def render_dashboard(rep: dict) -> bytes:
         panels[0] = "monthly"
     panels = [p for p in panels if not (p == "budgets" and not rep["budgets"])]
 
-    heights = [1.5] + [3.3 if p != "categories" else 3.9 for p in panels]
+    heights = [1.8] + [3.3 if p != "categories" else 3.9 for p in panels]
     fig = Figure(figsize=(8.2, sum(heights) + 0.6), dpi=130, facecolor=BG)
     FigureCanvasAgg(fig)
     grid = fig.add_gridspec(
@@ -558,8 +564,10 @@ def render_dashboard(rep: dict) -> bytes:
 
     head = fig.add_subplot(grid[0])
     head.set_axis_off()
-    head.text(-0.12, 0.98, "WalletLedger", fontsize=11, color=BLUE, fontweight="bold", va="top")
-    head.text(-0.12, 0.74, rep["query"]["describe"], fontsize=10, color=MUTED, va="top")
+    head.text(
+        -0.12, 0.98, "WalletLedger", fontsize=11, color=HEAT_HIGH, fontweight="bold", va="top"
+    )
+    head.text(-0.12, 0.80, rep["query"]["describe"], fontsize=10, color=MUTED, va="top")
     kpis = [
         ("Spent", inr(s["spent"]), s.get("spent_change_pct"), True),
         ("Earned", inr(s["earned"]), s.get("earned_change_pct"), False),
@@ -568,8 +576,8 @@ def render_dashboard(rep: dict) -> bytes:
     ]
     for i, (label, value, change, bad_if_up) in enumerate(kpis):
         x = -0.12 + i * 0.29
-        head.text(x, 0.58, label, fontsize=9, color=MUTED, va="top")
-        head.text(x, 0.48, value, fontsize=17, color=INK, fontweight="bold", va="top")
+        head.text(x, 0.50, label, fontsize=9, color=MUTED, va="top")
+        head.text(x, 0.40, value, fontsize=17, color=INK, fontweight="bold", va="top")
         if change is not None and abs(change) >= 1:
             up = change > 0
             color = (BAD if up else GOOD) if bad_if_up else (GOOD if up else BAD)

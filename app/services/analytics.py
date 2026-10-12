@@ -268,7 +268,16 @@ def _income(rows):
 
 
 def _change(now: float, before: float) -> float | None:
-    return _r((now - before) / before * 100) if before > 0 else None
+    """Percent change versus the previous period, or None when it would mislead.
+
+    No previous spending means there is nothing to compare, and a jump above +400% usually means
+    the previous period was nearly empty (a new user), so it is left out rather than shown as a
+    scary number.
+    """
+    if before <= 0:
+        return None
+    pct = (now - before) / before * 100
+    return None if pct > 400 else _r(pct)
 
 
 # =============================================================================== sections
