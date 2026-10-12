@@ -1,7 +1,6 @@
-"""Typed financial tools exposed to the conversational agent.
+"""Typed financial tools exposed to the conversational agent and stdio MCP server.
 
-These functions are ordinary Python tools (the project does not currently run an
-MCP transport server). The registry gives the agent one stable dispatch point.
+The shared registry gives both integrations one stable dispatch point.
 """
 
 from __future__ import annotations
@@ -11,6 +10,7 @@ from datetime import datetime, timedelta
 from itertools import islice
 from typing import Any
 
+from mcp.server.mcpserver import MCPServer
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -582,6 +582,16 @@ TOOL_REGISTRY: dict[str, Callable[..., dict[str, Any]]] = {
     "set_category_budget": set_category_budget,
 }
 
+mcp = MCPServer(
+    name="WalletLedger",
+    instructions=(
+        "User-scoped financial ledger tools. Supply the user's Telegram chat ID or internal UUID."
+    ),
+)
+
+for name, handler in TOOL_REGISTRY.items():
+    mcp.tool(name=name)(handler)
+
 
 def execute_tool(tool_name: str, **kwargs: Any) -> dict[str, Any]:
     """Dispatch one registered agent tool and return a JSON-serializable result."""
@@ -590,3 +600,7 @@ def execute_tool(tool_name: str, **kwargs: Any) -> dict[str, Any]:
     except KeyError as exc:
         raise ValueError(f"Unknown tool: {tool_name}") from exc
     return tool(**kwargs)
+
+
+if __name__ == "__main__":
+    mcp.run(transport="stdio")

@@ -88,6 +88,7 @@ class MCPToolTests(unittest.TestCase):
     def test_mcp_transport_registers_registry_tools(self):
         from app.services_ai.mcp_transport import mcp
 
+        self.assertIs(mcp, mcp_server.mcp)
         tools = asyncio.run(mcp.list_tools())
         names = {tool.name for tool in tools}
         self.assertTrue(set(mcp_server.TOOL_REGISTRY).issubset(names))
