@@ -244,6 +244,35 @@ class ValidationTests(Base):
         self.assertEqual(result.status, "invalid")
         self.assertEqual(len(calls), 1)
 
+    def test_model_not_found_is_not_a_bad_key(self):
+        # "model not found" also matches the auth hints; a retired first model must not get a
+        # valid key rejected. Both error classes litellm uses for it are covered.
+        for error_cls in (litellm.BadRequestError, litellm.NotFoundError):
+            with self.subTest(error=error_cls.__name__):
+                first = []
+
+                def behaviour(model, error_cls=error_cls, first=first):
+                    if not first:
+                        first.append(model)
+                        raise error_cls(
+                            "400 model not found or no access", llm_provider="gemini", model=model
+                        )
+                    return ok()
+
+                result, calls = self.check(behaviour)
+                self.assertEqual(result.status, "valid")
+                self.assertEqual(len(calls), 2)
+
+    def test_auth_error_mentioning_model_is_still_invalid(self):
+        def bad(model):
+            raise litellm.AuthenticationError(
+                "API key not valid: model not found", llm_provider="gemini", model="m"
+            )
+
+        result, calls = self.check(bad)
+        self.assertEqual(result.status, "invalid")
+        self.assertEqual(len(calls), 1)
+
     def test_rate_limited_key_is_usable(self):
         def limited(model):
             raise rate_limited()
