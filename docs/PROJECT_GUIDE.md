@@ -294,6 +294,7 @@ Details and a command to prove it: [SECURITY §4b](SECURITY.md).
 | `PUBLIC_URL`, `DASHBOARD_LINK_MINUTES` | dashboard links and Mini App |
 | `*_API_KEYS` (gemini, openai, anthropic, groq, openrouter, xai, deepseek, mistral) | optional server keys (fallback) |
 | `AI_MODEL_*`, `DYNAMIC_MODELS` | optional pins; discovery is on by default |
+| `CLOUDFLARE_TUNNEL_TOKEN` | optional: your own Cloudflare Tunnel (see [CLOUDFLARE.md](CLOUDFLARE.md)) |
 | `ENABLE_DEV_ENDPOINTS` | dev-only chat simulator; on only while there is no bot token |
 
 ## 8. Three walkthroughs

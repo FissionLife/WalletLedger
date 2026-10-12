@@ -1,4 +1,4 @@
-# Local PostgreSQL for WalletLedger.
+# Local PostgreSQL for WalletLedger, plus (optional) the app itself and a Cloudflare Tunnel.
 #   Start:  docker compose up -d
 #   Status: docker compose ps        (should show "healthy")
 #   Stop:   docker compose down      (data is kept in the walletledger_pgdata volume)
@@ -24,6 +24,43 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+
+  # The app in a container (build from ./Dockerfile). Off unless you ask for it:
+  #   docker compose --profile app up -d --build
+  # It talks to the db service above, so it always uses Postgres.
+  app:
+    profiles: ["app"]
+    build: .
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DB_MODE: postgres
+      POSTGRES_HOST: db
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-appdb}
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8000:8080"
+
+  # A named Cloudflare Tunnel in front of the app (stable https address, dashboard works in Telegram).
+  # Needs CLOUDFLARE_TUNNEL_TOKEN in .env and PUBLIC_URL set to your tunnel's hostname. See docs/CLOUDFLARE.md.
+  #   docker compose --profile app --profile tunnel up -d --build
+  # In the tunnel's "Public hostname" settings, point the service at  http://app:8080
+  cloudflared:
+    profiles: ["tunnel"]
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
+    depends_on:
+      - app
 
 volumes:
   walletledger_pgdata:

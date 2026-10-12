@@ -176,6 +176,30 @@ NOTES: dict[str, tuple[str, str]] = {
         "ops",
         "Hand-run scenario script for the agent (not part of the test suite).",
     ),
+    "scripts/tunnel.py": (
+        "ops",
+        "One command: starts a Cloudflare Tunnel and the server, so /dashboard opens inside Telegram.",
+    ),
+    "cloudflare/src/index.js": (
+        "site",
+        "Optional Cloudflare Containers wrapper: a tiny Worker that wakes the Docker image and forwards requests.",
+    ),
+    "cloudflare/wrangler.jsonc": (
+        "site",
+        "Config for the Cloudflare Containers wrapper (image, instance size, public address).",
+    ),
+    "cloudflare/package.json": (
+        "site",
+        "Dependencies for the Cloudflare wrapper (wrangler and the containers helper).",
+    ),
+    "docker-compose.yml": (
+        "site",
+        "Postgres, plus optional profiles for the app container and a Cloudflare Tunnel.",
+    ),
+    "tests/test_tunnel.py": (
+        "tests",
+        "Tunnel runner helpers and the Cloudflare/compose files (nothing is started).",
+    ),
     "scripts/build_map.py": (
         "ops",
         "Builds this map and the explorer page. Runs by itself on every push (see the Pages workflow).",

@@ -91,6 +91,14 @@ The ones you will actually touch:
 | `DB_MODE` | `sqlite` (default, a single file) or `postgres` (`docker compose up -d`) |
 | `PUBLIC_URL` | optional https address; makes `/dashboard` open inside Telegram as a Mini App |
 
+## Cloudflare
+
+`uv run python scripts/tunnel.py` starts a free Cloudflare Tunnel and the server together, so
+`/dashboard` opens inside Telegram (needs the `cloudflared` program; install hints are printed).
+Hosting the whole app on Cloudflare is possible with **Cloudflare Containers** (scaffolding in
+[`cloudflare/`](cloudflare/)); plain Workers cannot run this Python app. All options, with the reasons:
+[docs/CLOUDFLARE.md](docs/CLOUDFLARE.md).
+
 ## Protect your data
 
 Chat history, transaction notes and AI keys are encrypted in the database with `SECRET_KEY`.

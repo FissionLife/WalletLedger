@@ -59,6 +59,11 @@ SECRET_KEY=<the same value every time>
 Put those in the host's secret settings rather than in a file. Telegram wakes the service with each
 message, so nothing runs (or costs) while the chat is quiet.
 
+### Cloudflare (tunnel or Containers)
+
+One command gives you an https address for the dashboard (`scripts/tunnel.py`); Cloudflare Containers can
+host the Docker image itself. Plain Workers cannot run this app. See [CLOUDFLARE.md](CLOUDFLARE.md).
+
 ### Dashboard link and Telegram Mini App
 
 `/dashboard` sends a private link that expires (`DASHBOARD_LINK_MINUTES`, default 2 hours).
@@ -67,11 +72,12 @@ computer. Set `PUBLIC_URL` to an **https** address and the same button opens ins
 Mini App. For a quick demo from a laptop, a tunnel gives you that address with no hosting:
 
 ```bash
-cloudflared tunnel --url http://localhost:8000     # prints https://something.trycloudflare.com
+uv run python scripts/tunnel.py                    # starts the tunnel and the server, sets PUBLIC_URL for you
 ```
 
-Put that address in `PUBLIC_URL`, restart, and run `uv run python scripts/setup_bot.py` so the bot's
-menu button points to the dashboard.
+The address changes every run. For a fixed one, use your own tunnel and put it in `PUBLIC_URL`
+([CLOUDFLARE.md](CLOUDFLARE.md)). Nothing else to configure: `/dashboard` sends a button that opens the
+page inside Telegram.
 
 ### PostgreSQL
 

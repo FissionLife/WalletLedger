@@ -1,0 +1,33 @@
+// Cloudflare Containers deployment: a tiny Worker in front of the Docker image in ../Dockerfile.
+// Read docs/CLOUDFLARE.md first. This path is optional and has not been run against a live account
+// by the project authors: treat it as a starting point and check the current Containers docs.
+{
+  "name": "walletledger",
+  "main": "src/index.js",
+  "compatibility_date": "2026-04-01",
+
+  // Not secret. Set PUBLIC_URL to your Worker's address after the first deploy,
+  // e.g. https://walletledger.<your-subdomain>.workers.dev (or your own domain).
+  "vars": {
+    "PUBLIC_URL": "https://walletledger.example.workers.dev"
+  },
+
+  "containers": [
+    {
+      "class_name": "WalletLedger",
+      "image": "../Dockerfile",
+      "image_build_context": "..",
+      "instance_type": "standard-1",
+      "max_instances": 1
+    }
+  ],
+
+  "durable_objects": {
+    "bindings": [{ "name": "WALLETLEDGER", "class_name": "WalletLedger" }]
+  },
+
+  // Containers are Durable Objects with SQLite storage
+  "exports": {
+    "WalletLedger": { "type": "durable-object", "storage": "sqlite" }
+  }
+}
