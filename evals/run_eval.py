@@ -2,7 +2,7 @@
 
     uv run python -m evals.run_eval --tier rules                  # 0 AI calls
     uv run python -m evals.run_eval --tier rules --mode mcp --repeat 3
-    uv run python -m evals.run_eval --tier llm --llm-budget 60    # needs EVAL_GEMINI_KEYS
+    uv run python -m evals.run_eval --tier llm --llm-budget 60    # EVAL_GEMINI_KEYS in .env/shell
     uv run python -m evals.run_eval --tier llm --replay           # re-score saved AI answers
 
 See evals/README.md for the dataset format and the safety rules.
@@ -72,11 +72,29 @@ def parse_args(argv=None):
     return p.parse_args(argv)
 
 
+def _keys_from_env_file() -> str:
+    """EVAL_GEMINI_KEYS from the repo's .env (git-ignored), when not set in the shell.
+
+    Only this one line is read; the rest of .env (bot token, server keys) is never loaded.
+    """
+    env_file = ROOT / ".env"
+    if not env_file.exists():
+        return ""
+    for line in env_file.read_text(encoding="utf-8").splitlines():
+        name, sep, value = line.partition("=")
+        if sep and name.strip() == "EVAL_GEMINI_KEYS":
+            return value.strip().strip('"').strip("'")
+    return ""
+
+
 def main(argv=None) -> int:
     args = parse_args(argv)
-    if args.tier in ("llm", "all") and not args.replay and not os.environ.get("EVAL_GEMINI_KEYS"):
-        print("EVAL_GEMINI_KEYS is not set (comma-separated Gemini keys). Nothing was run.")
-        return 2
+    if args.tier in ("llm", "all") and not args.replay:
+        if not os.environ.get("EVAL_GEMINI_KEYS"):
+            os.environ["EVAL_GEMINI_KEYS"] = _keys_from_env_file()
+        if not os.environ.get("EVAL_GEMINI_KEYS"):
+            print("EVAL_GEMINI_KEYS is not set (in the shell or .env). Nothing was run.")
+            return 2
     _prepare_env(args.tier)
     os.chdir(_TMP)  # nothing relative (.env, sqlite) can touch the repo
     sys.path.insert(0, str(ROOT))

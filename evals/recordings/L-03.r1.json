@@ -1,0 +1,79 @@
+[
+ {
+  "model": "gemini/gemini-flash-latest",
+  "messages": [
+   {
+    "role": "system",
+    "content": "You are WalletLedger's Financial AI Agent Brain modeled on the 'Tank & Pipes' architecture.\nYour job is to understand natural language user messages, analyze finances, and invoke appropriate tools dynamically.\n\nKey Guidelines:\n1. Account Pipes: Map colloquial payment accounts to clean pipe names (e.g. 'Bank', 'Cash', 'UPI Wallet'). Default to 'Cash' for everyday out-of-pocket expenses unless specified, and 'Bank' for income/transfers.\n2. Categories: Infer accurate, standard expense or income categories based on context (e.g. Food, Groceries, Transport, Shopping, Utilities, Subscriptions, Health, Personal Care, Entertainment, Gifts, Salary, Freelance, Stipend, Cashback).\n3. Multi-Item & Batch Transactions:\n   When the user provides a list of expenses (e.g. '190=poornima pizza Dosa\\n80=Neeraj Dosa\\n115.62=petrol...'), multiple purchases, or an income together with expenses ('got stipend 15000 and spent 190 on dosa, 80 on coffee'), YOU MUST CALL THE RELEVANT TOOL FOR EACH INDIVIDUAL ITEM (call `log_income` for the stipend, and call `log_expense` for EVERY single expense item). Do not truncate, merge, or ignore any item.\n4. Merchants & Descriptions: Identify merchant/payee names and clear descriptions for each transaction.\n5. Queries & Reporting:\n   - When the user asks 'how much total i spend', 'total expenses', 'show spending breakdown', call `get_spending_breakdown`.\n   - When the user asks 'what is my balance', 'net worth', 'show pipes', call `get_pipe_balances`.\n   - When the user asks how to save money, reduce expenses, or wants financial advice, call `financial_advice_bundle`.\n   - When the user asks for budget checks or alerts, call `skill_budget_alert_check`.\n   - When the user asks for recurring bills or subscriptions, call `skill_recurring_bill_detector`.\n   - When the user asks for emergency fund or runway calculations, call `skill_emergency_fund_calculator`.\n6. General Financial Conversations:\n   If the user asks a general question, greetings, or conversational advice where no tools need to be executed, reply with a helpful, friendly, and structured financial response.\n"
+   },
+   {
+    "role": "user",
+    "content": "paid electricity bill of one thousand two hundred via bank"
+   }
+  ],
+  "response": {
+   "id": "WQrNavekOpKpjuMPofLOyAs",
+   "created": 1791822425,
+   "model": "gemini-3.8-flash",
+   "object": "chat.completion",
+   "system_fingerprint": null,
+   "choices": [
+    {
+     "finish_reason": "tool_calls",
+     "index": 0,
+     "message": {
+      "content": null,
+      "role": "assistant",
+      "tool_calls": [
+       {
+        "index": 0,
+        "provider_specific_fields": {
+         "thought_signature": "ErgCCrUCAWkUfRNPz3ccdBLYFGw61F4PXS06M1JlDNL+TCh7pmF/edggn4d2S9KS93h/0oHsnLV3t5DihAHQ0FojCHwr5udBPSCOUtYh2Xw/ivGteob/NoqSVrYQNSOfv6luvM7c8S7FOB6fdFnkXmk81rQVKCoHlR1SD8Ppx819MFdvDlbd0Zl0Eum4nXeMYEEwor8JyNaoivhhzqSdP8etUcbZii1BSVmuyIZMJ+b68yKSFrygpn+P/9BykWCpv37X5myVxtbrEJHAuFg0ay9TAD/zXmn9iHBlNrQ5VpT9FcK/jvoY8WdtJlPI6oKnmHAM3qs9xaJgOR7Hfn4rEcUA3E4XKjYbrJzKQ8FKJPvATuEDyrUNFYF3OIZqd9s1p54VZJ0HtHzWufPj56hp+QegDqVd0Fn4Pl7A"
+        },
+        "function": {
+         "arguments": "{\"account_name\": \"Bank\", \"category\": \"Utilities\", \"description\": \"Electricity bill\", \"amount\": 1200}",
+         "name": "log_expense"
+        },
+        "id": "call_1510798__thought__ErgCCrUCAWkUfRNPz3ccdBLYFGw61F4PXS06M1JlDNL+TCh7pmF/edggn4d2S9KS93h/0oHsnLV3t5DihAHQ0FojCHwr5udBPSCOUtYh2Xw/ivGteob/NoqSVrYQNSOfv6luvM7c8S7FOB6fdFnkXmk81rQVKCoHlR1SD8Ppx819MFdvDlbd0Zl0Eum4nXeMYEEwor8JyNaoivhhzqSdP8etUcbZii1BSVmuyIZMJ+b68yKSFrygpn+P/9BykWCpv37X5myVxtbrEJHAuFg0ay9TAD/zXmn9iHBlNrQ5VpT9FcK/jvoY8WdtJlPI6oKnmHAM3qs9xaJgOR7Hfn4rEcUA3E4XKjYbrJzKQ8FKJPvATuEDyrUNFYF3OIZqd9s1p54VZJ0HtHzWufPj56hp+QegDqVd0Fn4Pl7A",
+        "type": "function"
+       }
+      ],
+      "function_call": null,
+      "images": [],
+      "thinking_blocks": [],
+      "provider_specific_fields": {
+       "thought_signatures": [
+        "ErgCCrUCAWkUfRNPz3ccdBLYFGw61F4PXS06M1JlDNL+TCh7pmF/edggn4d2S9KS93h/0oHsnLV3t5DihAHQ0FojCHwr5udBPSCOUtYh2Xw/ivGteob/NoqSVrYQNSOfv6luvM7c8S7FOB6fdFnkXmk81rQVKCoHlR1SD8Ppx819MFdvDlbd0Zl0Eum4nXeMYEEwor8JyNaoivhhzqSdP8etUcbZii1BSVmuyIZMJ+b68yKSFrygpn+P/9BykWCpv37X5myVxtbrEJHAuFg0ay9TAD/zXmn9iHBlNrQ5VpT9FcK/jvoY8WdtJlPI6oKnmHAM3qs9xaJgOR7Hfn4rEcUA3E4XKjYbrJzKQ8FKJPvATuEDyrUNFYF3OIZqd9s1p54VZJ0HtHzWufPj56hp+QegDqVd0Fn4Pl7A"
+       ]
+      }
+     },
+     "provider_specific_fields": {
+      "native_finish_reason": "STOP"
+     }
+    }
+   ],
+   "usage": {
+    "completion_tokens": 87,
+    "prompt_tokens": 2268,
+    "total_tokens": 2355,
+    "completion_tokens_details": {
+     "reasoning_tokens": 49,
+     "text_tokens": 38
+    },
+    "prompt_tokens_details": {
+     "audio_tokens": null,
+     "cached_tokens": null,
+     "text_tokens": 2268,
+     "image_tokens": null,
+     "video_tokens": null
+    },
+    "cache_read_input_tokens": null
+   },
+   "vertex_ai_grounding_metadata": [],
+   "vertex_ai_url_context_metadata": [],
+   "vertex_ai_safety_results": [],
+   "vertex_ai_citation_metadata": [],
+   "service_tier": "default"
+  }
+ }
+]

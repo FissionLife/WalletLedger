@@ -57,6 +57,12 @@ PAGES = [
     ),
     ("DEMO", "demo", "Demo script", "An eight-minute live demo, step by step."),
     (
+        "EVALUATION",
+        "evaluation",
+        "Evaluation",
+        "How well the AI agent works: method, the 50-case dataset, metrics and results.",
+    ),
+    (
         "TOOL_MODE",
         "tool-mode",
         "Tool mode",

@@ -1,0 +1,107 @@
+[
+ {
+  "model": "gemini/gemini-flash-latest",
+  "messages": [
+   {
+    "role": "system",
+    "content": "You are WalletLedger's Financial AI Agent Brain modeled on the 'Tank & Pipes' architecture.\nYour job is to understand natural language user messages, analyze finances, and invoke appropriate tools dynamically.\n\nKey Guidelines:\n1. Account Pipes: Map colloquial payment accounts to clean pipe names (e.g. 'Bank', 'Cash', 'UPI Wallet'). Default to 'Cash' for everyday out-of-pocket expenses unless specified, and 'Bank' for income/transfers.\n2. Categories: Infer accurate, standard expense or income categories based on context (e.g. Food, Groceries, Transport, Shopping, Utilities, Subscriptions, Health, Personal Care, Entertainment, Gifts, Salary, Freelance, Stipend, Cashback).\n3. Multi-Item & Batch Transactions:\n   When the user provides a list of expenses (e.g. '190=poornima pizza Dosa\\n80=Neeraj Dosa\\n115.62=petrol...'), multiple purchases, or an income together with expenses ('got stipend 15000 and spent 190 on dosa, 80 on coffee'), YOU MUST CALL THE RELEVANT TOOL FOR EACH INDIVIDUAL ITEM (call `log_income` for the stipend, and call `log_expense` for EVERY single expense item). Do not truncate, merge, or ignore any item.\n4. Merchants & Descriptions: Identify merchant/payee names and clear descriptions for each transaction.\n5. Queries & Reporting:\n   - When the user asks 'how much total i spend', 'total expenses', 'show spending breakdown', call `get_spending_breakdown`.\n   - When the user asks 'what is my balance', 'net worth', 'show pipes', call `get_pipe_balances`.\n   - When the user asks how to save money, reduce expenses, or wants financial advice, call `financial_advice_bundle`.\n   - When the user asks for budget checks or alerts, call `skill_budget_alert_check`.\n   - When the user asks for recurring bills or subscriptions, call `skill_recurring_bill_detector`.\n   - When the user asks for emergency fund or runway calculations, call `skill_emergency_fund_calculator`.\n6. General Financial Conversations:\n   If the user asks a general question, greetings, or conversational advice where no tools need to be executed, reply with a helpful, friendly, and structured financial response.\n"
+   },
+   {
+    "role": "user",
+    "content": "Dad sent me five grand for my birthday"
+   }
+  ],
+  "error": "ServiceUnavailableError: litellm.ServiceUnavailableError: GeminiException - {\n  \"error\": {\n    \"code\": 503,\n    \"message\": \"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later.\",\n    \"status\": \"UNAVAILABLE\"\n  }\n}\n"
+ },
+ {
+  "model": "gemini/gemini-flash-latest",
+  "messages": [
+   {
+    "role": "system",
+    "content": "You are WalletLedger's Financial AI Agent Brain modeled on the 'Tank & Pipes' architecture.\nYour job is to understand natural language user messages, analyze finances, and invoke appropriate tools dynamically.\n\nKey Guidelines:\n1. Account Pipes: Map colloquial payment accounts to clean pipe names (e.g. 'Bank', 'Cash', 'UPI Wallet'). Default to 'Cash' for everyday out-of-pocket expenses unless specified, and 'Bank' for income/transfers.\n2. Categories: Infer accurate, standard expense or income categories based on context (e.g. Food, Groceries, Transport, Shopping, Utilities, Subscriptions, Health, Personal Care, Entertainment, Gifts, Salary, Freelance, Stipend, Cashback).\n3. Multi-Item & Batch Transactions:\n   When the user provides a list of expenses (e.g. '190=poornima pizza Dosa\\n80=Neeraj Dosa\\n115.62=petrol...'), multiple purchases, or an income together with expenses ('got stipend 15000 and spent 190 on dosa, 80 on coffee'), YOU MUST CALL THE RELEVANT TOOL FOR EACH INDIVIDUAL ITEM (call `log_income` for the stipend, and call `log_expense` for EVERY single expense item). Do not truncate, merge, or ignore any item.\n4. Merchants & Descriptions: Identify merchant/payee names and clear descriptions for each transaction.\n5. Queries & Reporting:\n   - When the user asks 'how much total i spend', 'total expenses', 'show spending breakdown', call `get_spending_breakdown`.\n   - When the user asks 'what is my balance', 'net worth', 'show pipes', call `get_pipe_balances`.\n   - When the user asks how to save money, reduce expenses, or wants financial advice, call `financial_advice_bundle`.\n   - When the user asks for budget checks or alerts, call `skill_budget_alert_check`.\n   - When the user asks for recurring bills or subscriptions, call `skill_recurring_bill_detector`.\n   - When the user asks for emergency fund or runway calculations, call `skill_emergency_fund_calculator`.\n6. General Financial Conversations:\n   If the user asks a general question, greetings, or conversational advice where no tools need to be executed, reply with a helpful, friendly, and structured financial response.\n"
+   },
+   {
+    "role": "user",
+    "content": "Dad sent me five grand for my birthday"
+   }
+  ],
+  "error": "Timeout: litellm.Timeout: Connection timed out. Timeout passed=15.0, time taken=15.014 seconds"
+ },
+ {
+  "model": "gemini/gemini-flash-latest",
+  "messages": [
+   {
+    "role": "system",
+    "content": "You are WalletLedger's Financial AI Agent Brain modeled on the 'Tank & Pipes' architecture.\nYour job is to understand natural language user messages, analyze finances, and invoke appropriate tools dynamically.\n\nKey Guidelines:\n1. Account Pipes: Map colloquial payment accounts to clean pipe names (e.g. 'Bank', 'Cash', 'UPI Wallet'). Default to 'Cash' for everyday out-of-pocket expenses unless specified, and 'Bank' for income/transfers.\n2. Categories: Infer accurate, standard expense or income categories based on context (e.g. Food, Groceries, Transport, Shopping, Utilities, Subscriptions, Health, Personal Care, Entertainment, Gifts, Salary, Freelance, Stipend, Cashback).\n3. Multi-Item & Batch Transactions:\n   When the user provides a list of expenses (e.g. '190=poornima pizza Dosa\\n80=Neeraj Dosa\\n115.62=petrol...'), multiple purchases, or an income together with expenses ('got stipend 15000 and spent 190 on dosa, 80 on coffee'), YOU MUST CALL THE RELEVANT TOOL FOR EACH INDIVIDUAL ITEM (call `log_income` for the stipend, and call `log_expense` for EVERY single expense item). Do not truncate, merge, or ignore any item.\n4. Merchants & Descriptions: Identify merchant/payee names and clear descriptions for each transaction.\n5. Queries & Reporting:\n   - When the user asks 'how much total i spend', 'total expenses', 'show spending breakdown', call `get_spending_breakdown`.\n   - When the user asks 'what is my balance', 'net worth', 'show pipes', call `get_pipe_balances`.\n   - When the user asks how to save money, reduce expenses, or wants financial advice, call `financial_advice_bundle`.\n   - When the user asks for budget checks or alerts, call `skill_budget_alert_check`.\n   - When the user asks for recurring bills or subscriptions, call `skill_recurring_bill_detector`.\n   - When the user asks for emergency fund or runway calculations, call `skill_emergency_fund_calculator`.\n6. General Financial Conversations:\n   If the user asks a general question, greetings, or conversational advice where no tools need to be executed, reply with a helpful, friendly, and structured financial response.\n"
+   },
+   {
+    "role": "user",
+    "content": "Dad sent me five grand for my birthday"
+   }
+  ],
+  "response": {
+   "id": "dgrNaum0FNWkjuMPo9bomQU",
+   "created": 1791822453,
+   "model": "gemini-3.8-flash",
+   "object": "chat.completion",
+   "system_fingerprint": null,
+   "choices": [
+    {
+     "finish_reason": "tool_calls",
+     "index": 0,
+     "message": {
+      "content": null,
+      "role": "assistant",
+      "tool_calls": [
+       {
+        "index": 0,
+        "provider_specific_fields": {
+         "thought_signature": "EoUGCoIGAWkUfRMg5J3d8c22Jsv/TS7TK5uw3E3UUIz8Woe1RDEa8XZ5tOmKTPjyy6WKsmTUW5DNyPxb2v6VNwjt6a5lt/F9A3NleIl+ka0aTTDcwo+Gj/L3LGVOix7q6Qrpkq3qFkml+rhQLyFHb2mn1m07A4Wnll9BC8/lnysxuHZRYqjLmH87dwcOzj6tRElYAkCBST5zHZdURiekch9hqroXRponFCBw0aAbOxa4O812VTd+72m7G2cJoAm8BX3pYFErY30TjTdCJG2GTI+gh6NXHA8um2K2+yGjXk4iRbnpUBLc/6nKf7PQvAivOgBsdZpcKlr8ooM4pNVr2eB6yPIx7u/u7As/pUpBxW46iW0WiSeneMX6P+liRKGTLI1huT/igBEQqC7wHaEs8HE4sM+DE3NEEnPdmkqGAbQYhpg4Fke2BhErarn53oSuhdRLsz5f5N5uQBoe2sWExWawnZy8nUzChjNlU3hH90oUx/VB5okQcGYLETRgQOnYQ0zsOKBwD+zNVFmz82xkp9buRhe5aWJ/onFLXTqeRQDtceSeLJsAiqLI/0VnXIU3wTYLLQkjo+qOXm5pbEuBdRJKISbRngPz+P5JkuZ5c1I8bSX0MYJE3qUSWqQObsWYPquYAf2wLLNWU4RcrN0NMWzG+oM+SSnXgs64FMlSlTEvZyLlJTLSVL6oaVNzkHyyvLM9cYNkP6ynDzVAnyv4UKUn3XV8TAirirzONaBgCtlUK3RKiFocAdo3Hll8g1l+aHMsNeM4EANH6shPbBzvAUEjD4a4yuOG9tcQyJ4C/O5Df3cX6hxa8kSwXtjX05yuqIjt/fCOWmZ49fFoLHg4LcdJ2CO+tWR/EpxktfsLQa5B/nOqoTklTdrLR6P7OOYb+kS8tyR9BLarmAEN89efpvLeFbXxBgO5bg7GFtqcZ2om21xrWw0wM1s8ZRQjRxe6SR/bXQ7iyCNLAKgtvCwk4mCTyJddrftOO5N7n7/GKMdsW48PUvpDkkyPX6ZbJCm0Nnh91gk7Ju0="
+        },
+        "function": {
+         "arguments": "{\"description\": \"Birthday gift from Dad\", \"category\": \"Gift\", \"amount\": 5000, \"source_account\": \"Bank\"}",
+         "name": "log_income"
+        },
+        "id": "call_1029971__thought__EoUGCoIGAWkUfRMg5J3d8c22Jsv/TS7TK5uw3E3UUIz8Woe1RDEa8XZ5tOmKTPjyy6WKsmTUW5DNyPxb2v6VNwjt6a5lt/F9A3NleIl+ka0aTTDcwo+Gj/L3LGVOix7q6Qrpkq3qFkml+rhQLyFHb2mn1m07A4Wnll9BC8/lnysxuHZRYqjLmH87dwcOzj6tRElYAkCBST5zHZdURiekch9hqroXRponFCBw0aAbOxa4O812VTd+72m7G2cJoAm8BX3pYFErY30TjTdCJG2GTI+gh6NXHA8um2K2+yGjXk4iRbnpUBLc/6nKf7PQvAivOgBsdZpcKlr8ooM4pNVr2eB6yPIx7u/u7As/pUpBxW46iW0WiSeneMX6P+liRKGTLI1huT/igBEQqC7wHaEs8HE4sM+DE3NEEnPdmkqGAbQYhpg4Fke2BhErarn53oSuhdRLsz5f5N5uQBoe2sWExWawnZy8nUzChjNlU3hH90oUx/VB5okQcGYLETRgQOnYQ0zsOKBwD+zNVFmz82xkp9buRhe5aWJ/onFLXTqeRQDtceSeLJsAiqLI/0VnXIU3wTYLLQkjo+qOXm5pbEuBdRJKISbRngPz+P5JkuZ5c1I8bSX0MYJE3qUSWqQObsWYPquYAf2wLLNWU4RcrN0NMWzG+oM+SSnXgs64FMlSlTEvZyLlJTLSVL6oaVNzkHyyvLM9cYNkP6ynDzVAnyv4UKUn3XV8TAirirzONaBgCtlUK3RKiFocAdo3Hll8g1l+aHMsNeM4EANH6shPbBzvAUEjD4a4yuOG9tcQyJ4C/O5Df3cX6hxa8kSwXtjX05yuqIjt/fCOWmZ49fFoLHg4LcdJ2CO+tWR/EpxktfsLQa5B/nOqoTklTdrLR6P7OOYb+kS8tyR9BLarmAEN89efpvLeFbXxBgO5bg7GFtqcZ2om21xrWw0wM1s8ZRQjRxe6SR/bXQ7iyCNLAKgtvCwk4mCTyJddrftOO5N7n7/GKMdsW48PUvpDkkyPX6ZbJCm0Nnh91gk7Ju0=",
+        "type": "function"
+       }
+      ],
+      "function_call": null,
+      "images": [],
+      "thinking_blocks": [],
+      "provider_specific_fields": {
+       "thought_signatures": [
+        "EoUGCoIGAWkUfRMg5J3d8c22Jsv/TS7TK5uw3E3UUIz8Woe1RDEa8XZ5tOmKTPjyy6WKsmTUW5DNyPxb2v6VNwjt6a5lt/F9A3NleIl+ka0aTTDcwo+Gj/L3LGVOix7q6Qrpkq3qFkml+rhQLyFHb2mn1m07A4Wnll9BC8/lnysxuHZRYqjLmH87dwcOzj6tRElYAkCBST5zHZdURiekch9hqroXRponFCBw0aAbOxa4O812VTd+72m7G2cJoAm8BX3pYFErY30TjTdCJG2GTI+gh6NXHA8um2K2+yGjXk4iRbnpUBLc/6nKf7PQvAivOgBsdZpcKlr8ooM4pNVr2eB6yPIx7u/u7As/pUpBxW46iW0WiSeneMX6P+liRKGTLI1huT/igBEQqC7wHaEs8HE4sM+DE3NEEnPdmkqGAbQYhpg4Fke2BhErarn53oSuhdRLsz5f5N5uQBoe2sWExWawnZy8nUzChjNlU3hH90oUx/VB5okQcGYLETRgQOnYQ0zsOKBwD+zNVFmz82xkp9buRhe5aWJ/onFLXTqeRQDtceSeLJsAiqLI/0VnXIU3wTYLLQkjo+qOXm5pbEuBdRJKISbRngPz+P5JkuZ5c1I8bSX0MYJE3qUSWqQObsWYPquYAf2wLLNWU4RcrN0NMWzG+oM+SSnXgs64FMlSlTEvZyLlJTLSVL6oaVNzkHyyvLM9cYNkP6ynDzVAnyv4UKUn3XV8TAirirzONaBgCtlUK3RKiFocAdo3Hll8g1l+aHMsNeM4EANH6shPbBzvAUEjD4a4yuOG9tcQyJ4C/O5Df3cX6hxa8kSwXtjX05yuqIjt/fCOWmZ49fFoLHg4LcdJ2CO+tWR/EpxktfsLQa5B/nOqoTklTdrLR6P7OOYb+kS8tyR9BLarmAEN89efpvLeFbXxBgO5bg7GFtqcZ2om21xrWw0wM1s8ZRQjRxe6SR/bXQ7iyCNLAKgtvCwk4mCTyJddrftOO5N7n7/GKMdsW48PUvpDkkyPX6ZbJCm0Nnh91gk7Ju0="
+       ]
+      }
+     },
+     "provider_specific_fields": {
+      "native_finish_reason": "STOP"
+     }
+    }
+   ],
+   "usage": {
+    "completion_tokens": 225,
+    "prompt_tokens": 2266,
+    "total_tokens": 2491,
+    "completion_tokens_details": {
+     "reasoning_tokens": 185,
+     "text_tokens": 40
+    },
+    "prompt_tokens_details": {
+     "audio_tokens": null,
+     "cached_tokens": null,
+     "text_tokens": 2266,
+     "image_tokens": null,
+     "video_tokens": null
+    },
+    "cache_read_input_tokens": null
+   },
+   "vertex_ai_grounding_metadata": [],
+   "vertex_ai_url_context_metadata": [],
+   "vertex_ai_safety_results": [],
+   "vertex_ai_citation_metadata": [],
+   "service_tier": "default"
+  }
+ }
+]

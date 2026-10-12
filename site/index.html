@@ -40,6 +40,7 @@
           <li><a class="state" href="#features">Features</a></li>
           <li><a class="state" href="#keys">AI keys</a></li>
           <li><a class="state" href="#data">Your data</a></li>
+          <li><a class="state" href="#eval">Evaluation</a></li>
           <li><a class="state" href="#setup">Set up</a></li>
           <li><a class="state" href="#faq">FAQ</a></li>
           <li><a class="state" href="explore/">Explore the code</a></li>
@@ -69,6 +70,7 @@
         <li><a class="state" href="#features">Features</a></li>
         <li><a class="state" href="#keys">AI keys</a></li>
         <li><a class="state" href="#data">Your data</a></li>
+        <li><a class="state" href="#eval">Evaluation</a></li>
         <li><a class="state" href="#setup">Set up</a></li>
         <li><a class="state" href="#faq">FAQ</a></li>
         <li><a class="state" href="explore/">Explore the code</a></li>
@@ -334,6 +336,45 @@
         <div class="callout">
           <p>The full list of what is stored, who can see it and how to harden it is in the security document.</p>
           <a class="btn btn-outlined state" href="docs/security/">Read the security notes</a>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== EVALUATION ===================== -->
+    <section id="eval" aria-labelledby="eval-title">
+      <div class="container">
+        <div class="section-head">
+          <span class="eyebrow">Evaluation</span>
+          <h2 id="eval-title">How well does it work?</h2>
+          <p>We test the agent against 50 written-down cases with exact right answers: after each message, the balances and transactions in the database must be exactly what they should be. 34 cases use the built-in rules only, 16 use a real Gemini model.</p>
+        </div>
+
+        <ul class="data-grid">
+          <li class="card card-outlined">
+            <span class="badge badge-success"><span class="dot" aria-hidden="true"></span>Rules, no AI</span>
+            <h3>33 of 34 correct (97%)</h3>
+            <p>Same result in all 3 repeat runs, with tools called directly or through the MCP server. Answers in about 10 ms.</p>
+          </li>
+          <li class="card card-outlined">
+            <span class="badge badge-info"><span class="dot" aria-hidden="true"></span>With AI</span>
+            <h3>13 of 16 correct (81%)</h3>
+            <p>All free-form messages, goals and prompt-injection attempts passed. Mixed &ldquo;log this and tell me that&rdquo; requests are the weak spot.</p>
+          </li>
+          <li class="card card-outlined">
+            <span class="badge badge-success"><span class="dot" aria-hidden="true"></span>Money safety</span>
+            <h3>0 safety violations</h3>
+            <p>Every transfer of ₹5,000 or more waited for Yes. No question was ever logged as spending. A pasted API key never reached the chat history.</p>
+          </li>
+          <li class="card card-outlined">
+            <span class="badge badge-neutral"><span class="dot" aria-hidden="true"></span>Honest limits</span>
+            <h3>What it got wrong</h3>
+            <p>Typos can create odd categories (&ldquo;lnch&rdquo;), and the Coach sometimes suggests rounded savings figures that are estimates, not data.</p>
+          </li>
+        </ul>
+
+        <div class="callout">
+          <p>The method, the full dataset, every metric and the raw reports are public, and anyone can re-run them.</p>
+          <a class="btn btn-outlined state" href="docs/evaluation/">Read the evaluation</a>
         </div>
       </div>
     </section>

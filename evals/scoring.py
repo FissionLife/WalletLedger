@@ -122,14 +122,40 @@ def _supported(figure: float, pool: list[float]) -> bool:
     return any(abs(figure - n) <= tolerance for n in pool)
 
 
+def _derived(figure: float, pool: list[float]) -> bool:
+    """True if the figure is a sum or difference of two or three real figures.
+
+    "Food ₹920 + Entertainment ₹649 = ₹1,569" is arithmetic on real data, not an invented number.
+    Only figures >= 100 are combined, so tiny values can't make anything "match".
+    """
+    big = sorted({round(n, 2) for n in pool if abs(n) >= 100})[:60]
+    for i, a in enumerate(big):
+        for j in range(i + 1, len(big)):
+            b = big[j]
+            if _supported(figure, [a + b, abs(a - b)]):
+                return True
+            for c in big[j + 1 :]:
+                if _supported(figure, [a + b + c]):
+                    return True
+    return False
+
+
 def unsupported_figures(observed: dict[str, Any]) -> list[float]:
-    """Figures in the reply that appear in neither this turn's tool results nor the balances."""
+    """Figures in the reply found neither in this turn's tool results / balances nor derived from them.
+
+    A figure is grounded when it appears in the data, or is a sum/difference of 2-3 data figures.
+    Anything else (an invented saving target, a guessed total) is reported as unsupported.
+    """
     pool: list[float] = []
     for call in observed.get("calls") or []:
         _numbers_in(call.get("result"), pool)
         _numbers_in(call.get("args"), pool)
     _numbers_in(list((observed.get("balances") or {}).values()), pool)
-    return [f for f in reply_figures(observed.get("reply_text", "")) if not _supported(f, pool)]
+    return [
+        f
+        for f in reply_figures(observed.get("reply_text", ""))
+        if not _supported(f, pool) and not _derived(f, pool)
+    ]
 
 
 def _arg_field(key: str) -> str:
@@ -422,7 +448,8 @@ def render_markdown(m: dict[str, Any], results: list[dict[str, Any]], meta: dict
         f"- date (UTC): {meta.get('date')}  commit: `{meta.get('commit')}`",
         f"- repeat: {meta.get('repeat')}  replay: {meta.get('replay')}  "
         f"budget: {meta.get('llm_budget')}  real provider requests: "
-        f"{meta.get('real_provider_requests')}  model: {meta.get('model') or 'none'}",
+        f"{meta.get('real_provider_requests')} (provider errors: "
+        f"{meta.get('provider_errors', 0)})  model: {meta.get('model') or 'none'}",
         "",
         "| metric | value |",
         "|---|---|",

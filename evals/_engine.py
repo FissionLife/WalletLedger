@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import secrets
 import subprocess
 import time
@@ -39,18 +40,21 @@ class Recorder:
         self.replay = replay
         self.budget = budget
         self.real_requests = 0
+        self.provider_errors = 0
         self.model: str | None = None
         self.reset_case()
 
     def reset_case(self) -> None:
         self.case_log: list[dict[str, Any]] = []
         self.case_requests = 0
+        self.case_errors = 0
         self.reset_turn()
 
     def reset_turn(self) -> None:
         self.calls: list[dict[str, Any]] = []
         self.paths: list[str] = []
-        self.turn_requests = 0
+        self.turn_requests = 0  # answered requests (the agent's own cost)
+        self.turn_errors = 0  # provider errors (503 busy, 429 rate limit): quota, not agent
 
     # ---- wrappers ----------------------------------------------------------------------------
     def wrap_tool(self, original):
@@ -77,26 +81,37 @@ class Recorder:
 
     def wrap_completion(self, original):
         async def acompletion(*a, **kw):
-            self.turn_requests += 1
-            self.case_requests += 1
             entry = {"model": kw.get("model"), "messages": self.scrub(kw.get("messages"))}
             if self.replay is not None:
                 if not self.replay:
                     raise RuntimeError("eval replay: no more recorded responses for this case")
                 saved = self.replay.pop(0)
                 if saved.get("error"):
-                    raise litellm.RateLimitError(saved["error"], "gemini", saved.get("model", ""))
+                    self.turn_errors += 1
+                    self.case_errors += 1
+                    raise litellm.ServiceUnavailableError(
+                        saved["error"], "gemini", saved.get("model", "")
+                    )
+                self.turn_requests += 1
+                self.case_requests += 1
                 return litellm.ModelResponse(**saved["response"])
             if not self.live:
+                self.turn_requests += 1  # an attempt in a rules case is counted against it
+                self.case_requests += 1
                 raise litellm.AuthenticationError("eval: AI disabled in rules tier", "gemini", "")
             self.real_requests += 1
             self.model = kw.get("model") or self.model
             try:
                 response = await original(*a, **kw)
             except Exception as exc:
+                self.turn_errors += 1
+                self.case_errors += 1
+                self.provider_errors += 1
                 entry["error"] = self.scrub(f"{type(exc).__name__}: {str(exc)[:300]}")
                 self.case_log.append(entry)
                 raise
+            self.turn_requests += 1
+            self.case_requests += 1
             entry["response"] = self.scrub(response.model_dump())
             self.case_log.append(entry)
             return response
@@ -197,6 +212,7 @@ async def _turn(rec: Recorder, chat_id: str, text: str, baseline: int) -> dict[s
         "balances": state["balances"],
         "new_transactions": state["tx_count"] - baseline,
         "provider_requests": rec.turn_requests,
+        "provider_errors": rec.turn_errors,
         "latency_ms": round(latency, 1),
         "chat_history": state["history"],
     }
@@ -252,6 +268,9 @@ def _commit() -> str:
 async def _run_all(args, scrub) -> tuple[list[dict], Recorder]:
     init_db()
     ai_gateway.reset_rotation_state()
+    if args.replay and not os.environ.get("GEMINI_API_KEYS"):
+        # Replay serves saved answers; the gateway only needs *a* key to try (never sent anywhere).
+        os.environ["GEMINI_API_KEYS"] = ",".join("AIza" + str(i) * 35 for i in range(10))
     rec = Recorder(scrub, live=False, replay=None, budget=args.llm_budget)
     recordings = Path(args.recordings)
     results = []
@@ -291,7 +310,8 @@ async def _run_all(args, scrub) -> tuple[list[dict], Recorder]:
                     runs.append(result)
                     mark = "PASS" if result["passed"] else "FAIL"
                     print(
-                        f"  {case['id']:<5} run {k}: {mark}  ({result['provider_requests']} AI requests)"
+                        f"  {case['id']:<5} run {k}: {mark}  ({result['provider_requests']} AI answers, "
+                        f"{rec.case_errors} provider errors)"
                     )
                 results.append(scoring.case_result(case, runs or None))
     finally:
@@ -312,6 +332,7 @@ def run(args, scrub) -> int:
         "replay": args.replay,
         "llm_budget": args.llm_budget,
         "real_provider_requests": rec.real_requests,
+        "provider_errors": rec.provider_errors,
         "model": rec.model,
         "golden": Path(args.golden).name,
     }

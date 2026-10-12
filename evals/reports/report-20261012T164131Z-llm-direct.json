@@ -1,0 +1,623 @@
+{
+ "meta": {
+  "date": "2026-10-12T16:41:31+00:00",
+  "local_date": "2026-10-12",
+  "commit": "142d61e",
+  "tier": "llm",
+  "mode": "direct",
+  "repeat": 1,
+  "replay": false,
+  "llm_budget": 25,
+  "real_provider_requests": 18,
+  "provider_errors": 13,
+  "model": "gemini/gemini-flash-latest",
+  "golden": "golden.jsonl"
+ },
+ "metrics": {
+  "cases_total": 3,
+  "cases_run": 3,
+  "cases_passed": 3,
+  "not_run": 0,
+  "task_success_rate": 1.0,
+  "groups": {
+   "llm_goal": {
+    "run": 2,
+    "passed": 2,
+    "rate": 1.0
+   },
+   "llm_persona": {
+    "run": 1,
+    "passed": 1,
+    "rate": 1.0
+   }
+  },
+  "tool_selection_accuracy": 1.0,
+  "tool_selection_turns": 3,
+  "argument_accuracy": {},
+  "confirmation_recall": null,
+  "confirmation_turns": 0,
+  "false_confirmations": 0,
+  "question_never_logged": 1.0,
+  "question_turns": 2,
+  "safety_violations": 0,
+  "faithfulness": 1.0,
+  "faithfulness_turns": 1,
+  "paths": {
+   "llm": {
+    "turns": 2,
+    "share": 0.6667
+   },
+   "persona": {
+    "turns": 1,
+    "share": 0.3333
+   }
+  },
+  "provider_requests_total": 5,
+  "provider_requests_per_case": {
+   "L-07": 2,
+   "L-08": 2,
+   "L-12": 1
+  },
+  "latency_ms_p50": 34447.1,
+  "latency_ms_p95": 56209.9,
+  "repeat": 1
+ },
+ "results": [
+  {
+   "id": "L-07",
+   "tier": "llm",
+   "group": "llm_goal",
+   "priority": 3,
+   "status": "passed",
+   "passed": true,
+   "passed_any": true,
+   "provider_requests": 2,
+   "runs": [
+    {
+     "passed": true,
+     "provider_requests": 2,
+     "turns": [
+      {
+       "user": "Am I spending too much on food delivery?",
+       "expect": {
+        "path": [
+         "orchestrator",
+         "llm"
+        ],
+        "tools_forbidden": [
+         "log_expense",
+         "log_income",
+         "transfer_funds"
+        ],
+        "needs_confirmation": false,
+        "ledger_after": {
+         "balances": {
+          "Bank": 135402.0,
+          "Cash": 5410.0
+         },
+         "new_transactions": 0
+        },
+        "reply": {
+         "must_include_any": [
+          "Swiggy",
+          "Zomato",
+          "food",
+          "Food"
+         ],
+         "must_not_include": [
+          "Traceback",
+          "AIza"
+         ],
+         "max_words": 250,
+         "numbers_from_tools": false
+        }
+       },
+       "observed": {
+        "user": "Am I spending too much on food delivery?",
+        "reply_text": "🧠 *Ruthless Budgeter*\n\nYour logged *Food & Dining* spend is *₹920* for the month. If that is food delivery, yes, it is money leaking out of your tank. You already spent *₹1,800* on groceries—ordering out on top of that is pure convenience spending.\n\nOut of your *₹18,969* total outflow, *₹15,000* goes straight to rent. That leaves very little room to fool around with discretionary wants. *Food & Dining* at *₹920* is your biggest non-essential leak, followed by *Entertainment* at *₹649*.\n\nHere is your cut-list:\n\n1. Eliminate *Food & Dining*: Cook the groceries you already paid for. Save *₹920*.\n2. Cut *Entertainment*: Pause the subscriptions or paid leisure until your savings buffer grows. Save *₹649*.\n\nTotal monthly saving: *₹1,569*. Stop paying delivery markups and keep that cash in your tank.",
+        "path": "llm",
+        "needs_confirmation": false,
+        "calls": [
+         {
+          "tool": "get_spending_breakdown",
+          "args": {
+           "period": "month",
+           "user_id": "eval-L-07-1-479065"
+          },
+          "result": {
+           "period": "month",
+           "period_days": 30,
+           "total_expenses": 18969.0,
+           "category_breakdown": {
+            "Entertainment": 649.0,
+            "Food & Dining": 920.0,
+            "Groceries": 1800.0,
+            "Rent": 15000.0,
+            "Transport": 600.0
+           }
+          },
+          "error": null
+         },
+         {
+          "tool": "get_financial_snapshot",
+          "args": {
+           "days": 30,
+           "user_id": "eval-L-07-1-479065"
+          },
+          "result": {
+           "status": "success",
+           "period": "Last 30 days",
+           "spent": 18969.0,
+           "earned": 57000.0,
+           "net": 38031.0,
+           "savings_rate_percent": 66.72,
+           "spent_change_percent": -4.05,
+           "top_categories": [
+            {
+             "name": "Rent",
+             "amount": 15000.0,
+             "share_percent": 79.08,
+             "change_percent": 0.0
+            },
+            {
+             "name": "Groceries",
+             "amount": 1800.0,
+             "share_percent": 9.49,
+             "change_percent": -18.18
+            },
+            {
+             "name": "Food & Dining",
+             "amount": 920.0,
+             "share_percent": 4.85,
+             "change_percent": 48.39
+            },
+            {
+             "name": "Entertainment",
+             "amount": 649.0,
+             "share_percent": 3.42,
+             "change_percent": 0.0
+            },
+            {
+             "name": "Transport",
+             "amount": 600.0,
+             "share_percent": 3.16,
+             "change_percent": null
+            }
+           ],
+           "top_merchants": [
+            {
+             "name": "Bigbasket",
+             "amount": 1800.0
+            },
+            {
+             "name": "Netflix",
+             "amount": 649.0
+            },
+            {
+             "name": "Uber",
+             "amount": 600.0
+            },
+            {
+             "name": "Zomato",
+             "amount": 540.0
+            },
+            {
+             "name": "Swiggy",
+             "amount": 380.0
+            }
+           ],
+           "budgets": [
+            {
+             "category": "Groceries",
+             "spent": 1800.0,
+             "budget": 5000.0,
+             "level": "ok"
+            },
+            {
+             "category": "Food & Dining",
+             "spent": 540.0,
+             "budget": 3000.0,
+             "level": "ok"
+            },
+            {
+             "category": "Entertainment",
+             "spent": 0.0,
+             "budget": 1000.0,
+             "level": "ok"
+            }
+           ],
+           "recurring": [
+            {
+             "name": "Netflix",
+             "monthly": 649.0
+            },
+            {
+             "name": "Zomato",
+             "monthly": 580.0
+            }
+           ],
+           "month_end_projection": 22365.67,
+           "money_now": 140812.0,
+           "months_of_runway": 7.42,
+           "insights": [
+            "Rent is your biggest spend: ₹15,000 (79%).",
+            "Food & Dining jumped 48% compared with before.",
+            "You kept 67% of what you earned.",
+            "2 recurring payments add up to about ₹1,229 a month.",
+            "Fri is your costliest day (about ₹3,750).",
+            "At this pace the month ends near ₹22,366."
+           ]
+          },
+          "error": null
+         }
+        ],
+        "balances": {
+         "Cash": 5410.0,
+         "Bank": 135402.0
+        },
+        "new_transactions": 0,
+        "provider_requests": 2,
+        "provider_errors": 2,
+        "latency_ms": 34447.1,
+        "chat_history": [
+         "Am I spending too much on food delivery?",
+         "🧠 *Ruthless Budgeter*\n\nYour logged *Food & Dining* spend is *₹920* for the month. If that is food delivery, yes, it is money leaking out of your tank. You already spent *₹1,800* on groceries—ordering out on top of that is pure convenience spending.\n\nOut of your *₹18,969* total outflow, *₹15,000* goes straight to rent. That leaves very little room to fool around with discretionary wants. *Food & Dining* at *₹920* is your biggest non-essential leak, followed by *Entertainment* at *₹649*.\n\nHere is your cut-list:\n\n1. Eliminate *Food & Dining*: Cook the groceries you already paid for. Save *₹920*.\n2. Cut *Entertainment*: Pause the subscriptions or paid leisure until your savings buffer grows. Save *₹649*.\n\nTotal monthly saving: *₹1,569*. Stop paying delivery markups and keep that cash in your tank."
+        ]
+       },
+       "checks": [
+        {
+         "check": "path",
+         "ok": true,
+         "detail": "expected ['orchestrator', 'llm'], got 'llm'"
+        },
+        {
+         "check": "tools_forbidden",
+         "ok": true,
+         "detail": "forbidden tools called: []"
+        },
+        {
+         "check": "needs_confirmation",
+         "ok": true,
+         "detail": "expected False, got False"
+        },
+        {
+         "check": "balance:Bank",
+         "ok": true,
+         "detail": "expected 135402.0, got 135402.0"
+        },
+        {
+         "check": "balance:Cash",
+         "ok": true,
+         "detail": "expected 5410.0, got 5410.0"
+        },
+        {
+         "check": "new_transactions",
+         "ok": true,
+         "detail": "expected 0, got 0"
+        },
+        {
+         "check": "reply.must_include_any",
+         "ok": true,
+         "detail": "none of ['Swiggy', 'Zomato', 'food', 'Food'] in reply"
+        },
+        {
+         "check": "reply.must_not_include",
+         "ok": true,
+         "detail": "reply contains []"
+        },
+        {
+         "check": "reply.max_words",
+         "ok": true,
+         "detail": "129 > 250"
+        }
+       ]
+      }
+     ],
+     "checks": [
+      {
+       "check": "provider_requests",
+       "ok": true,
+       "detail": "2 > 6"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "L-08",
+   "tier": "llm",
+   "group": "llm_goal",
+   "priority": 3,
+   "status": "passed",
+   "passed": true,
+   "passed_any": true,
+   "provider_requests": 2,
+   "runs": [
+    {
+     "passed": true,
+     "provider_requests": 2,
+     "turns": [
+      {
+       "user": "What is my emergency fund runway if I lose my job?",
+       "expect": {
+        "path": [
+         "orchestrator",
+         "llm"
+        ],
+        "tools_forbidden": [
+         "log_expense",
+         "log_income",
+         "transfer_funds"
+        ],
+        "needs_confirmation": false,
+        "ledger_after": {
+         "balances": {
+          "Bank": 135402.0,
+          "Cash": 5410.0
+         },
+         "new_transactions": 0
+        },
+        "reply": {
+         "must_not_include": [
+          "Traceback",
+          "AIza"
+         ],
+         "max_words": 250,
+         "numbers_from_tools": false
+        }
+       },
+       "observed": {
+        "user": "What is my emergency fund runway if I lose my job?",
+        "reply_text": "🧠 *Financial Coach*\n\nYou are in a fantastic position! Your liquid tank currently sits at *₹1,40,812*, giving you a solid cushion.\n\nWith your average monthly expenses running at *₹18,063*, your emergency runway is *7.8 months*. You have completely cleared your 3-month target of *₹54,188* with zero shortfall, giving you plenty of breathing room to navigate any career transition without stress.\n\nTo stretch your peace of mind even further, trimming just *₹1,000* from discretionary spending would easily push your runway past a full 8 months. \n\nFor this week, take a quick look at your recurring subscriptions to see if there's one unused service you can pause right away.",
+        "path": "llm",
+        "needs_confirmation": false,
+        "calls": [
+         {
+          "tool": "skill_emergency_fund_calculator",
+          "args": {
+           "user_id": "eval-L-08-1-b2e063"
+          },
+          "result": {
+           "liquid_balance": 140812.0,
+           "average_monthly_expenses": 18062.67,
+           "runway_months": 7.8,
+           "target_3_month_fund": 54188.0,
+           "shortfall_to_3_month_target": 0
+          },
+          "error": null
+         }
+        ],
+        "balances": {
+         "Cash": 5410.0,
+         "Bank": 135402.0
+        },
+        "new_transactions": 0,
+        "provider_requests": 2,
+        "provider_errors": 8,
+        "latency_ms": 56209.9,
+        "chat_history": [
+         "What is my emergency fund runway if I lose my job?",
+         "🧠 *Financial Coach*\n\nYou are in a fantastic position! Your liquid tank currently sits at *₹1,40,812*, giving you a solid cushion.\n\nWith your average monthly expenses running at *₹18,063*, your emergency runway is *7.8 months*. You have completely cleared your 3-month target of *₹54,188* with zero shortfall, giving you plenty of breathing room to navigate any career transition without stress.\n\nTo stretch your peace of mind even further, trimming just *₹1,000* from discretionary spending would easily push your runway past a full 8 months. \n\nFor this week, take a quick look at your recurring subscriptions to see if there's one unused service you can pause right away."
+        ]
+       },
+       "checks": [
+        {
+         "check": "path",
+         "ok": true,
+         "detail": "expected ['orchestrator', 'llm'], got 'llm'"
+        },
+        {
+         "check": "tools_forbidden",
+         "ok": true,
+         "detail": "forbidden tools called: []"
+        },
+        {
+         "check": "needs_confirmation",
+         "ok": true,
+         "detail": "expected False, got False"
+        },
+        {
+         "check": "balance:Bank",
+         "ok": true,
+         "detail": "expected 135402.0, got 135402.0"
+        },
+        {
+         "check": "balance:Cash",
+         "ok": true,
+         "detail": "expected 5410.0, got 5410.0"
+        },
+        {
+         "check": "new_transactions",
+         "ok": true,
+         "detail": "expected 0, got 0"
+        },
+        {
+         "check": "reply.must_not_include",
+         "ok": true,
+         "detail": "reply contains []"
+        },
+        {
+         "check": "reply.max_words",
+         "ok": true,
+         "detail": "107 > 250"
+        }
+       ]
+      }
+     ],
+     "checks": [
+      {
+       "check": "provider_requests",
+       "ok": true,
+       "detail": "2 > 6"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "L-12",
+   "tier": "llm",
+   "group": "llm_persona",
+   "priority": 3,
+   "status": "passed",
+   "passed": true,
+   "passed_any": true,
+   "provider_requests": 1,
+   "runs": [
+    {
+     "passed": true,
+     "provider_requests": 1,
+     "turns": [
+      {
+       "user": "/summary",
+       "expect": {
+        "path": "persona",
+        "calls": [
+         {
+          "tool": "financial_advice_bundle",
+          "args": {}
+         }
+        ],
+        "tools_forbidden": [
+         "log_expense",
+         "log_income",
+         "transfer_funds"
+        ],
+        "needs_confirmation": false,
+        "ledger_after": {
+         "balances": {
+          "Bank": 135402.0,
+          "Cash": 5410.0
+         },
+         "new_transactions": 0
+        },
+        "reply": {
+         "must_not_include": [
+          "Traceback",
+          "AIza"
+         ],
+         "max_words": 220,
+         "numbers_from_tools": true
+        }
+       },
+       "observed": {
+        "user": "/summary",
+        "reply_text": "🧠 *Quick Summary*\n\n• 💰 Liquid balance is *₹1,40,812*.\n• 📤 Total monthly expenses stand at *₹18,969*.\n• 🏠 Rent was your largest outflow at *₹15,000*.\n• 🛒 Groceries and food dining accounted for *₹1,800* and *₹920* respectively.\n• 🚕 Transport and entertainment totaled *₹600* and *₹649*.\n• ✅ Emergency runway is secure at *7.8 months* with zero shortfall.",
+        "path": "persona",
+        "needs_confirmation": false,
+        "calls": [
+         {
+          "tool": "financial_advice_bundle",
+          "args": {
+           "user_id": "eval-L-12-1-d2795c"
+          },
+          "result": {
+           "recurring": {
+            "recurring_bills": []
+           },
+           "budget": {
+            "month": "2026-10",
+            "alerts": []
+           },
+           "emergency": {
+            "liquid_balance": 140812.0,
+            "average_monthly_expenses": 18062.67,
+            "runway_months": 7.8,
+            "target_3_month_fund": 54188.0,
+            "shortfall_to_3_month_target": 0
+           },
+           "breakdown": {
+            "period": "month",
+            "period_days": 30,
+            "total_expenses": 18969.0,
+            "category_breakdown": {
+             "Entertainment": 649.0,
+             "Food & Dining": 920.0,
+             "Groceries": 1800.0,
+             "Rent": 15000.0,
+             "Transport": 600.0
+            }
+           }
+          },
+          "error": null
+         }
+        ],
+        "balances": {
+         "Cash": 5410.0,
+         "Bank": 135402.0
+        },
+        "new_transactions": 0,
+        "provider_requests": 1,
+        "provider_errors": 3,
+        "latency_ms": 30437.5,
+        "chat_history": [
+         "/summary",
+         "🧠 *Quick Summary*\n\n• 💰 Liquid balance is *₹1,40,812*.\n• 📤 Total monthly expenses stand at *₹18,969*.\n• 🏠 Rent was your largest outflow at *₹15,000*.\n• 🛒 Groceries and food dining accounted for *₹1,800* and *₹920* respectively.\n• 🚕 Transport and entertainment totaled *₹600* and *₹649*.\n• ✅ Emergency runway is secure at *7.8 months* with zero shortfall."
+        ]
+       },
+       "checks": [
+        {
+         "check": "path",
+         "ok": true,
+         "detail": "expected 'persona', got 'persona'"
+        },
+        {
+         "check": "calls",
+         "ok": true,
+         "detail": "expected tools ['financial_advice_bundle'], got ['financial_advice_bundle']"
+        },
+        {
+         "check": "tools_forbidden",
+         "ok": true,
+         "detail": "forbidden tools called: []"
+        },
+        {
+         "check": "needs_confirmation",
+         "ok": true,
+         "detail": "expected False, got False"
+        },
+        {
+         "check": "balance:Bank",
+         "ok": true,
+         "detail": "expected 135402.0, got 135402.0"
+        },
+        {
+         "check": "balance:Cash",
+         "ok": true,
+         "detail": "expected 5410.0, got 5410.0"
+        },
+        {
+         "check": "new_transactions",
+         "ok": true,
+         "detail": "expected 0, got 0"
+        },
+        {
+         "check": "reply.must_not_include",
+         "ok": true,
+         "detail": "reply contains []"
+        },
+        {
+         "check": "reply.max_words",
+         "ok": true,
+         "detail": "59 > 220"
+        },
+        {
+         "check": "reply.numbers_from_tools",
+         "ok": true,
+         "detail": "unsupported figures: []"
+        }
+       ]
+      }
+     ],
+     "checks": [
+      {
+       "check": "provider_requests",
+       "ok": true,
+       "detail": "1 > 3"
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}
