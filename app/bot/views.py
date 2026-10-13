@@ -265,8 +265,9 @@ async def export_csv(chat_id: str, period: str = "30d", words: list[str] | None 
 def _set_budget(chat_id: str, category: str, amount: float | None) -> str:
     with SessionLocal() as db:
         uid = _user_id(db, chat_id)
-        # "food" means the user's "Food & Dining": reuse the category their entries are filed under
-        cat = ledger.resolve_category(db, uid, category, "expense")
+        # "food"/"meals" mean the user's "Food & Dining": file the budget under the canonical
+        # category name so later expenses count against it, even if no such category exists yet.
+        cat = ledger.resolve_category(db, uid, nlu.canonical_category(category), "expense")
         cat.budget_limit = amount
         db.commit()
         return cat.name

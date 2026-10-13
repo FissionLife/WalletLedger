@@ -107,11 +107,49 @@ def _add_missing_indexes() -> None:
             conn.execute(text(f"CREATE INDEX IF NOT EXISTS {name} ON {table} ({columns})"))
 
 
+def _move_aliased_budgets() -> None:
+    """One-time: a budget set on an alias category ("Food") moves to the canonical one
+    ("Food & Dining") that expenses actually file under, so spend counts against the budget.
+
+    Only moves the budget_limit (never merges transactions). Safe to run on every start.
+    """
+    from sqlalchemy import func, select
+
+    from app.bot.nlu import canonical_category
+    from app.models import Category
+
+    with SessionLocal() as db:
+        budgeted = list(db.scalars(select(Category).where(Category.budget_limit.is_not(None))))
+        moved = 0
+        for cat in budgeted:
+            canon = canonical_category(cat.name)
+            if canon.lower() == cat.name.lower():
+                continue  # already canonical
+            target = db.scalar(
+                select(Category).where(
+                    Category.user_id == cat.user_id,
+                    Category.type == cat.type,
+                    func.lower(Category.name) == canon.lower(),
+                )
+            )
+            if target is None or target.budget_limit is not None:
+                continue  # no canonical twin, or it already has its own budget — leave as is
+            target.budget_limit, cat.budget_limit = cat.budget_limit, None
+            moved += 1
+        if moved:
+            db.commit()
+            logger.info("Moved %d budget(s) onto their canonical category", moved)
+
+
 def init_db():
     """Initializes tables in database."""
     Base.metadata.create_all(bind=engine)
     _add_missing_columns()
     _add_missing_indexes()
+    try:
+        _move_aliased_budgets()
+    except Exception:  # a convenience migration must never block startup
+        logger.warning("Could not reconcile aliased budgets", exc_info=True)
     logger.info("Database ready: %s", describe_database())
 
 

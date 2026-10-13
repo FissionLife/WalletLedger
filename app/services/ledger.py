@@ -2,7 +2,7 @@ import re
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.orm import Session, joinedload
 
 from app import clock
@@ -71,6 +71,23 @@ def validate_when(value: Any) -> datetime | None:
 
 class LedgerError(ValueError):
     """Invalid ledger operation (bad amount or type, same-account transfer)."""
+
+
+class InsufficientBalanceError(LedgerError):
+    """A spend or transfer out would push an account below zero.
+
+    Carries the account name, its current balance and the amount needed so the
+    caller can show "Not enough in Cash" and offer the other account.
+    """
+
+    def __init__(self, account: str, available: float, needed: float) -> None:
+        self.account = account
+        self.available = round(available, 2)
+        self.needed = round(needed, 2)
+        super().__init__(
+            f"Not enough balance in {account}: you have "
+            f"{self.available:g} but this needs {self.needed:g}"
+        )
 
 
 def validate_amount(amount: float) -> float:
@@ -205,6 +222,38 @@ def get_or_create_merchant(
     return merchant
 
 
+def _account_ever_funded(db: Session, account: Account) -> bool:
+    """True if the account has ever held money: positive balance now, or any credit in its history.
+
+    A credit is income into it or a transfer into it. A never-funded account (balance stayed 0,
+    only expenses) is a pure ledger and is exempt from the overdraw block.
+    """
+    if account.balance > 0:
+        return True
+    credited = db.scalar(
+        select(func.count())
+        .select_from(Transaction)
+        .where(
+            Transaction.user_id == account.user_id,
+            or_(
+                (Transaction.account_id == account.id) & (Transaction.transaction_type == "income"),
+                Transaction.to_account_id == account.id,
+            ),
+        )
+    )
+    return bool(credited)
+
+
+def _ensure_can_cover(db: Session, account: Account, amount: float) -> None:
+    """Block a live spend that would overdraw a FUNDED account below zero.
+
+    Never-funded accounts (pure ledger, balance never credited) are exempt. Called while the
+    account row is locked, so the balance read here is the real current balance.
+    """
+    if round(account.balance - amount, 2) < 0 and _account_ever_funded(db, account):
+        raise InsufficientBalanceError(account.name, account.balance, amount)
+
+
 def record_transaction(
     db: Session,
     user_id: str,
@@ -246,6 +295,11 @@ def record_transaction(
 
     # Update balance according to Pipe flow (atomically, see _adjust_balance)
     if affects_balance:
+        # Strict wallet: a live spend can't overdraw the account. Backdated writes (statement
+        # imports, demo seed, "yesterday I spent...") reconstruct history, where the final balance
+        # — not the order rows land in — is what matters, so they are exempt from the live check.
+        if tx_type == "expense" and when is None:
+            _ensure_can_cover(db, account, amount)
         _adjust_balance(db, account.id, -amount if tx_type == "expense" else amount)
 
     tx = Transaction(
@@ -303,6 +357,7 @@ def transfer_between_pipes(
     from_account = locked[from_account_name.strip().lower()]
     to_account = locked[to_account_name.strip().lower()]
 
+    _ensure_can_cover(db, from_account, amount)  # a transfer out cannot overdraw a funded source
     _adjust_balance(db, from_account.id, -amount)
     _adjust_balance(db, to_account.id, amount)
 

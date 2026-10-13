@@ -13,6 +13,7 @@ Callback data (what a button sends back, max 64 bytes) is `<action>:<args>`:
     imp:yes | imp:no       confirm / skip a statement import
     key:<test|pause|resume|del>:<n>   manage AI key number n
     ex:<period>            export CSV
+    pay:<key>             retry a blocked spend on another account
 """
 
 from __future__ import annotations
@@ -111,6 +112,33 @@ _UNDO_BATCH_LIMIT = 500
 
 def undo_batch(key: str) -> list[str] | None:
     return _UNDO_BATCHES.get(key)
+
+
+# A blocked spend can be re-tried on another account. The retry args (amount, category, the other
+# account...) don't fit in a 64-byte button, so they are remembered here under a short token.
+_PAY_RETRIES: dict[str, dict] = {}
+_PAY_RETRY_LIMIT = 500
+
+
+def remember_pay_retry(args: dict) -> str:
+    import secrets
+
+    key = secrets.token_hex(4)
+    if len(_PAY_RETRIES) >= _PAY_RETRY_LIMIT:
+        _PAY_RETRIES.pop(next(iter(_PAY_RETRIES)))
+    _PAY_RETRIES[key] = dict(args)
+    return key
+
+
+def pay_retry(key: str) -> dict | None:
+    return _PAY_RETRIES.pop(key, None)  # single use: once tapped, forget it
+
+
+def pay_alt_row(account: str, balance: float, args: dict) -> list[Btn]:
+    from app.bot import fmt
+
+    key = remember_pay_retry(args)
+    return [Btn(f"💳 Use {account} instead ({fmt.inr(balance)})", f"pay:{key}")]
 
 
 def undo_row(tx_ids: list[str]) -> list[Btn]:

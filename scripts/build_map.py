@@ -228,6 +228,10 @@ NOTES: dict[str, tuple[str, str]] = {
         "tests",
         "Tunnel runner helpers and the Cloudflare/compose files (nothing is started).",
     ),
+    "tests/test_balance_and_budget_guards.py": (
+        "tests",
+        "Overdraw guard (funded accounts can't go negative), budget tracking and overspend confirm.",
+    ),
     "scripts/build_map.py": (
         "ops",
         "Builds this map and the explorer page. Runs by itself on every push (see the Pages workflow).",

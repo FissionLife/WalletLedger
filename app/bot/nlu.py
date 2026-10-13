@@ -234,7 +234,7 @@ _CATEGORY_WORDS: dict[str, tuple[str, ...]] = {
         "chai", "tea", "coffee", "lunch", "dinner", "breakfast", "brunch", "snack", "snacks", "food",
         "meal", "pizza", "burger", "biryani", "dosa", "idli", "idly", "thali", "ice cream", "juice",
         "restaurant", "cafe", "canteen", "mess", "takeaway", "bakery", "sweets", "dessert", "drinks",
-        "beer", "bar", "paratha", "samosa", "maggi", "momos", "sandwich", "roll",
+        "beer", "bar", "paratha", "samosa", "maggi", "momos", "sandwich", "roll", "dining",
     ),
     "Groceries": (
         "grocery", "groceries", "vegetables", "veggies", "fruits", "milk", "eggs", "rice", "atta",
@@ -380,6 +380,25 @@ def _account_phrase(text: str, kind: str, ctx: Context) -> str | None:
 def _clean_what(text: str) -> str:
     words = [w for w in re.findall(r"[A-Za-z][A-Za-z&'-]*", text) if w.lower() not in _FILLER]
     return " ".join(words).strip()
+
+
+def canonical_category(name: str) -> str:
+    """Map a bare category word to the name the parser files spends under.
+
+    "food", "meals", "dining" -> "Food & Dining"; "cab" -> "Transport". This keeps a budget on
+    the same category the user's expenses land in, even before any such expense exists yet.
+    Unknown names are title-cased and returned unchanged.
+    """
+    key = (name or "").strip().lower()
+    if not key:
+        return name
+    for cat, words in _CATEGORY_WORDS.items():
+        if key == cat.lower():
+            return cat
+        for w in words:
+            if key == w or key == w + "s" or key + "s" == w:
+                return cat
+    return name.strip().title()
 
 
 def _category_for(kind: str, what: str, clause: str, merchant: str | None) -> str | None:
@@ -986,7 +1005,19 @@ def detect_screen(text: str) -> Screen | None:
         return Screen("/history")
     if re.fullmatch(r"(help|menu|what can you do|how (?:do|does) (?:this|it) work|commands)", low):
         return Screen("/help" if "menu" not in low else "/menu")
-    if re.search(r"\bset\b.*\bbudget\b|\bbudget\b.*\b(?:to|is|of|=)\b\s*(?:₹|rs\.?\s*)?\d", low):
+    if re.search(
+        r"\bset\b.*\bbudget\b"
+        r"|\bbudget\b.*\b(?:to|is|of|=|for)\b\s*(?:₹|rs\.?\s*)?\d"
+        r"|\b(?:budget|allot|allott?ed|allocate|allocated|cap|limit)\b[^?]*?(?:₹|rs\.?\s*)?\d",
+        low,
+    ):
+        # A complaint or question ("why didn't you warn me about my food budget?") is not a command.
+        if is_question(text) or re.search(
+            r"\b(why|didn'?t|did not|over\s?used|overspent|exceeded|reminder|warn|told you|"
+            r"should have|forgot|missed)\b",
+            low,
+        ):
+            return None
         mm = _MONEY.search(low)
         if mm:
             amount = _to_amount(mm.group(1), mm.group(2))
@@ -1014,9 +1045,21 @@ def detect_screen(text: str) -> Screen | None:
                     "make",
                     "rs",
                     "inr",
+                    "want",
+                    "have",
+                    "alloted",
+                    "allotted",
+                    "allot",
+                    "allocate",
+                    "allocated",
+                    "cap",
+                    "limit",
+                    "i",
                 }
-            )
-            if name:
+            ).strip()
+            # A category name is one or two words. More than that means we misread a sentence as a
+            # command (e.g. a whole complaint), so don't set anything — let the AI handle it.
+            if name and 1 <= len(name.split()) <= 2:
                 return Screen(
                     "/budget", f"{name} {int(amount) if amount == int(amount) else amount}"
                 )

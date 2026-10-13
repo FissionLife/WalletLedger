@@ -58,6 +58,8 @@ def _balance_line(items: list[dict[str, Any]]) -> str:
 
 def friendly_error(message: str) -> str:
     low = (message or "").lower()
+    if "not enough balance" in low:
+        return message  # already a clear sentence: "Not enough balance in Cash: you have 0..."
     if "greater than zero" in low:
         return "The amount has to be more than zero."
     if "same account" in low:

@@ -82,6 +82,8 @@ async def handle_callback(chat_id: str, data: str) -> Reply:
             return screen
         if action == "ex":
             return await views.export_csv(chat_id, rest or "30d")
+        if action == "pay":
+            return await _pay_from_other(chat_id, rest)
     except Exception:
         logger.exception("Button action failed: %s", data)
         return Reply("⚠️ That didn't work. Please try again.", notice="Something went wrong")
@@ -112,3 +114,22 @@ async def _go(chat_id: str, screen: str, bot_main) -> Reply:
     if screen == "help":
         return Reply(bot_main.HELP_TEXT, rows=ui.back_home())
     return Reply(notice="That button is out of date")
+
+
+async def _pay_from_other(chat_id: str, key: str) -> Reply:
+    """Retry a blocked spend on the account the user picked ('Use Bank instead')."""
+    from app.services_ai import tool_client
+
+    args = ui.pay_retry(key)
+    if not args:
+        return Reply(notice="That button is out of date")
+    args = dict(args)
+    args["user_id"] = chat_id
+    try:
+        res = await tool_client.call_tool("log_expense", **args)
+    except Exception as exc:
+        return Reply(f"⚠️ {views.replies.friendly_error(str(exc))}", notice="Couldn't log that")
+    item = {"tool_name": "log_expense", "tool_args": args, "result": res, "error": None}
+    text = views.replies.compact({"tool_results": [item]}) or "✅ Done."
+    rows = [ui.undo_row([str(res["transaction_id"])])] if res.get("transaction_id") else []
+    return Reply(text, rows=rows, edit=True, notice="Logged")
