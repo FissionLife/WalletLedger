@@ -555,6 +555,19 @@ async def telegram_webhook_for_bot(bot_id: str, request: Request):
     return await _webhook(request, bot_id)
 
 
+WEBHOOK_MAX_BYTES = 1_000_000  # real Telegram updates are a few KB
+
+
+async def _json_body(request: Request) -> dict:
+    try:
+        data = await request.json()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="invalid JSON") from None
+    if not isinstance(data, dict):
+        raise HTTPException(status_code=400, detail="invalid update")
+    return data
+
+
 async def _webhook(request: Request, bot_id: str | None):
     """Telegram webhook.
 
@@ -566,16 +579,22 @@ async def _webhook(request: Request, bot_id: str | None):
 
     if not telegram.webhook_active() and not dev_endpoints_enabled():
         raise HTTPException(status_code=404, detail="Not found")
-    update = await request.json()
     if telegram.webhook_active():
         token = telegram.token_for(bot_id)
         if token is None and bot_id is not None:
             raise HTTPException(status_code=404, detail="Not found")
         header = request.headers.get("X-Telegram-Bot-Api-Secret-Token", "")
-        if not hmac.compare_digest(header, telegram.webhook_secret(token)):
+        # compare as bytes (a non-ASCII header must be a 403, not a crash) and BEFORE reading the body
+        if not hmac.compare_digest(
+            header.encode("utf-8", "replace"), telegram.webhook_secret(token).encode()
+        ):
             raise HTTPException(status_code=403, detail="invalid webhook secret")
+        if int(request.headers.get("content-length") or 0) > WEBHOOK_MAX_BYTES:
+            raise HTTPException(status_code=413, detail="too large")
+        update = await _json_body(request)
         await telegram.feed_webhook_update(update, bot_id)
         return {"ok": True}
+    update = await _json_body(request)
 
     message = update.get("message") or {}
     chat_id = str((message.get("chat") or {}).get("id", ""))

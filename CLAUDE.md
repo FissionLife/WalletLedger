@@ -30,7 +30,7 @@ Rules read clear messages with no AI; the AI is optional and users bring their o
 ## Commands
 ```bash
 uv sync
-uv run python -m unittest discover -s tests     # ~390 tests, under a minute
+uv run python -m unittest discover -s tests     # runs offline, under a minute
 uv run ruff check . && uv run ruff format .
 uv run uvicorn main:app --reload --port 8000    # run the bot (asks setup questions on the very first start)
 uv run python scripts/build_map.py              # refresh the project map and explorer

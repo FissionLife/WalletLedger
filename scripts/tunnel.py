@@ -57,8 +57,9 @@ def quick_command(binary: str, port: int) -> list[str]:
     return [binary, "tunnel", "--no-autoupdate", "--url", f"http://localhost:{port}"]
 
 
-def named_command(binary: str, token: str) -> list[str]:
-    return [binary, "tunnel", "--no-autoupdate", "run", "--token", token]
+def named_command(binary: str) -> list[str]:
+    # the token goes in the TUNNEL_TOKEN environment variable, not on the command line (any program can read that)
+    return [binary, "tunnel", "--no-autoupdate", "run"]
 
 
 def server_env(
@@ -122,6 +123,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
+    token = ""
     binary = find_cloudflared()
     if not binary:
         print(INSTALL_HINT)
@@ -138,14 +140,17 @@ def main(argv: list[str] | None = None) -> int:
             )
             print("How to get them: docs/CLOUDFLARE.md, 'Your own tunnel'.")
             return 1
-        command = named_command(binary, token)
+        command = named_command(binary)
     else:
         public_url = ""
         command = quick_command(binary, args.port)
 
     found: list[str] = []
     done = threading.Event()
-    tunnel = subprocess.Popen(command, stderr=subprocess.PIPE, stdout=subprocess.DEVNULL, text=True)
+    tunnel_env = {**os.environ, "TUNNEL_TOKEN": token} if args.named else None
+    tunnel = subprocess.Popen(
+        command, stderr=subprocess.PIPE, stdout=subprocess.DEVNULL, text=True, env=tunnel_env
+    )
     server: subprocess.Popen | None = None
     try:
         if args.named:
@@ -180,6 +185,13 @@ def main(argv: list[str] | None = None) -> int:
         )
         while server.poll() is None and tunnel.poll() is None:
             time.sleep(0.5)
+        if (
+            server.poll() is None
+        ):  # the tunnel died but the server is still running: say so and stop
+            print(
+                "\nThe tunnel stopped, so the public address no longer works. Stopping the server too."
+            )
+            return 1
         return server.returncode or 0
     except KeyboardInterrupt:
         print("\nStopping ...")

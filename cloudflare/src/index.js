@@ -12,12 +12,19 @@ const PASS_THROUGH = [
   "TELEGRAM_BOT_TOKEN",
   "TELEGRAM_BOT_TOKENS", // optional: extra bots on the same backend, comma-separated
   "SECRET_KEY",
+  "SECRET_KEY_OLD", // only while rotating the key
+  "MAX_UPLOAD_MB",
+  "TOOL_MODE",
+  "TIMEZONE",
   "DATABASE_URL", // postgresql://user:password@host:5432/dbname?sslmode=require
   "TELEGRAM_WEBHOOK_SECRET",
   "ALLOWED_CHAT_IDS",
   "ADMIN_CHAT_IDS",
+  "GEMINI_API_KEY",
   "GEMINI_API_KEYS",
+  "OPENAI_API_KEY",
   "OPENAI_API_KEYS",
+  "ANTHROPIC_API_KEY",
   "ANTHROPIC_API_KEYS",
   "GROQ_API_KEYS",
   "OPENROUTER_API_KEYS",
@@ -38,6 +45,7 @@ export class WalletLedger extends Container {
       USE_WEBHOOK: "true", // Telegram pushes messages to us; polling cannot work while asleep
       PUBLIC_URL: publicUrl,
       WEBHOOK_URL: `${publicUrl}/bot/webhook`,
+      ENABLE_DEV_ENDPOINTS: "false", // the chat simulator must never be reachable on a public address
     };
     for (const name of PASS_THROUGH) {
       if (env[name]) vars[name] = env[name];

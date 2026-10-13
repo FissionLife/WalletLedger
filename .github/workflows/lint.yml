@@ -1,4 +1,4 @@
-name: Lint, Format & Auto-Heal
+name: Tests & Lint
 
 on:
   push:
@@ -8,19 +8,16 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  lint-format-heal:
-    name: Lint, Format & Auto-Heal
+  check:
+    name: Tests, lint and format check
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          ref: ${{ github.head_ref || github.ref }}
-          fetch-depth: 0
 
       - name: Install uv
         uses: astral-sh/setup-uv@v5
@@ -29,32 +26,16 @@ jobs:
           python-version-file: ".python-version"
 
       - name: Install dependencies
-        run: |
-          uv sync --all-groups
+        run: uv sync --all-groups
 
       - name: Run tests
+        env:
+          WALLETLEDGER_TESTING: "1"
+          LITELLM_MODE: PRODUCTION
         run: uv run python -m unittest discover -s tests
 
-      - name: Auto-heal formatting and lint fixes
-        run: |
-          echo "Running auto-formatting and auto-fixes..."
-          uv run ruff format .
-          uv run ruff check --fix .
+      - name: Lint
+        run: uv run ruff check .
 
-      - name: Commit and push auto-healed changes (if any)
-        run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          if [ -n "$(git status --porcelain)" ]; then
-            echo "Auto-healed changes found. Committing and pushing..."
-            git add -A
-            git commit -m "chore(style): auto-heal linting and formatting [skip ci]"
-            git push
-          else
-            echo "All files already cleanly formatted and linted."
-          fi
-
-      - name: Final lint verification (non-blocking)
-        run: |
-          # Verify lint status without failing the build if minor unfixable warnings remain
-          uv run ruff check . --exit-zero
+      - name: Format check
+        run: uv run ruff format --check .

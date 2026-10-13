@@ -3,10 +3,10 @@
 
     uv run python scripts/seed_demo_data.py --chat-id 123456789   # your own Telegram id
     uv run python scripts/seed_demo_data.py                       # a standalone "demo" user
-    uv run python scripts/seed_demo_data.py --chat-id 123456789 --reset   # wipe that user, re-seed
+    uv run python scripts/seed_demo_data.py --chat-id 123456789 --reset --yes   # wipe that chat's ledger data, re-seed
 
 Then message the bot: /balance, /stats, /dashboard. The data is the same every time (fixed seed).
-Use --reset only on a demo chat: it deletes that chat's existing data first.
+Use --reset only on a demo chat: it deletes that chat's ledger data first (needs --yes; keys and chat history stay).
 """
 
 from __future__ import annotations
@@ -19,10 +19,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from sqlalchemy import select  # noqa: E402
+from sqlalchemy import delete, func, select  # noqa: E402
 
 from app.db import SessionLocal, init_db  # noqa: E402
-from app.models import Transaction, User  # noqa: E402
+from app.models import Account, Category, Merchant, Subscription, Transaction, User  # noqa: E402
 from app.services import ledger  # noqa: E402
 
 DAYS = 90
@@ -55,7 +55,7 @@ MONTHLY = [
 BUDGETS = {"Food & Dining": 7000, "Shopping": 5000, "Entertainment": 2500, "Transport": 4000}
 
 
-def seed(chat_id: str, reset: bool) -> None:
+def seed(chat_id: str, reset: bool, confirmed: bool = False) -> None:
     init_db()
     rng = random.Random(42)
     now = datetime.now(UTC).replace(tzinfo=None)
@@ -67,7 +67,25 @@ def seed(chat_id: str, reset: bool) -> None:
                 print(f"Chat '{chat_id}' already has data. Use --reset to wipe and re-seed it.")
                 return
             if reset:
-                db.delete(existing)
+                counts = {
+                    label: db.scalar(
+                        select(func.count()).select_from(model).where(model.user_id == existing.id)
+                    )
+                    for label, model in (
+                        ("transactions", Transaction),
+                        ("accounts", Account),
+                        ("categories", Category),
+                        ("merchants", Merchant),
+                        ("subscriptions", Subscription),
+                    )
+                }
+                print(f"--reset will delete this chat's ledger data: {counts}")
+                print("(API keys and chat history are kept.)")
+                if not confirmed:
+                    print("Nothing deleted. Add --yes to go ahead.")
+                    return
+                for model in (Transaction, Subscription, Merchant, Category, Account):
+                    db.execute(delete(model).where(model.user_id == existing.id))
                 db.commit()
 
         user = ledger.get_or_create_user(db, chat_id)
@@ -83,6 +101,7 @@ def seed(chat_id: str, reset: bool) -> None:
             when = when.replace(
                 hour=hour if hour is not None else rng.randint(8, 22), minute=rng.randint(0, 59)
             )
+            when = min(when, now)  # never a time that has not happened yet
             ledger.record_transaction(
                 db, uid, amount, account, category, merchant, kind, note or merchant, "manual", when
             )
@@ -127,6 +146,7 @@ if __name__ == "__main__":
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     ap.add_argument("--chat-id", default="demo", help="Telegram chat id to fill (default: demo)")
-    ap.add_argument("--reset", action="store_true", help="delete that chat's data first")
+    ap.add_argument("--reset", action="store_true", help="delete that chat's ledger data first")
+    ap.add_argument("--yes", action="store_true", help="confirm --reset")
     args = ap.parse_args()
-    seed(args.chat_id, args.reset)
+    seed(args.chat_id, args.reset, args.yes)

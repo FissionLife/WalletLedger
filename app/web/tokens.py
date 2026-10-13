@@ -79,8 +79,18 @@ def validate_init_data(init_data: str, bot_token: str, max_age_seconds: int = 86
         expected = hmac.new(secret, check.encode(), hashlib.sha256).hexdigest()
         if not hmac.compare_digest(received, expected):
             return None
-        if time.time() - int(pairs.get("auth_date", "0")) > max_age_seconds:
+        age = time.time() - int(pairs.get("auth_date", "0"))
+        if (
+            age > max_age_seconds or age < -300
+        ):  # too old, or dated in the future (beyond clock drift)
             return None
-        return json.loads(pairs["user"])
+        user = json.loads(pairs["user"])
+        if (
+            not isinstance(user, dict)
+            or not isinstance(user.get("id"), int)
+            or isinstance(user["id"], bool)
+        ):
+            return None
+        return user
     except Exception:
         return None

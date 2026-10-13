@@ -64,7 +64,15 @@ _ADDED_COLUMNS = [
     ("transactions", "reference", "VARCHAR(80)"),
 ]
 # Indexes added after the first release (CREATE INDEX IF NOT EXISTS works on SQLite and PostgreSQL).
-_ADDED_INDEXES = [("ix_transactions_user_created", "transactions", "user_id, created_at")]
+_ADDED_INDEXES = [
+    ("ix_transactions_user_created", "transactions", "user_id, created_at"),
+    ("ix_chat_messages_user", "chat_messages", "user_id"),
+    ("ix_accounts_user", "accounts", "user_id"),
+    ("ix_categories_user", "categories", "user_id"),
+    ("ix_merchants_user", "merchants", "user_id"),
+    ("ix_api_keys_user", "api_keys", "user_id"),
+    ("ix_subscriptions_user", "subscriptions", "user_id"),
+]
 
 
 def _add_missing_columns() -> None:
@@ -76,17 +84,24 @@ def _add_missing_columns() -> None:
             continue
         if column in {c["name"] for c in inspector.get_columns(table)}:
             continue
-        with engine.begin() as conn:
-            conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {ddl_type}"))
+        try:
+            with engine.begin() as conn:
+                conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {ddl_type}"))
+        except Exception:
+            # another process (a second worker) may have added it a moment ago; fine if it is there now
+            if column not in {c["name"] for c in inspect(engine).get_columns(table)}:
+                raise
+            continue
         logger.info("Database upgraded: added %s.%s", table, column)
 
 
 def _add_missing_indexes() -> None:
     from sqlalchemy import inspect, text
 
-    if "transactions" not in inspect(engine).get_table_names():
-        return
+    tables = set(inspect(engine).get_table_names())
     for name, table, columns in _ADDED_INDEXES:
+        if table not in tables:
+            continue
         with engine.begin() as conn:
             conn.execute(text(f"CREATE INDEX IF NOT EXISTS {name} ON {table} ({columns})"))
 

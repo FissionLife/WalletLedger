@@ -23,7 +23,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, Header, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 
 from app import clock
@@ -44,7 +44,8 @@ SECURITY_HEADERS = {
     "X-Content-Type-Options": "nosniff",
     "Content-Security-Policy": (
         "default-src 'self'; script-src 'self' https://telegram.org; style-src 'self'; "
-        "img-src 'self' data:; connect-src 'self'; frame-ancestors *"  # Telegram embeds the page
+        "img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'none'; "
+        "frame-ancestors https://web.telegram.org https://*.telegram.org https://t.me"
     ),
 }
 
@@ -290,7 +291,7 @@ async def export_csv(request: Request, x_dashboard_token: str | None = Header(de
 
 
 class InitData(BaseModel):
-    initData: str
+    initData: str = Field(max_length=8192)  # Telegram's initData is well under 2 KB
 
 
 @router.post("/api/webapp/auth")
@@ -305,7 +306,9 @@ async def webapp_auth(body: InitData):
     )
     if user is None:
         raise HTTPException(status_code=401, detail="Could not verify the Telegram sign-in")
-    chat_id = str(user["id"])  # in a private chat the chat id equals the user id
+    chat_id = str(
+        user["id"]
+    )  # in a private chat the chat id equals the user id (validate_init_data checks it is there)
     if not is_chat_allowed(chat_id):
         raise HTTPException(status_code=403, detail="This bot is private.")
     return _json({"token": tokens.make_token(chat_id, ttl_seconds=3600)})

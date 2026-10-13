@@ -1,11 +1,12 @@
 """Small, safe .env editor used by the setup wizard.
 
 Keeps comments and ordering, replaces a value in place (or un-comments a `# KEY=` template line),
-appends new keys at the end, and always writes a one-time backup before the first change.
+appends new keys at the end, and copies the file to `.env.bak` before each change (kept private: 0600).
 """
 
 from __future__ import annotations
 
+import contextlib
 import re
 import shutil
 from pathlib import Path
@@ -28,6 +29,19 @@ def truthy(value: str | None) -> bool:
 _LINE = re.compile(r"^\s*(#\s*)?([A-Za-z_][A-Za-z0-9_]*)\s*=(.*)$")
 
 
+def _value(raw: str) -> str:
+    """The value part of a line: quotes removed; for unquoted values a trailing ` # comment` is dropped."""
+    text = raw.strip()
+    if text[:1] in ('"', "'") and text.count(text[0]) >= 2:
+        return text[1 : text.index(text[0], 1)]
+    return re.split(r"\s+#", text, maxsplit=1)[0].strip()
+
+
+def _private(path: Path) -> None:
+    with contextlib.suppress(OSError):
+        path.chmod(0o600)  # secrets: owner only (no effect on Windows, harmless)
+
+
 def read_env(path: Path) -> dict[str, str]:
     """Active (non-commented) KEY=VALUE pairs."""
     values: dict[str, str] = {}
@@ -36,7 +50,7 @@ def read_env(path: Path) -> dict[str, str]:
     for raw in path.read_text(encoding="utf-8").splitlines():
         m = _LINE.match(raw)
         if m and not m.group(1):
-            values[m.group(2)] = m.group(3).strip().strip('"').strip("'")
+            values[m.group(2)] = _value(m.group(3))
     return values
 
 
@@ -53,7 +67,9 @@ def set_values(path: Path, updates: dict[str, str], *, backup: bool = True) -> l
     if not changed:
         return []
     if backup and path.exists():
-        shutil.copyfile(path, path.with_name(path.name + ".bak"))
+        bak = path.with_name(path.name + ".bak")
+        shutil.copyfile(path, bak)
+        _private(bak)
 
     pending = {k: updates[k] for k in changed}
     out: list[str] = []
@@ -80,4 +96,5 @@ def set_values(path: Path, updates: dict[str, str], *, backup: bool = True) -> l
             out.append("")
         out.extend(f"{k}={_format(v)}" for k, v in pending.items())
     path.write_text("\n".join(out) + "\n", encoding="utf-8")
+    _private(path)
     return changed

@@ -15,7 +15,7 @@ import unittest  # noqa: E402
 from sqlalchemy import select, text  # noqa: E402
 
 from app import db  # noqa: E402
-from app.config import Settings  # noqa: E402
+from app.config import ROOT, Settings  # noqa: E402
 from app.models import Account, User  # noqa: E402
 from app.services import ledger  # noqa: E402
 
@@ -27,11 +27,14 @@ def cfg(**kw):
 class ModeSelectionTests(unittest.TestCase):
     def test_default_is_sqlite_file(self):
         s = cfg()
-        self.assertEqual((s.db_mode, s.database_url), ("sqlite", "sqlite:///./walletledger.db"))
+        self.assertEqual(s.db_mode, "sqlite")
+        self.assertEqual(
+            s.database_url, f"sqlite:///{(ROOT / 'walletledger.db').as_posix()}"
+        )  # not cwd-relative
 
     def test_sqlite_path_setting(self):
         s = cfg(db_mode="sqlite", sqlite_path=r"data\app.db")
-        self.assertEqual(s.database_url, "sqlite:///data/app.db")
+        self.assertEqual(s.database_url, f"sqlite:///{(ROOT / 'data/app.db').as_posix()}")
 
     def test_postgres_mode_builds_url_and_escapes_password(self):
         s = cfg(

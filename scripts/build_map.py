@@ -260,6 +260,10 @@ NOTES: dict[str, tuple[str, str]] = {
         "tests",
         "Regression tests for the chat audit: reading messages, confirmations, buttons, keys, orchestrator.",
     ),
+    "tests/test_security_fixes.py": (
+        "tests",
+        "Regression tests for the security and setup audit: settings parsing, webhook, Mini App sign-in, scripts.",
+    ),
     "tests/test_audit_fixes.py": (
         "tests",
         "Regression tests for the bugs found in the code audit: lost balance updates, junk entries, undo order, dashboard.",

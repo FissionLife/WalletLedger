@@ -57,6 +57,13 @@ async def main() -> int:
         print("Profile is invalid:\n  - " + "\n  - ".join(problems))
         return 2
 
+    if args.name and len(tokens) > 1:
+        # one display name for every bot would make them indistinguishable (and Telegram rate-limits renames)
+        print(
+            "--name sets the same display name on every bot. Run it with a single bot configured."
+        )
+        return 2
+
     code = 0
     for token in tokens:
         bot = Bot(token=token)
@@ -74,6 +81,11 @@ async def main() -> int:
             show(await profile.read_profile(bot))
             if not all(v == "ok" for v in results.values()):
                 code = 1
+        except (
+            Exception
+        ) as exc:  # a bad token or no network: say which bot and carry on with the next one
+            print(f"Could not reach bot {token.split(':')[0]}: {type(exc).__name__}")
+            code = 1
         finally:
             await bot.session.close()
     return code

@@ -329,7 +329,7 @@ without AI.
 
 ## 10. Tests and CI
 
-`uv run python -m unittest discover -s tests` (about 380 tests, under a minute). Every test file sets
+`uv run python -m unittest discover -s tests` (runs offline, under a minute). Every test file sets
 `WALLETLEDGER_TESTING=1` and `LITELLM_MODE=PRODUCTION` first, so tests never read your `.env` or call a
 real AI, and each uses its own temporary database. GitHub Actions (`lint.yml`) runs the tests and ruff on
 every push; `pages.yml` publishes `site/` to GitHub Pages when it changes.

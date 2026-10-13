@@ -42,3 +42,8 @@ site/docs/
 !site/**/*.png
 walletledger.db-shm
 walletledger.db-wal
+
+# Cloudflare worker local files
+cloudflare/node_modules/
+cloudflare/.wrangler/
+cloudflare/.dev.vars

@@ -1490,6 +1490,11 @@ def statement_text_from_file(file_bytes: bytes, file_type: str = "pdf") -> tuple
     raise ValueError("Unsupported file type. Use pdf or text/SMS receipt content.")
 
 
+MAX_STATEMENT_BYTES = 10_000_000
+MAX_LINE_CHARS = 500
+MAX_STATEMENT_LINES = 20_000
+
+
 async def parse_statement_file(
     file_bytes: bytes,
     file_type: str = "pdf",
@@ -1502,8 +1507,14 @@ async def parse_statement_file(
     Each row: date (ISO or None), time, merchant, vpa, type ("expense"/"income"), amount,
     bank_account, reference, balance, category, description, format, note, source.
     """
+    if len(file_bytes) > MAX_STATEMENT_BYTES:
+        raise ValueError(
+            f"that file is too large (more than {MAX_STATEMENT_BYTES // 1_000_000} MB)"
+        )
     text, source = statement_text_from_file(file_bytes, file_type)
-    return parse_statement_text(text, source=source, user_id=user_id, db=db).rows
+    # A line longer than a statement line can be is junk (or an attempt to make the parser crawl): skip it
+    lines = [ln for ln in text.splitlines() if len(ln) <= MAX_LINE_CHARS][:MAX_STATEMENT_LINES]
+    return parse_statement_text("\n".join(lines), source=source, user_id=user_id, db=db).rows
 
 
 def _insights_for_session(db: Session, user_id: str) -> dict[str, Any]:

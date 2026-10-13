@@ -25,4 +25,6 @@ USER app
 # Most hosts pass the port in $PORT (Cloud Run, Render); 8080 otherwise
 ENV PORT=8080
 EXPOSE 8080
+# "healthy" once the app answers (hosts and compose use this to restart a stuck container)
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3   CMD python -c "import os,urllib.request as u; u.urlopen('http://127.0.0.1:%s/health' % os.environ.get('PORT','8080'), timeout=4)"
 CMD ["sh", "-c", "uv run --no-sync uvicorn main:app --host 0.0.0.0 --port ${PORT}"]

@@ -39,8 +39,8 @@ class TunnelHelperTests(unittest.TestCase):
             ["cloudflared", "tunnel", "--no-autoupdate", "--url", "http://localhost:8000"],
         )
         self.assertEqual(
-            tunnel.named_command("cloudflared", "tok"),
-            ["cloudflared", "tunnel", "--no-autoupdate", "run", "--token", "tok"],
+            tunnel.named_command("cloudflared"),
+            ["cloudflared", "tunnel", "--no-autoupdate", "run"],
         )
 
     def test_server_environment(self):

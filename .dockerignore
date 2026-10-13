@@ -14,3 +14,6 @@ out_charts
 tests
 site
 docs
+cloudflare
+.github
+scripts/__pycache__

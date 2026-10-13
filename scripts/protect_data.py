@@ -258,6 +258,7 @@ def main(argv: list[str] | None = None) -> int:
             "Some rows match no key in SECRET_KEY / SECRET_KEY_OLD and were left as they are.\n"
             "Add the secret they were written with to SECRET_KEY_OLD and run rotate again."
         )
+        return 1  # not finished: scripts and CI must not treat this as success
     elif not args.dry_run:
         print("Done. You can now remove SECRET_KEY_OLD.")
     return 0
