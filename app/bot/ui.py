@@ -89,8 +89,10 @@ def chart_nav_rows(kind: str, period: str, ctx: str = "") -> list[list[Btn]]:
     ]
 
 
-def confirm_rows() -> list[list[Btn]]:
-    return [[Btn("✅ Yes, do it", "ask:yes"), Btn("✖ Cancel", "ask:no")]]
+def confirm_rows(pending_id: str | None = None) -> list[list[Btn]]:
+    """Yes / Cancel for one specific question: the id stops an old button answering a newer question."""
+    tag = f":{pending_id}" if pending_id else ""
+    return [[Btn("✅ Yes, do it", f"ask:yes{tag}"), Btn("✖ Cancel", f"ask:no{tag}")]]
 
 
 def import_rows() -> list[list[Btn]]:
@@ -122,26 +124,31 @@ def undo_row(tx_ids: list[str]) -> list[Btn]:
     return [Btn(label, f"undo:b{key}")]
 
 
-def history_rows(page: int, pages: int) -> list[list[Btn]]:
+def history_rows(page: int, pages: int, undo_id: str | None = None) -> list[list[Btn]]:
     nav = []
     if page > 0:
         nav.append(Btn("◀ Newer", f"hi:{page - 1}"))
     if page < pages - 1:
         nav.append(Btn("Older ▶", f"hi:{page + 1}"))
     rows = [nav] if nav else []
-    rows.append([Btn("↩️ Undo last", "undo:last"), Btn("📄 Export CSV", "ex:all")])
+    # a specific id, so tapping twice (or on an old message) cannot undo the NEXT entry back
+    undo = f"undo:{undo_id[:12]}" if undo_id else "undo:last"
+    rows.append([Btn("↩️ Undo last", undo), Btn("📄 Export CSV", "ex:all")])
     return rows
 
 
-def keys_rows(count: int) -> list[list[Btn]]:
+def keys_rows(key_ids: list[str]) -> list[list[Btn]]:
+    """Buttons for the first 6 keys. They carry the key's id ('k' + 8 characters), not its position,
+    so deleting key 1 and tapping an old "delete 2" button cannot remove a different key."""
     rows = []
-    for n in range(1, min(count, 6) + 1):
+    for n, key_id in enumerate(key_ids[:6], start=1):
+        ref = f"k{key_id[:8]}"
         rows.append(
             [
-                Btn(f"🧪 {n}", f"key:test:{n}"),
-                Btn(f"⏸ {n}", f"key:pause:{n}"),
-                Btn(f"▶ {n}", f"key:resume:{n}"),
-                Btn(f"🗑 {n}", f"key:del:{n}"),
+                Btn(f"🧪 {n}", f"key:test:{ref}"),
+                Btn(f"⏸ {n}", f"key:pause:{ref}"),
+                Btn(f"▶ {n}", f"key:resume:{ref}"),
+                Btn(f"🗑 {n}", f"key:del:{ref}"),
             ]
         )
     rows.append([Btn("🧪 Test all", "key:test:all"), Btn("📊 Status", "go:status")])

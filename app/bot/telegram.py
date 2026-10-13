@@ -355,9 +355,25 @@ async def start() -> str:
     _dispatcher = Dispatcher()
     _dispatcher.include_router(build_router())
     names = {}
-    for key, bot in _bots.items():
-        names[key] = (await bot.get_me()).username
+    for key, bot in list(_bots.items()):
+        try:
+            names[key] = (await bot.get_me()).username
+        except Exception as exc:
+            if len(tokens) == 1:
+                raise  # the only bot is broken: say so loudly, as before
+            logger.error(
+                "Bot %s could not start (%s). Check its token. The other bots keep running.",
+                key,
+                type(exc).__name__,
+            )
+            with contextlib.suppress(Exception):
+                await bot.session.close()
+            _bots.pop(key)
+            continue
         await _publish_profile(bot)
+    if not _bots:
+        raise RuntimeError("None of the configured Telegram bot tokens could be used.")
+    tokens = [t for t in tokens if bot_id(t) in _bots]
 
     if settings.use_webhook:
         if not settings.webhook_url:

@@ -19,7 +19,7 @@ async def keys_screen(chat_id: str) -> Reply:
     from app.services_ai import ai_gateway as gw
 
     text = keys_mod.keys_text(chat_id)
-    return Reply(text, rows=ui.keys_rows(len(gw.list_api_keys(chat_id))))
+    return Reply(text, rows=ui.keys_rows([k["key_id"] for k in gw.list_api_keys(chat_id)]))
 
 
 async def handle_callback(chat_id: str, data: str) -> Reply:
@@ -44,10 +44,20 @@ async def handle_callback(chat_id: str, data: str) -> Reply:
             return await views.history(chat_id, int(rest or 0), edit=True)
         if action == "undo":
             return await views.undo(chat_id, rest or "last")
-        if action in ("ask", "imp"):
-            reply = await bot_main.handle_incoming(chat_id, "yes" if rest == "yes" else "no")
+        if action == "ask":
+            decision, _, pending_id = rest.partition(":")
+            reply = await bot_main.answer_pending_action(
+                chat_id, decision == "yes", pending_id or None
+            )
             reply.edit = True
-            reply.notice = "Done" if rest == "yes" else "Cancelled"
+            reply.notice = reply.notice or ("Done" if decision == "yes" else "Cancelled")
+            return reply
+        if action == "imp":
+            reply = await bot_main.answer_pending_import(
+                chat_id, "confirmed" if rest == "yes" else "cancelled"
+            )
+            reply.edit = True
+            reply.notice = reply.notice or ("Done" if rest == "yes" else "Skipped")
             return reply
         if action == "key":
             sub, _, n = rest.partition(":")

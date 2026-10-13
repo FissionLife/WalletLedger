@@ -13,6 +13,7 @@ import asyncio
 import json
 import logging
 import re
+import secrets
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
@@ -36,6 +37,7 @@ from app.services_ai.ai_gateway import (
     get_user_api_keys,
     has_server_keys,
     mask_key,
+    redact_secrets,
 )
 from app.services_ai.prompts import detect_mode, get_persona, resolve_mode
 
@@ -53,11 +55,16 @@ HISTORY_LIMIT = 20
 CONFIRM_WORDS = {
     "yes", "y", "yeah", "yep", "yup", "confirm", "confirmed", "proceed", "ok", "okay",
     "sure", "approve", "approved", "do it", "go ahead", "yes please", "yes go ahead",
+    "yes pls", "yes plz", "yes do it", "ok do it", "okay do it", "yep do it", "please do",
+    "ha", "haan", "han", "haanji", "ji", "kar do", "kardo", "theek hai", "thik hai", "chalo", "sahi hai",
 }  # fmt: skip
 CANCEL_WORDS = {
     "no", "n", "nope", "nah", "cancel", "abort", "reject", "stop", "don't", "dont",
-    "no thanks", "dont do it", "don't do it",
+    "no thanks", "dont do it", "don't do it", "cancel it", "no dont", "no don't", "stop it",
+    "never mind", "nevermind", "leave it", "nahi", "nahin", "mat karo", "rehne do",
 }  # fmt: skip
+_YES_EMOJI = "👍✅👌🆗"
+_NO_EMOJI = "👎❌✖🚫"
 
 # Tools whose results are turned into a reply by a persona (Coach / Budgeter / Summary).
 PERSONA_TOOLS = {
@@ -70,6 +77,46 @@ PERSONA_TOOLS = {
 PERSONA_COMMAND = re.compile(r"^\s*/(coach|budgeter|summary)\b(.*)$", re.I | re.S)
 
 
+def _amount_of(args: Any) -> float:
+    """An amount from AI output: 7000, "7000", "7,000"; anything unreadable counts as 0 (the tool then reports it)."""
+    try:
+        return float(str(args.get("amount", 0)).replace(",", ""))
+    except TypeError, ValueError, AttributeError:
+        return 0.0
+
+
+def confirmation_reason(tool_name: str | None, args: Any) -> str | None:
+    """A sentence describing what needs the user's Yes, or None if the call can run straight away.
+
+    A transfer of ₹5,000 or more, and any edit of an existing entry made by the AI.
+    """
+    if not isinstance(args, dict):
+        return None
+    if tool_name == "transfer_funds" and _amount_of(args) >= CONFIRMATION_TRANSFER_THRESHOLD:
+        return (
+            f"Transfer ₹{_amount_of(args):,.2f} from {args.get('from_account', 'Source')} "
+            f"to {args.get('to_account', 'Destination')}"
+        )
+    if tool_name == "edit_transaction":
+        changes = [
+            f"{key.replace('_', ' ')} to {args[key]}"
+            for key in (
+                "amount",
+                "category",
+                "merchant",
+                "account_name",
+                "transaction_type",
+                "transaction_date",
+                "description",
+            )
+            if args.get(key) not in (None, "")
+        ]
+        return f"Change entry {str(args.get('transaction_id', ''))[:8]}: " + (
+            ", ".join(changes) or "no changes"
+        )
+    return None
+
+
 def _utc_now() -> datetime:
     """Helper to return current timezone-aware UTC datetime."""
     return datetime.now(UTC)
@@ -77,7 +124,12 @@ def _utc_now() -> datetime:
 
 def classify_reply(text: str) -> Literal["confirmed", "cancelled"] | None:
     """Map a short yes/no style reply to a decision; anything else returns None."""
-    normalised = re.sub(r"[^\w\s']", " ", (text or "").lower())
+    raw = (text or "").strip()
+    if raw and all(ch in _YES_EMOJI or ch.isspace() or ch == "\ufe0f" for ch in raw):
+        return "confirmed"
+    if raw and all(ch in _NO_EMOJI or ch.isspace() or ch == "\ufe0f" for ch in raw):
+        return "cancelled"
+    normalised = re.sub(r"[^\w\s']", " ", raw.lower())
     normalised = re.sub(r"\s+", " ", normalised).strip()
     if normalised in CONFIRM_WORDS:
         return "confirmed"
@@ -395,28 +447,6 @@ TOOLS_SCHEMA: list[dict[str, Any]] = [
     {
         "type": "function",
         "function": {
-            "name": "save_user_api_key",
-            "description": "Save and encrypt user's LLM API key for Gemini, OpenAI, Claude, or Groq.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "provider": {
-                        "type": "string",
-                        "enum": ["gemini", "openai", "claude", "groq"],
-                        "description": "LLM provider name.",
-                    },
-                    "api_key": {
-                        "type": "string",
-                        "description": "The API key string.",
-                    },
-                },
-                "required": ["provider", "api_key"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
             "name": "get_financial_snapshot",
             "description": "Plain summary of the user's finances for a period: income, spending, top categories and merchants, budgets, recurring bills, month-end projection, money now. Call this before giving advice or answering 'how am I doing'.",
             "parameters": {
@@ -474,6 +504,7 @@ Key Guidelines:
 
 
 class PendingAction(TypedDict, total=False):
+    id: str  # short random id carried by the Yes/Cancel buttons
     tool_name: str
     tool_args: dict[str, Any]
     tool_calls: list[dict[str, Any]]  # everything from the same message, run together on Yes
@@ -561,6 +592,7 @@ class AgentState(TypedDict, total=False):
     error: str | None
     persona_mode: str | None
     offline_reason: str | None
+    preamble: str | None  # shown before a confirmation question (what was already recorded)
 
 
 # ---------------------------------------------------------------------------
@@ -606,7 +638,9 @@ async def _run_llm_analysis(
                 return {"type": "direct_text", "content": message_obj.content}
             offline_reason = "the AI returned an empty response"
         except Exception as e:
-            offline_reason = f"{type(e).__name__}: {str(e).splitlines()[0][:200] if str(e) else ''}"
+            offline_reason = redact_secrets(
+                f"{type(e).__name__}: {str(e).splitlines()[0][:200] if str(e) else ''}"
+            )
         logger.warning(
             "AI unavailable for chat %s (%s); using offline rules.", user_id, offline_reason
         )
@@ -794,21 +828,23 @@ async def _orchestrate(
             tools=tool_client.available_tools(TOOLS_SCHEMA),
             system_prompt=SYSTEM_AGENT_PROMPT,
             transfer_threshold=CONFIRMATION_TRANSFER_THRESHOLD,
+            confirm=confirmation_reason,
         )
     except Exception as exc:
         logger.warning("Multi-step helper unavailable for chat %s: %s", chat_id, exc)
         return None
 
-    if res.pending:
-        args = res.pending["tool_args"]
-        amount = float(args.get("amount", 0))
+    logged = replies.compact({"tool_results": [r for r in res.tool_results if r["result"]]})
+    if res.pending_calls:
+        calls = [
+            {"tool_name": c["tool_name"], "tool_args": c["tool_args"]} for c in res.pending_calls
+        ]
         action: PendingAction = {
-            "tool_name": res.pending["tool_name"],
-            "tool_args": args,
-            "description": (
-                f"Transfer ₹{amount:,.2f} from {args.get('from_account', 'Source')} "
-                f"to {args.get('to_account', 'Destination')}"
-            ),
+            "id": secrets.token_hex(3),
+            "tool_name": calls[0]["tool_name"],
+            "tool_args": calls[0]["tool_args"],
+            "tool_calls": calls,
+            "description": " and ".join(c["reason"] for c in res.pending_calls),
             "created_at": _utc_now().isoformat(),
         }
         session_store.set_pending(chat_id, action)
@@ -816,12 +852,17 @@ async def _orchestrate(
             "requires_confirmation": True,
             "confirmation_action": action,
             "tool_name": action["tool_name"],
-            "tool_args": args,
-            "tool_calls": [{"tool_name": action["tool_name"], "tool_args": args}],
+            "tool_args": action["tool_args"],
+            "tool_calls": calls,
+            "tool_results": res.tool_results,
+            "preamble": "\n\n".join(p for p in (logged, res.text) if p) or None,
         }
 
-    logged = replies.compact({"tool_results": [r for r in res.tool_results if r["result"]]})
     parts = [p for p in (logged, res.text) if p]
+    if not parts and res.tool_results:
+        parts = [
+            "✅ Done."
+        ]  # something ran but the AI said nothing: never fall through and run it twice
     if not parts:
         return None
     return {
@@ -895,41 +936,39 @@ async def llm_reasoning_node(state: AgentState) -> dict[str, Any]:
         tool_calls: list[dict[str, Any]] = []
         for tc in raw_calls:
             t_name = tc.get("tool_name")
-            t_args = dict(tc.get("tool_args") or {})
+            raw_args = tc.get("tool_args")
+            t_args = dict(raw_args) if isinstance(raw_args, dict) else {}
             t_args["user_id"] = chat_id
             tool_calls.append({"tool_name": t_name, "tool_args": t_args})
 
-        # Check for transfer confirmations on any transfer >= threshold
-        for tc in tool_calls:
-            if (
-                tc["tool_name"] == "transfer_funds"
-                and float(tc["tool_args"].get("amount", 0)) >= CONFIRMATION_TRANSFER_THRESHOLD
-            ):
-                amount = float(tc["tool_args"].get("amount", 0.0))
-                from_acc = tc["tool_args"].get("from_account", "Source")
-                to_acc = tc["tool_args"].get("to_account", "Destination")
-                others = len(tool_calls) - 1
-                extra = (
-                    f" (and {others} other entr{'y' if others == 1 else 'ies'} from your message)"
-                    if others
-                    else ""
-                )
-                pending_action: PendingAction = {
-                    "tool_name": tc["tool_name"],
-                    "tool_args": tc["tool_args"],
-                    "tool_calls": tool_calls,
-                    "description": f"Transfer ₹{amount:,.2f} from {from_acc} to {to_acc}{extra}",
-                    "created_at": _utc_now().isoformat(),
-                }
-                session_store.set_pending(chat_id, pending_action)
-                return {
-                    "requires_confirmation": True,
-                    "confirmation_action": pending_action,
-                    "tool_name": tc["tool_name"],
-                    "tool_args": tc["tool_args"],
-                    "tool_calls": tool_calls,
-                    **offline,
-                }
+        # Anything that needs a human Yes (big transfers, AI edits) waits, together with the rest of the message
+        reasons = [(tc, confirmation_reason(tc["tool_name"], tc["tool_args"])) for tc in tool_calls]
+        waiting = [(tc, why) for tc, why in reasons if why]
+        if waiting:
+            others = len(tool_calls) - len(waiting)
+            extra = (
+                f" (and {others} other entr{'y' if others == 1 else 'ies'} from your message)"
+                if others
+                else ""
+            )
+            first = waiting[0][0]
+            pending_action: PendingAction = {
+                "id": secrets.token_hex(3),
+                "tool_name": first["tool_name"],
+                "tool_args": first["tool_args"],
+                "tool_calls": tool_calls,
+                "description": " and ".join(why for _, why in waiting) + extra,
+                "created_at": _utc_now().isoformat(),
+            }
+            session_store.set_pending(chat_id, pending_action)
+            return {
+                "requires_confirmation": True,
+                "confirmation_action": pending_action,
+                "tool_name": first["tool_name"],
+                "tool_args": first["tool_args"],
+                "tool_calls": tool_calls,
+                **offline,
+            }
 
         first_name = tool_calls[0]["tool_name"] if tool_calls else None
         first_args = tool_calls[0]["tool_args"] if tool_calls else None
@@ -985,7 +1024,9 @@ async def tool_executor_node(state: AgentState) -> dict[str, Any]:
     if state.get("requires_confirmation"):
         action = state.get("confirmation_action", {})
         desc = action.get("description", "High-value ledger transaction")
-        return {"response_text": replies.confirm_prompt(desc)}
+        before = state.get("preamble")
+        question = replies.confirm_prompt(desc)
+        return {"response_text": f"{before}\n\n{question}" if before else question}
 
     tool_calls = state.get("tool_calls")
     if not tool_calls and state.get("tool_name"):
@@ -1460,6 +1501,7 @@ class Outcome:
     text: str
     transaction_ids: list[str] = field(default_factory=list)
     needs_confirmation: bool = False
+    pending_id: str | None = None  # which question the Yes/Cancel buttons answer
 
 
 async def process_user_interaction(
@@ -1505,7 +1547,13 @@ async def process_user_interaction_ex(
         # Save assistant reply to database
         save_db_chat_message(chat_id, "assistant", reply)
 
-        return Outcome(reply, tx_ids, bool(final_state.get("requires_confirmation")))
+        action = final_state.get("confirmation_action") or {}
+        return Outcome(
+            reply,
+            tx_ids,
+            bool(final_state.get("requires_confirmation")),
+            action.get("id") if final_state.get("requires_confirmation") else None,
+        )
     except Exception as e:
         logger.error(f"Error executing LLM Agent StateGraph: {e}", exc_info=True)
         return Outcome("⚠️ Something went wrong on my side. Please try again in a moment.")

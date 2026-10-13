@@ -207,7 +207,7 @@ async def _turn(rec: Recorder, chat_id: str, text: str, baseline: int) -> dict[s
         "user": text,
         "reply_text": reply.text or "",
         "path": path,
-        "needs_confirmation": any(b.data == "ask:yes" for row in reply.rows for b in row),
+        "needs_confirmation": any(b.data.startswith("ask:yes") for row in reply.rows for b in row),
         "calls": rec.scrub(rec.calls),
         "balances": state["balances"],
         "new_transactions": state["tx_count"] - baseline,

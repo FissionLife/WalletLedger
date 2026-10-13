@@ -165,13 +165,14 @@ async def handle_incoming(chat_id: str, text: str) -> Reply:
     if pending:
         decision = classify_reply(clean)
         if decision:
-            done = await _finish_import(chat_id, decision)
-            rows = [[ui.Btn("📊 Stats", "go:stats"), ui.Btn("🧾 History", "go:history")]]
-            return Reply(done, rows=rows if "Imported" in done else [])
+            return await answer_pending_import(chat_id, decision)
         _pending_imports.pop(chat_id, None)  # unrelated message: drop the pending import
 
     if clean.startswith("/"):
-        command, _, args = clean.partition(" ")
+        # a command (even /balance) moves on: an old "transfer 7000?" must not be answered by a later "yes"
+        session_store.clear_pending(chat_id)
+        parts = clean.split(None, 1)  # split on any whitespace (a newline or tab after the command)
+        command, args = parts[0], (parts[1] if len(parts) > 1 else "")
         command = command.split("@", 1)[0].lower()  # "/balance@MyBot" in groups
         args = args.strip()
         if command == "/keys":
@@ -196,15 +197,49 @@ async def handle_incoming(chat_id: str, text: str) -> Reply:
     if screen is not None:
         view = await _view_command(chat_id, screen.command, screen.args)
         if view is not None:
+            session_store.clear_pending(chat_id)
             return view
 
-    outcome = await process_user_interaction_ex(chat_id=chat_id, text=clean)
+    return _reply_for(await process_user_interaction_ex(chat_id=chat_id, text=clean))
+
+
+def _reply_for(outcome) -> Reply:
+    """Text plus the right buttons: Yes/Cancel for a question, Undo for what was just recorded."""
     rows: list[list[ui.Btn]] = []
     if outcome.needs_confirmation:
-        rows = ui.confirm_rows()
+        rows = ui.confirm_rows(outcome.pending_id)
+        if outcome.transaction_ids:  # part of the message was already recorded: it can be undone
+            rows.append(ui.undo_row(outcome.transaction_ids))
     elif outcome.transaction_ids:
         rows = [ui.undo_row(outcome.transaction_ids)]
     return Reply(outcome.text, rows=rows)
+
+
+async def answer_pending_import(chat_id: str, decision: str) -> Reply:
+    """Yes/No to a waiting statement import (typed or tapped). Never touches a pending transfer."""
+    if _get_pending_import(chat_id) is None:
+        return Reply(
+            "⌛ That import has expired. Send the file again.",
+            notice="Expired",
+            rows=ui.back_home(),
+        )
+    done = await _finish_import(chat_id, decision)
+    rows = [[ui.Btn("📊 Stats", "go:stats"), ui.Btn("🧾 History", "go:history")]]
+    return Reply(done, rows=rows if "Imported" in done else [])
+
+
+async def answer_pending_action(chat_id: str, yes: bool, pending_id: str | None = None) -> Reply:
+    """Yes/Cancel to a waiting AI action or transfer (tapped). Only the question the button belongs to."""
+    waiting = session_store.get_pending(chat_id)
+    if waiting is None or (pending_id and waiting.get("id") != pending_id):
+        return Reply(
+            "⌛ That question is no longer waiting, so nothing was changed.",
+            notice="Expired",
+            rows=ui.back_home(),
+        )
+    return _reply_for(
+        await process_user_interaction_ex(chat_id=chat_id, text="yes" if yes else "no")
+    )
 
 
 async def handle_text(chat_id: str, text: str) -> str:

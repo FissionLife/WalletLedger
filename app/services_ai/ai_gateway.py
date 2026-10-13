@@ -104,14 +104,14 @@ PROVIDER_ALIASES = {
 
 # Recognisable key formats, used when a user pastes keys into chat.
 KEY_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
-    ("anthropic", re.compile(r"sk-ant-[A-Za-z0-9_\-]{20,}")),
-    ("groq", re.compile(r"gsk_[A-Za-z0-9]{20,}")),
-    ("openrouter", re.compile(r"sk-or-(?:v1-)?[A-Za-z0-9_\-]{20,}")),
-    ("xai", re.compile(r"xai-[A-Za-z0-9]{20,}")),
-    ("deepseek", re.compile(r"sk-[a-f0-9]{32}(?![A-Za-z0-9_\-])")),
-    ("openai", re.compile(r"sk-(?!ant-|or-)[A-Za-z0-9_\-]{20,}")),
-    ("gemini", re.compile(r"AIza[0-9A-Za-z_\-]{35}")),
-    ("gemini", re.compile(r"AQ\.[0-9A-Za-z_\-.]{20,}")),
+    ("anthropic", re.compile(r"(?<![A-Za-z0-9_-])sk-ant-[A-Za-z0-9_\-]{20,}")),
+    ("groq", re.compile(r"(?<![A-Za-z0-9_-])gsk_[A-Za-z0-9]{20,}")),
+    ("openrouter", re.compile(r"(?<![A-Za-z0-9_-])sk-or-(?:v1-)?[A-Za-z0-9_\-]{20,}")),
+    ("xai", re.compile(r"(?<![A-Za-z0-9_-])xai-[A-Za-z0-9]{20,}")),
+    ("deepseek", re.compile(r"(?<![A-Za-z0-9_-])sk-[a-f0-9]{32}(?![A-Za-z0-9_\-])")),
+    ("openai", re.compile(r"(?<![A-Za-z0-9_-])sk-(?!ant-|or-)[A-Za-z0-9_\-]{20,}")),
+    ("gemini", re.compile(r"(?<![A-Za-z0-9_-])AIza[0-9A-Za-z_\-]{35}")),
+    ("gemini", re.compile(r"(?<![A-Za-z0-9_-])AQ\.[0-9A-Za-z_\-.]{20,}")),
 ]
 
 RATE_LIMIT_COOLDOWN_SECONDS = 60
@@ -208,6 +208,18 @@ def parse_provider_and_key(text: str) -> tuple[str, str] | None:
         if len(key) >= 16 and not re.search(r"\s", key):
             return PROVIDER_ALIASES[tokens[0].lower()], key
     return None
+
+
+_SECRET_IN_URL = re.compile(
+    r"(?i)\b(key|api[_-]?key|token|access_token|authorization)=([^&\s\"']+)"
+)
+
+
+def redact_secrets(text: str) -> str:
+    """Hide API keys in text that is logged or shown: recognisable keys and `?key=...` style parameters."""
+    for _, key in extract_api_keys(text or ""):
+        text = text.replace(key, mask_key(key))
+    return _SECRET_IN_URL.sub(lambda m: f"{m.group(1)}=***", text or "")
 
 
 def mask_key(api_key: str) -> str:
@@ -615,6 +627,10 @@ def _classify(exc: Exception) -> str | None:
 
 
 def _short_error(exc: Exception) -> str:
+    return redact_secrets(_short_error_raw(exc))
+
+
+def _short_error_raw(exc: Exception) -> str:
     text = str(exc).splitlines()[0] if str(exc) else type(exc).__name__
     return f"{type(exc).__name__}: {text[:160]}"
 

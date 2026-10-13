@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -70,7 +71,8 @@ class Result:
 
     text: str = ""
     tool_results: list[dict[str, Any]] = field(default_factory=list)
-    pending: dict[str, Any] | None = None  # a tool call waiting for the user's Yes
+    pending: dict[str, Any] | None = None  # the first tool call waiting for the user's Yes
+    pending_calls: list[dict[str, Any]] = field(default_factory=list)  # every call waiting for it
     tools_run: int = 0
     wrote: bool = False  # did we change the ledger?
 
@@ -100,6 +102,7 @@ async def run(
     tools: list[dict[str, Any]],
     system_prompt: str,
     transfer_threshold: float,
+    confirm: Callable[[str, dict[str, Any]], str | None] | None = None,
 ) -> Result:
     """Run the loop. Raises on AI failure only if nothing was changed yet (caller falls back)."""
     allowed = {
@@ -150,9 +153,11 @@ async def run(
                 body: Any = {"status": "skipped", "reason": "too many steps for one message"}
             elif name not in allowed:
                 body = {"status": "error", "message": f"unknown tool {name}"}
-            elif name == "transfer_funds" and _big(args, transfer_threshold):
-                out.pending = {"tool_name": name, "tool_args": args}
-                body = {"status": "waiting", "message": "the user must confirm this transfer"}
+            elif (reason := _needs_yes(name, args, confirm, transfer_threshold)) is not None:
+                call = {"tool_name": name, "tool_args": args, "reason": reason}
+                out.pending_calls.append(call)
+                out.pending = out.pending or call
+                body = {"status": "waiting", "message": "the user must confirm this first"}
             else:
                 out.tools_run += 1
                 try:
@@ -168,13 +173,22 @@ async def run(
                         {"tool_name": name, "tool_args": args, "result": None, "error": str(exc)}
                     )
             messages.append({"role": "tool", "tool_call_id": call_id, "content": _clip(body)})
-        if out.pending:  # stop here; the answer comes after the user taps Yes
+        if out.pending_calls:  # stop here; the answer comes after the user taps Yes
             return out
 
     out.text = (
         out.text or "That needed more steps than I allow in one go. Try asking in smaller parts."
     )
     return out
+
+
+def _needs_yes(name: str, args: dict[str, Any], confirm, threshold: float) -> str | None:
+    """Why this call must wait for the user's Yes (None = run it now)."""
+    if confirm is not None:
+        return confirm(name, args)
+    if name == "transfer_funds" and _big(args, threshold):
+        return "Transfer"
+    return None
 
 
 def _big(args: dict[str, Any], threshold: float) -> bool:

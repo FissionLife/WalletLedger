@@ -13,6 +13,7 @@ Nothing here touches the database: the caller passes the user's known account / 
 
 from __future__ import annotations
 
+import difflib
 import re
 from dataclasses import dataclass, field
 from datetime import date, timedelta
@@ -55,7 +56,8 @@ class Screen:
 
 _NUM = r"\d[\d,]*(?:\.\d+)?"
 _MONEY = re.compile(
-    rf"(?<![\w.:/-])(?:(?:₹|rs\.?|inr)\s*)?({_NUM})\s*(k|lakhs?|lacs?|crores?|cr|l)?(?![\w:/%-]|\.\d)",
+    rf"(?<![\w.:/#-])(?:(?:₹|rs\.?|inr)\s*)?({_NUM})\s*(k|lakhs?|lacs?|crores?|cr|l)?"
+    rf"(?:\s*(?:/-|rs\b\.?|inr\b|rupees?\b))?(?![\w:/%-]|\.\d)",
     re.I,
 )
 _MULT = {"k": 1_000, "l": 100_000, "lac": 100_000, "lacs": 100_000, "lakh": 100_000, "lakhs": 100_000,
@@ -100,7 +102,16 @@ def extract_date(text: str, today: date | None = None) -> tuple[str | None, str]
     m = re.search(r"\b(\d{1,3})\s+days?\s+(?:ago|back)\b", t, re.I)
     if m:
         return (today - timedelta(days=int(m.group(1)))).isoformat(), cut(m)
-    m = re.search(r"\b(\d{4})-(\d{2})-(\d{2})\b", t)
+    m = re.search(r"\b(aaj)\b", t, re.I)
+    if m:
+        return today.isoformat(), cut(m)
+    m = re.search(r"\b(parso|parsoon)\b", t, re.I)
+    if m:
+        return (today - timedelta(days=2)).isoformat(), cut(m)
+    m = re.search(r"\b(kal)\b", t, re.I)  # when logging what was spent, "kal" means yesterday
+    if m:
+        return (today - timedelta(days=1)).isoformat(), cut(m)
+    m = re.search(r"\b(\d{4})[-/](\d{2})[-/](\d{2})\b", t)
     if m:
         try:
             return date(int(m.group(1)), int(m.group(2)), int(m.group(3))).isoformat(), cut(m)
@@ -118,18 +129,33 @@ def extract_date(text: str, today: date | None = None) -> tuple[str | None, str]
             return found.isoformat(), cut(m)
         except ValueError:
             pass
-    m = re.search(rf"\b(\d{{1,2}})(?:st|nd|rd|th)?\s+({'|'.join(_MONTHS)})[a-z]*\b", t, re.I)
+    m = re.search(r"\b(\d{1,2})\.(\d{1,2})\.(\d{2,4})\b", t)  # 05.10.2026
+    if m:
+        year = int(m.group(3)) + (2000 if int(m.group(3)) < 100 else 0)
+        try:
+            return date(year, int(m.group(2)), int(m.group(1))).isoformat(), cut(m)
+        except ValueError:
+            pass
+    months = "|".join(_MONTHS)
+    year_tail = r"(?:\s*,?\s*['’]?(\d{2,4}))?"
+    m = re.search(rf"\b(\d{{1,2}})(?:st|nd|rd|th)?\s+({months})[a-z]*\.?{year_tail}\b", t, re.I)
+    year_txt = None
     if not m:
-        m2 = re.search(rf"\b({'|'.join(_MONTHS)})[a-z]*\s+(\d{{1,2}})(?:st|nd|rd|th)?\b", t, re.I)
+        m2 = re.search(
+            rf"\b({months})[a-z]*\.?\s+(\d{{1,2}})(?:st|nd|rd|th)?{year_tail}\b", t, re.I
+        )
         if m2:
-            day, mon = int(m2.group(2)), m2.group(1)
+            day, mon, year_txt = int(m2.group(2)), m2.group(1), m2.group(3)
             m = m2
         else:
             day = mon = None
     else:
-        day, mon = int(m.group(1)), m.group(2)
+        day, mon, year_txt = int(m.group(1)), m.group(2), m.group(3)
     if m and day and mon:
         try:
+            if year_txt:
+                year = int(year_txt) + (2000 if int(year_txt) < 100 else 0)
+                return date(year, _MONTHS[mon.lower()[:3]], day).isoformat(), cut(m)
             found = date(today.year, _MONTHS[mon.lower()[:3]], day)
             if found > today:
                 found = date(today.year - 1, found.month, found.day)
@@ -158,11 +184,27 @@ def extract_date(text: str, today: date | None = None) -> tuple[str | None, str]
 
 _INCOME = re.compile(
     r"\b(received|earned|credited|salary|stipend|stifend|refund(?:ed)?|cashback|income|bonus|"
-    r"dividend|reimburse\w*|freelance|got paid|payout|pocket money|pension)\b"
-    r"|\bgot\s+(?:a\s+|an\s+)?(?:₹|rs\.?\s*|inr\s*)?\d"
-    r"|\bgot\s+(?!(?:\w+\s+){0,3}(?:for|on)\b)(?:\w+\s+){1,3}(?:of\s+)?(?:₹|rs\.?\s*|inr\s*)?\d",
+    r"dividend|reimburse\w*|freelance|got paid|payout|pocket money|pension|sold|won|deposit(?:ed)?)\b"
+    r"|\bgot\s+(?:a\s+|an\s+)?(?:₹|rs\.?\s*|inr\s*)?\d"  # "got 5000 from dad" (not "got petrol 500")
+    r"|\b(?:paid|gave|sent|returned|transferred|lent|refunded)\s+(?:me|back)\b"  # "ravi paid me 500"
+    r"|\b(?:gift|rent|money|payment|amount)\s+from\b",
     re.I,
 )
+# Things that are not a transaction the user is reporting: plans, reminders, negations, facts about money
+_NOT_A_TRANSACTION = re.compile(
+    r"\b(?:remind(?:\s+me)?|will|won'?t|would|going\s+to|gonna|planning\s+to|plan\s+to|want\s+to|wanna|"
+    r"need\s+to|should|if\s+i|didn'?t|did\s+not|never|haven'?t|have\s+not|not\s+(?:paid|spent|received)|"
+    r"owes?\s+me|i\s+owe|my\s+salary\s+is|salary\s+is)\b",
+    re.I,
+)
+_UNPARSED_DATE = re.compile(
+    r"\b(?:last|next|this)\s+(?:week|month|year)\b|\btomorrow\b|\bnext\s+(?:mon|tue|wed|thu|fri|sat|sun)\w*",
+    re.I,
+)
+_KNOWN_BANKS = {
+    "hdfc", "sbi", "icici", "axis", "kotak", "idfc", "yes", "pnb", "bob", "canara", "union", "indusind",
+    "rbl", "federal", "hsbc", "citi", "amex", "au", "bandhan", "idbi", "boi", "savings", "salary", "current",
+}  # fmt: skip
 _TRANSFER = re.compile(
     r"\b(transfer(?:red)?|moved?|shift(?:ed)?|sent myself|top(?:ped)?[- ]?up)\b", re.I
 )
@@ -256,9 +298,13 @@ def _resolve_account(phrase: str | None, ctx: Context) -> str | None:
         return None
     p = phrase.strip().lower()
     for name in ctx.accounts:
-        n = name.lower()
-        if p == n or (len(p) >= 3 and (p in n or n in p)):
+        if p == name.lower():
             return name
+    partial = [n for n in ctx.accounts if len(p) >= 3 and (p in n.lower() or n.lower() in p)]
+    if partial:
+        return max(
+            partial, key=len
+        )  # "hdfc bank" is the HDFC account, not the account called "Bank"
     for word, std in _ACCOUNT_WORDS.items():
         if p == word:
             if std == "UPI":
@@ -271,11 +317,15 @@ def _resolve_account(phrase: str | None, ctx: Context) -> str | None:
                 return match or bank or "Bank"  # UPI payments leave the user's bank account
             match = next((a for a in ctx.accounts if std.lower() in a.lower()), None)
             return match or std
-    return (
-        phrase.strip().title()
-        if re.fullmatch(r"[A-Za-z][A-Za-z &.-]{1,24}", phrase.strip())
-        else None
+    # A new account is only made for something that looks like one (a bank or an "... bank/card/wallet"):
+    # "from ravi" or "from atm" is a person or a machine, not an account with a balance of its own.
+    first = p.split()[0] if p.split() else ""
+    looks_like_account = first in _KNOWN_BANKS or bool(
+        re.search(r"\b(?:bank|card|wallet|account|savings)\b", p)
     )
+    if looks_like_account and re.fullmatch(r"[A-Za-z][A-Za-z &.-]{1,24}", phrase.strip()):
+        return phrase.strip().title()
+    return None
 
 
 def _find_known_account(text: str, ctx: Context) -> str | None:
@@ -338,6 +388,17 @@ def _category_for(kind: str, what: str, clause: str, merchant: str | None) -> st
                 best = (cat, len(w))
     if best:
         return best[0]
+    # a typo in the item ("lnch", "cofee"): the closest known word, if it is close enough
+    known = {
+        w: cat
+        for cat, words in _CATEGORY_WORDS.items()
+        for w in words
+        if " " not in w and len(w) >= 4
+    }
+    for token in re.findall(r"[a-z]{4,}", low):
+        close = difflib.get_close_matches(token, known, n=1, cutoff=0.8)
+        if close:
+            return known[close[0]]
     try:
         from app.services_ai.transaction_parser import categorize_transaction
 
@@ -347,8 +408,13 @@ def _category_for(kind: str, what: str, clause: str, merchant: str | None) -> st
     except Exception:  # the parser is optional here
         pass
     words = what.split()
-    if what and len(words) <= 2 and all(w.isalpha() for w in words):
-        return what.title()
+    after_on_for = (
+        re.search(rf"\b(?:on|for)\s+(?:\w+\s+){{0,2}}{re.escape(what.split()[0])}\b", clause, re.I)
+        if what
+        else None
+    )
+    if what and len(words) <= 2 and all(w.isalpha() for w in words) and after_on_for:
+        return what.title()  # "spent 300 on pottery" is a real item; a stray word is not a category
     return None
 
 
@@ -374,6 +440,8 @@ def _short_item(text: str) -> bool:
 
 def _parse_clause(raw: str, ctx: Context, inherit_kind: str | None) -> Entry | None:
     when, text = extract_date(raw, ctx.today)
+    if when is None and _UNPARSED_DATE.search(text):
+        return None  # "last week", "tomorrow": ask rather than record it on the wrong day
     amounts = [(m, _to_amount(m.group(1), m.group(2))) for m in _money_matches(text)]
     amounts = [(m, a) for m, a in amounts if 0 < a <= 1_000_000_000]
     if not amounts:
@@ -408,12 +476,18 @@ def _parse_clause(raw: str, ctx: Context, inherit_kind: str | None) -> Entry | N
         if _DEPOSIT_CASH.search(text) and not src:
             src = _resolve_account("cash", ctx)
             dst = dst or ctx.default_income_account
+        if dst and not src:
+            src = ctx.default_income_account  # "moved 500 to cash": from the main account
         if src and dst and src.lower() != dst.lower():
             return Entry("transfer", amount, src, dst, note=raw.strip(), when=when)
         return None
 
     kind = None
-    expense_part = re.sub(r"\bgot paid\b", " ", low)  # "got paid 20000" is income
+    expense_part = re.sub(
+        r"\b(?:got paid|(?:paid|gave|sent|returned|transferred|lent|refunded)\s+(?:me|back))\b",
+        " ",
+        low,
+    )  # "got paid 20000" and "ravi paid me 500" are income
     if _INCOME.search(text) and not (
         _EXPENSE.search(expense_part)
         and re.search(r"\b(spent|paid|bought|ordered)\b", expense_part)
@@ -421,7 +495,7 @@ def _parse_clause(raw: str, ctx: Context, inherit_kind: str | None) -> Entry | N
         kind = "income"
     elif _EXPENSE.search(text):
         kind = "expense"
-    elif inherit_kind:
+    elif inherit_kind == "expense":
         kind = inherit_kind
     elif re.search(r"\b(on|for)\b", low) or re.search(r"\d\s*(?:at|@)\s+[a-z]", low):
         kind = "expense"  # "450 on dinner" / "450 at Starbucks" with no verb
@@ -498,8 +572,9 @@ _VERB_START = re.compile(
 
 _DATE_PHRASES = re.compile(
     r"\b\d{1,3}\s+days?\s+(?:ago|back)\b|\b\d{4}-\d{2}-\d{2}\b|\b\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?\b"
-    r"|\b\d{1,2}(?:st|nd|rd|th)?\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\b"
-    r"|\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+\d{1,2}(?:st|nd|rd|th)?\b",
+    r"|\b\d{1,2}(?:st|nd|rd|th)?\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?(?:\s*,?\s*['’]?\d{2,4}\b)?"
+    r"|\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+\d{1,2}(?:st|nd|rd|th)?(?:\s*,?\s*['’]?\d{2,4}\b)?"
+    r"|\b\d{4}/\d{2}/\d{2}\b|\b\d{1,2}\.\d{1,2}\.\d{2,4}\b",
     re.I,
 )
 
@@ -581,19 +656,31 @@ _QUESTION_START = re.compile(
 )
 
 
+# "Should I buy ...", "Can I afford ..." always ask, even with a spending verb ("Can't believe I spent" does not)
+_ASKING_AUX = re.compile(
+    r"^(?:so\s+|and\s+|but\s+|also\s+)?(?:should|can|could|would|will|shall|do|does|did|is|are|am|what\s+if|what\s+about|how\s+about|how\s+much|how\s+many)\b(?!\s*n['’]t)(?!['’]t)",
+    re.I,
+)
+
+
 def is_question(text: str) -> bool:
     """ "is 640 too much for dinner?" asks something; it must never be logged as spending."""
     text = (text or "").strip()
     if "?" in text:
         return True
-    return any(_QUESTION_START.match(c.strip()) for c in split_clauses(text))
+    # a message that starts like a question but states a spend or an income ("Was at Dmart, paid 1500") is not one
+    statement = bool(_EXPENSE.search(text) or _INCOME.search(text))
+    return any(
+        _QUESTION_START.match(c.strip()) and (_ASKING_AUX.match(c.strip()) or not statement)
+        for c in split_clauses(text)
+    )
 
 
 def parse_entries(text: str, ctx: Context | None = None) -> list[Entry]:
     """All transactions in the message, or [] if it does not clearly describe any."""
     ctx = ctx or Context()
     text = (text or "").strip()
-    if not text or len(text) > 3000 or is_question(text):
+    if not text or len(text) > 3000 or is_question(text) or _NOT_A_TRANSACTION.search(text):
         return []
     lines = [line for line in text.split("\n") if line.strip()]
     per_line = [split_clauses(line) for line in lines]
@@ -605,6 +692,8 @@ def parse_entries(text: str, ctx: Context | None = None) -> list[Entry]:
     fresh = {id(group[0]) for group in per_line if group}
     first_of_line = {i for i, c in enumerate(clauses) if id(c) in fresh}
     for index, clause in enumerate(clauses):
+        if re.match(r"^\s*(?:grand\s+)?(?:total|sum|subtotal|balance)\b|^\s*=", clause, re.I):
+            continue  # "Total 70" at the end of a pasted list is not another purchase
         if index in first_of_line:
             inherit = None  # a new line does not borrow "income" or "expense" from the line above
         entry = _parse_clause(clause, ctx, inherit)

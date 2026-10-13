@@ -177,14 +177,14 @@ async def balance(chat_id: str) -> Reply:
 
 def _history(chat_id: str, page: int):
     with SessionLocal() as db:
-        return ledger.recent_transactions(
-            db, _user_id(db, chat_id), HISTORY_PAGE, page * HISTORY_PAGE
-        )
+        uid = _user_id(db, chat_id)
+        rows, total = ledger.recent_transactions(db, uid, HISTORY_PAGE, page * HISTORY_PAGE)
+        return rows, total, ledger.last_entered_transaction_id(db, uid)
 
 
 async def history(chat_id: str, page: int = 0, *, edit: bool = False) -> Reply:
     page = max(0, page)
-    rows, total = await asyncio.to_thread(_history, chat_id, page)
+    rows, total, last_id = await asyncio.to_thread(_history, chat_id, page)
     if not total:
         return Reply(
             "🧾 No transactions yet.\nTry: Spent 450 on dinner via Bank", rows=ui.back_home()
@@ -204,7 +204,9 @@ async def history(chat_id: str, page: int = 0, *, edit: bool = False) -> Reply:
     first = page * HISTORY_PAGE + 1
     head = f"🧾 Transactions {first}–{first + len(rows) - 1} of {total}"
     return Reply(
-        f"{head}\n```\n" + "\n".join(lines) + "\n```", rows=ui.history_rows(page, pages), edit=edit
+        f"{head}\n```\n" + "\n".join(lines) + "\n```",
+        rows=ui.history_rows(page, pages, last_id),
+        edit=edit,
     )
 
 

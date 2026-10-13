@@ -248,6 +248,10 @@ NOTES: dict[str, tuple[str, str]] = {
         "tests",
         "Several Telegram bots on one backend: tokens, webhook addresses and secrets, start/stop, shared ledger.",
     ),
+    "tests/test_chat_fixes.py": (
+        "tests",
+        "Regression tests for the chat audit: reading messages, confirmations, buttons, keys, orchestrator.",
+    ),
     "tests/test_audit_fixes.py": (
         "tests",
         "Regression tests for the bugs found in the code audit: lost balance updates, junk entries, undo order, dashboard.",

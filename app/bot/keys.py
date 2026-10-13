@@ -53,12 +53,20 @@ def _fallback_line() -> str:
 
 
 def _resolve(chat_id: str, token: str) -> dict | None:
-    """Key number (as shown in /keys) -> key record, or None."""
-    if not token.isdigit():
-        return None
+    """A key number (as shown in /keys) or a button's id ('k' + 8 characters) -> key record, or None."""
     keys = gw.list_api_keys(chat_id)
-    index = int(token) - 1
-    return keys[index] if 0 <= index < len(keys) else None
+    if token.isdigit():
+        index = int(token) - 1
+        return keys[index] if 0 <= index < len(keys) else None
+    if len(token) == 9 and token[0] == "k":
+        return next((k for k in keys if k["key_id"].startswith(token[1:])), None)
+    return None
+
+
+def _position(chat_id: str, record: dict) -> str:
+    """The number the key has in /keys right now (for messages)."""
+    keys = gw.list_api_keys(chat_id)
+    return str(next((i for i, k in enumerate(keys, 1) if k["key_id"] == record["key_id"]), "?"))
 
 
 def _bad_number(chat_id: str, usage: str) -> str:
@@ -171,9 +179,10 @@ def _simple(chat_id: str, args: str, usage: str, action, done: str) -> str:
     record = _resolve(chat_id, args.strip().split(None, 1)[0] if args.strip() else "")
     if record is None:
         return _bad_number(chat_id, usage)
+    number = _position(chat_id, record)  # before the change: deleting key 1 renumbers the others
     if not action(chat_id, record["key_id"]):
         return "⚠️ Could not change that key. Please try again."
-    return done.format(n=args.strip().split()[0], name=gw.label(record["provider"]))
+    return done.format(n=number, name=gw.label(record["provider"]))
 
 
 async def test_keys(chat_id: str, args: str) -> str:

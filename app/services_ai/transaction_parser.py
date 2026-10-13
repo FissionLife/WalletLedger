@@ -346,7 +346,7 @@ def _name_from_phrase(rest: str) -> tuple[str, str | None]:
 _BRANDS: dict[str, str] = {
     "Food & Dining": "swiggy zomato dominos domino mcdonalds mcdonald kfc starbucks dunzo eatsure "
     "faasos behrouz box8 burgerking subway haldiram haldirams chaayos ccd wowmomo eatfit freshmenu "
-    "rebelfoods pizzahut biryani by kilo|burger king|pizza hut|barbeque nation|third wave coffee|"
+    "rebelfoods pizzahut|biryani by kilo|burger king|pizza hut|barbeque nation|third wave coffee|"
     "blue tokai|cafe coffee day|wow momo|rebel foods|zomato online|swiggy food",
     "Groceries": "blinkit grofers zepto bigbasket bbnow instamart swiggyinstamart dmart jiomart "
     "spencers ratnadeep licious freshtohome milkbasket|swiggy instamart|avenue supermarts|"
