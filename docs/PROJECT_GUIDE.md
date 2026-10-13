@@ -125,7 +125,7 @@ app/
     dashboard.py           the dashboard API and security headers
     static/                dashboard.html / .css / .js (12 charts drawn as plain SVG, no libraries)
 scripts/
-  setup.py                 setup wizard and `--check`
+  setup.py                 launches the wizard (`--check`, `--defaults`); the code is app/setup_wizard.py
   setup_bot.py             publish the command menu / description to Telegram
   protect_data.py          encrypt old rows, show progress, rotate SECRET_KEY
   seed_demo_data.py        90 days of demo data for a chat
@@ -249,7 +249,7 @@ adds nothing twice (duplicates compared by type, amount, date and note).
 See §6 and [SECURITY.md](SECURITY.md).
 
 ### 5.11 Setup, health, operations
-`scripts/setup.py` asks for the bot token and your id, creates `.env` with a strong `SECRET_KEY`, tests
+The first start of the server (`app/firstrun.py`) and `scripts/setup.py` run the same wizard (`app/setup_wizard.py`): it asks for the bot token and your id, creates `.env` with a strong `SECRET_KEY`, tests
 an AI key and publishes the command menu; `--check` is the health check (also `/status` in the chat and
 `GET /health`). `scripts/setup_bot.py` keeps the Telegram menu in sync with `COMMAND_MENU` in code.
 `scripts/protect_data.py` encrypts older rows and rotates `SECRET_KEY`.

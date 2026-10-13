@@ -112,4 +112,4 @@ The setup wizard fills in both with your own id.
 | `app/services_ai/mcp_server.py` | the tools the brain can use (log expense, transfer, report, …) |
 | `app/services/ledger.py` | the only code that changes balances |
 | `app/models.py`, `app/db.py` | the database |
-| `scripts/setup.py` | the setup wizard and health check |
+| `app/setup_wizard.py` | the setup questions (asked on first start) and the health check |

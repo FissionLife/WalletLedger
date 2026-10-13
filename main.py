@@ -1,17 +1,23 @@
 import logging
 from contextlib import asynccontextmanager
 
-import uvicorn
-from fastapi import FastAPI
-from fastapi.staticfiles import StaticFiles
+from app import firstrun
 
-from app.bot import telegram
-from app.bot.main import bot_router
-from app.config import INSECURE_DEV_KEY, settings
-from app.db import init_db
-from app.services_ai import tool_client
-from app.web.dashboard import STATIC
-from app.web.dashboard import router as dashboard_router
+# First start: if the bot is not set up yet, ask the few questions right here and carry on.
+# This must run before anything imports app.config (that is what reads .env).
+firstrun.ensure_setup()
+
+import uvicorn  # noqa: E402
+from fastapi import FastAPI  # noqa: E402
+from fastapi.staticfiles import StaticFiles  # noqa: E402
+
+from app.bot import telegram  # noqa: E402
+from app.bot.main import bot_router  # noqa: E402
+from app.config import INSECURE_DEV_KEY, settings  # noqa: E402
+from app.db import init_db  # noqa: E402
+from app.services_ai import tool_client  # noqa: E402
+from app.web.dashboard import STATIC  # noqa: E402
+from app.web.dashboard import router as dashboard_router  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 

@@ -19,7 +19,6 @@ import math
 import time
 from collections import defaultdict, deque
 from dataclasses import replace
-from datetime import datetime
 from pathlib import Path
 
 from fastapi import APIRouter, Header, HTTPException, Request
@@ -27,6 +26,7 @@ from fastapi.responses import FileResponse, JSONResponse, Response
 from pydantic import BaseModel
 from sqlalchemy import select
 
+from app import clock
 from app.config import bot_tokens, is_chat_allowed
 from app.db import SessionLocal
 from app.models import Account, Category, Merchant
@@ -207,7 +207,7 @@ async def transactions(request: Request, x_dashboard_token: str | None = Header(
 
     def load() -> list:
         with SessionLocal() as db:
-            return analytics.load_rows(db, ledger.get_or_create_user(db, chat_id).id, q)
+            return analytics.load_rows(db, ledger.get_or_create_user(db, chat_id).id, q, notes=True)
 
     rows = await asyncio.to_thread(load)
     if kind in ("expense", "income", "transfer"):
@@ -261,7 +261,7 @@ async def export_csv(request: Request, x_dashboard_token: str | None = Header(de
 
     def load() -> list:
         with SessionLocal() as db:
-            return analytics.load_rows(db, ledger.get_or_create_user(db, chat_id).id, q)
+            return analytics.load_rows(db, ledger.get_or_create_user(db, chat_id).id, q, notes=True)
 
     rows = await asyncio.to_thread(load)
     buf = io.StringIO()
@@ -276,7 +276,7 @@ async def export_csv(request: Request, x_dashboard_token: str | None = Header(de
                 *(analytics.csv_safe(v) for v in (r.category, r.merchant, r.account, r.note)),
             ]
         )
-    name = f"walletledger-{datetime.now().strftime('%Y%m%d')}.csv"
+    name = f"walletledger-{clock.now_local().strftime('%Y%m%d')}.csv"
     headers = {**SECURITY_HEADERS, "Content-Disposition": f'attachment; filename="{name}"'}
     return Response(("﻿" + buf.getvalue()).encode("utf-8"), media_type="text/csv", headers=headers)
 

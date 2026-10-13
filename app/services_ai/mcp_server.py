@@ -26,6 +26,7 @@ from app.services.ledger import (
     get_or_create_user,
     get_spending_summary,
     record_transaction,
+    resolve_category,
     transfer_between_pipes,
     validate_amount,
     validate_when,
@@ -357,7 +358,7 @@ def set_category_budget(
 
     def run(db: Session, user_id: str) -> dict[str, Any]:
         uid = _resolve_user(db, user_id).id
-        cat = get_or_create_category(db, uid, category.strip(), "expense")
+        cat = resolve_category(db, uid, category.strip(), "expense")  # same matching as /budget
         cat.budget_limit = float(monthly_budget) if monthly_budget is not None else None
         db.commit()
         return {"status": "success", "category": cat.name, "monthly_budget": cat.budget_limit}

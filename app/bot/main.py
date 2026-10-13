@@ -21,6 +21,7 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy import select
 
+from app import clock
 from app.bot import nlu, replies, ui, views
 from app.bot.agent import classify_reply, process_user_interaction_ex, session_store
 from app.bot.keys import KEY_COMMANDS, handle_admin_command, handle_key_command
@@ -338,7 +339,7 @@ def _import_preview(file_name: str, rows: list[dict[str, Any]]) -> str:
 def _row_day(row: dict[str, Any]) -> str:
     """ISO date of a parsed statement row (today when the statement gave none)."""
     raw = str(row.get("date") or "")[:10]
-    return raw if len(raw) == 10 else datetime.utcnow().date().isoformat()
+    return raw if len(raw) == 10 else clock.today_local().isoformat()
 
 
 def _drop_already_imported(chat_id: str, rows: list[dict[str, Any]]) -> tuple[list, int]:

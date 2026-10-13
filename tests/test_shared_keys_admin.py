@@ -207,9 +207,13 @@ class HealthTests(Base):
             patch.object(settings, "telegram_bot_token", ""),
         ):
             problems = " ".join(health.setup_problems())
+            notes = " ".join(
+                health.setup_notes()
+            )  # a public bot is intended: a note, not a problem
         self.assertIn("TELEGRAM_BOT_TOKEN", problems)
-        self.assertIn("ALLOWED_CHAT_IDS", problems)
-        self.assertIn("ADMIN_CHAT_IDS", problems)
+        self.assertNotIn("ALLOWED_CHAT_IDS", problems)
+        self.assertIn("Public bot", notes)
+        self.assertIn("ADMIN_CHAT_IDS", notes)
 
 
 if __name__ == "__main__":

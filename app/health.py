@@ -73,10 +73,19 @@ def setup_problems() -> list[str]:
             "SECRET_KEY is the public default or too short; saved AI keys and encrypted chat "
             "history are not safe."
         )
-    if not settings.allowed_chat_ids.strip():
-        problems.append("ALLOWED_CHAT_IDS is empty, so anyone who finds the bot can use it.")
-    if not settings.admin_chat_ids.strip():
-        problems.append("ADMIN_CHAT_IDS is empty, so nobody can manage shared keys from Telegram.")
     if settings.use_webhook and not settings.webhook_url:
         problems.append("USE_WEBHOOK=true but WEBHOOK_URL is empty.")
     return problems
+
+
+def setup_notes() -> list[str]:
+    """Facts worth knowing that are not faults (a public bot is a normal, intended setup)."""
+    notes = []
+    if settings.allowed_chat_ids.strip():
+        count = len([c for c in settings.allowed_chat_ids.split(",") if c.strip()])
+        notes.append(f"Private bot: only {count} Telegram id(s) in ALLOWED_CHAT_IDS can use it.")
+    else:
+        notes.append("Public bot: anyone can use it; every chat only sees its own data.")
+    if not settings.admin_chat_ids.strip():
+        notes.append("ADMIN_CHAT_IDS is empty, so nobody can use /admin (shared keys, stats).")
+    return notes

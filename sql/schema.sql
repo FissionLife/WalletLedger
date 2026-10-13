@@ -90,6 +90,8 @@ CREATE TABLE IF NOT EXISTS transactions (
     source VARCHAR(20) NOT NULL,
     created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL,
     entered_at TIMESTAMP WITHOUT TIME ZONE,
+    affects_balance BOOLEAN,
+    reference VARCHAR(80),
     PRIMARY KEY (id),
     FOREIGN KEY(user_id) REFERENCES users (id) ON DELETE CASCADE,
     FOREIGN KEY(account_id) REFERENCES accounts (id) ON DELETE SET NULL,
@@ -97,3 +99,4 @@ CREATE TABLE IF NOT EXISTS transactions (
     FOREIGN KEY(category_id) REFERENCES categories (id) ON DELETE SET NULL,
     FOREIGN KEY(merchant_id) REFERENCES merchants (id) ON DELETE SET NULL
 );
+CREATE INDEX IF NOT EXISTS ix_transactions_user_created ON transactions (user_id, created_at);

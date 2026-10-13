@@ -5,7 +5,7 @@ from urllib.parse import quote_plus
 from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-INSECURE_DEV_KEY = "walletledger-insecure-dev-key-change-in-prod"
+from app.envfile import INSECURE_DEV_KEY  # noqa: F401  (also used by main.py and crypto.py)
 
 
 class Settings(BaseSettings):
@@ -62,6 +62,9 @@ class Settings(BaseSettings):
     # /bot/simulate_chat and the token-less /bot/webhook let the caller act as ANY chat id.
     # Unset = enabled only while no bot token is configured; true/false overrides.
     enable_dev_endpoints: bool | None = None
+
+    # The timezone people live in. Times are stored in UTC; "today", daily totals and budget months follow this.
+    timezone: str = "UTC" if os.environ.get("WALLETLEDGER_TESTING") else "Asia/Kolkata"
 
     # Public address of this server (https://...), used for dashboard links and the Telegram Mini App.
     # Empty = http://localhost:8000 (opens in a browser on this computer only).

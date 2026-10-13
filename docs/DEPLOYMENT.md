@@ -4,9 +4,14 @@
 
 ```bash
 uv sync
-uv run python scripts/setup.py          # wizard: bot token, your id, optional AI key
-uv run uvicorn main:app --port 8000
+uv run uvicorn main:app --reload --port 8000
 ```
+
+The very first start asks a few questions (bot token, your id, optional AI key) and then keeps starting;
+after that it starts straight away. To change an answer later run `uv run python scripts/setup.py`.
+It never asks when nobody can answer (Docker, a service, CI): there it prints what is missing and starts
+anyway, so give it `TELEGRAM_BOT_TOKEN` and `SECRET_KEY` as environment variables, or run
+`uv run python scripts/setup.py --defaults --token <token>` once to write `.env` without questions.
 
 The bot uses **long polling**: it asks Telegram for new messages, so you need no public address and no
 open ports. The database is a single SQLite file (`walletledger.db`). Stop with `Ctrl+C`.
@@ -16,7 +21,7 @@ Check health: `uv run python scripts/setup.py --check` or `curl localhost:8000/h
 
 ## On a server (always on)
 
-1. Copy the project to the server and run `uv sync`, then `uv run python scripts/setup.py`.
+1. Copy the project to the server and run `uv sync`, then `uv run python scripts/setup.py --defaults --token <token>` (or set the environment variables).
 2. Keep it running with your platform's process manager (systemd, Docker, a PaaS "worker"):
    `uv run uvicorn main:app --host 0.0.0.0 --port 8000`
 3. Keep `walletledger.db` on a disk that is backed up, or switch to Postgres (below).

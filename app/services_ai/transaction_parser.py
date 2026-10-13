@@ -25,6 +25,7 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app import clock
 from app.models import Category, Merchant, Transaction
 
 # ---------------------------------------------------------------------------
@@ -105,7 +106,7 @@ def _date_from_match(match: re.Match[str], default_year: int | None = None) -> s
         else:
             day, month, year = int(g["d4"]), _month(g["mon4"]), g["y4"]
         if year is None:
-            full_year = default_year or date.today().year
+            full_year = default_year or clock.today_local().year
         else:
             full_year = int(year) + (2000 if len(year) == 2 else 0)
         if not 1990 <= full_year <= 2100:

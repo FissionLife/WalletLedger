@@ -13,12 +13,13 @@ import re
 import statistics
 from collections import defaultdict
 from dataclasses import dataclass, field, replace
-from datetime import UTC, date, datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import func, null, select
 from sqlalchemy.orm import Session
 
+from app import clock
 from app.models import Account, Category, Merchant, Transaction
 
 UNCATEGORIZED = "Uncategorized"
@@ -27,7 +28,8 @@ MAX_ROWS = 200_000  # safety valve for very large accounts
 
 
 def _now() -> datetime:
-    return datetime.now(UTC).replace(tzinfo=None)
+    """Now in the user's timezone: every window, 'today' and day bucket here is a LOCAL day."""
+    return clock.now_local()
 
 
 def _r(x: float) -> float:
@@ -61,14 +63,20 @@ class Query:
     def days(self) -> int:
         return max(1, (self.end - self.start).days)
 
+    def first_day(self) -> date | None:
+        """The day of the user's very first entry (set by report()), or None if unknown."""
+        value = self.extra.get("first_day")
+        return value if isinstance(value, date) else None
+
     def effective_days(self, first_day: date | None = None) -> int:
-        """Days the figures really cover: not past today, and not before the first entry.
+        """Days the figures really cover: not past today, and not before the user's first entry.
 
         "all" starts in the year 2000, and a brand-new user has weeks of empty window, so dividing
         by the nominal length would make every daily average look tiny.
         """
         end = min(self.end.date(), _now().date() + timedelta(days=1))
         start = self.start.date()
+        first_day = first_day or self.first_day()
         if first_day is not None and first_day > start:
             start = first_day
         return max(1, (end - start).days)
@@ -84,8 +92,36 @@ class Query:
         )
 
     def previous(self) -> Query:
-        span = self.end - self.start
-        return replace(self, start=self.start - span, end=self.start, label="previous period")
+        """The period to compare with: the same stretch of the calendar one step earlier.
+
+        This month so far (1-13 Oct) is compared with 1-13 Sep, this week so far with the same days of
+        last week, this year so far with the same days last year. A fixed-length window (30 days) is
+        compared with the 30 days before it.
+        """
+        tomorrow = _day_start(_now()) + timedelta(days=1)
+        cur_end = min(self.end, tomorrow)  # a period still running only covers the days so far
+        span = max(timedelta(days=1), cur_end - self.start)
+        label = "previous period"
+        month_aligned = self.start.day == 1 and (self.end.day == 1 or self.end == tomorrow)
+        if month_aligned and span.days <= 31:
+            prev_start = (self.start - timedelta(days=1)).replace(day=1)
+            prev_end = min(
+                prev_start + span, self.start
+            )  # same number of days, never past the month
+            return replace(self, start=prev_start, end=prev_end, label=label)
+        if self.label == "This week":
+            return replace(
+                self,
+                start=self.start - timedelta(days=7),
+                end=self.start - timedelta(days=7) + span,
+                label=label,
+            )
+        if self.label.endswith("so far") and self.start.month == 1 and self.start.day == 1:
+            prev_start = self.start.replace(year=self.start.year - 1)
+            return replace(
+                self, start=prev_start, end=min(prev_start + span, self.start), label=label
+            )
+        return replace(self, start=self.start - span, end=self.start, label=label)
 
     def describe(self) -> str:
         parts = [self.label]
@@ -221,14 +257,28 @@ class Row:
     merchant: str
     account: str
     note: str
+    applied: bool = True  # False: imported history that never touched today's balances
 
     @property
     def day(self) -> date:
         return self.when.date()
 
 
-def load_rows(db: Session, user_id: str, q: Query) -> list[Row]:
-    """All transactions in the window that pass the filters, oldest first (one SQL query)."""
+def first_entry_day(db: Session, user_id: str) -> date | None:
+    """The local day of the user's first transaction of any kind."""
+    first = db.scalar(
+        select(func.min(Transaction.created_at)).where(Transaction.user_id == user_id)
+    )
+    return clock.to_local(first).date() if first else None
+
+
+def load_rows(db: Session, user_id: str, q: Query, notes: bool = False) -> list[Row]:
+    """Transactions in the window that pass the filters, oldest first (one SQL query).
+
+    The window is a window of LOCAL days (q.start/q.end); times in the rows are local too.
+    Notes are encrypted, so they are only read (decrypted) when `notes=True`: lists and exports.
+    If an account has more than MAX_ROWS in the window, the NEWEST rows are kept.
+    """
     acc = Account.__table__.alias("a")
     stmt = (
         select(
@@ -239,7 +289,8 @@ def load_rows(db: Session, user_id: str, q: Query) -> list[Row]:
             Category.name,
             Merchant.name,
             acc.c.name,
-            Transaction.description,
+            Transaction.description if notes else null(),
+            Transaction.affects_balance,
         )
         .select_from(Transaction)
         .outerjoin(Category, Category.id == Transaction.category_id)
@@ -247,10 +298,10 @@ def load_rows(db: Session, user_id: str, q: Query) -> list[Row]:
         .outerjoin(acc, acc.c.id == Transaction.account_id)
         .where(
             Transaction.user_id == user_id,
-            Transaction.created_at >= q.start,
-            Transaction.created_at < q.end,
+            Transaction.created_at >= clock.to_utc(q.start),
+            Transaction.created_at < clock.to_utc(q.end),
         )
-        .order_by(Transaction.created_at)
+        .order_by(Transaction.created_at.desc())
         .limit(MAX_ROWS)
     )
     if q.categories:
@@ -262,9 +313,20 @@ def load_rows(db: Session, user_id: str, q: Query) -> list[Row]:
     if q.max_amount is not None:
         stmt = stmt.where(Transaction.amount <= q.max_amount)
     rows = [
-        Row(i, w, float(a), k, c or UNCATEGORIZED, mer or "", acct or "", n or "")
-        for i, w, a, k, c, mer, acct, n in db.execute(stmt)
+        Row(
+            i,
+            clock.to_local(w),
+            float(a),
+            k,
+            c or UNCATEGORIZED,
+            mer or "",
+            acct or "",
+            n or "",
+            f is not False,
+        )
+        for i, w, a, k, c, mer, acct, n, f in db.execute(stmt)
     ]
+    rows.reverse()  # oldest first
     if q.merchants:
         needles = [m.lower() for m in q.merchants]
         rows = [r for r in rows if any(n in r.merchant.lower() for n in needles)]
@@ -310,7 +372,7 @@ def summary(rows: list[Row], q: Query, prev_rows: list[Row] | None = None) -> di
     earned = sum(r.amount for r in inc)
     amounts = [r.amount for r in exp]
     active_days = len({r.day for r in exp})
-    days = q.effective_days(min((r.day for r in rows), default=None))
+    days = q.effective_days(None if q.first_day() else min((r.day for r in rows), default=None))
     out: dict[str, Any] = {
         "spent": _r(spent),
         "earned": _r(earned),
@@ -460,6 +522,13 @@ def _next_bucket(d: date, group: str) -> date:
 def series(rows: list[Row], q: Query) -> dict[str, Any]:
     """Spending and income per day/week/month (empty buckets included), with a trailing average."""
     group = pick_group(q)
+    span = max(1, (q.end - q.start).days)
+    if q.extra.get("trim") and rows:
+        span = max(1, (q.end.date() - min(r.day for r in rows)).days)
+    while (group == "day" and span > 700) or (group == "week" and span > 700 * 7):
+        group = (
+            "week" if group == "day" else "month"
+        )  # more than ~700 points would be cut off at the end
     spent: dict[date, float] = defaultdict(float)
     earned: dict[date, float] = defaultdict(float)
     for r in rows:
@@ -503,6 +572,9 @@ def weekday_pattern(rows: list[Row], q: Query) -> list[dict]:
         per_day[r.day] += r.amount
     counts: dict[int, int] = defaultdict(int)
     d = q.start.date()
+    first = q.first_day() or (min((r.day for r in rows), default=None))
+    if first is not None and first > d:
+        d = first  # days before the user's first entry are not "zero spending days"
     end = min(q.end.date(), _now().date() + timedelta(days=1))
     while d < end:
         counts[d.weekday()] += 1
@@ -606,7 +678,17 @@ def recurring(rows: list[Row], min_hits: int = 2) -> list[dict]:
     for name, rs in groups.items():
         months = {(r.when.year, r.when.month) for r in rs}
         amounts = [r.amount for r in rs]
-        if len(rs) >= min_hits and len(months) >= 2 and max(amounts) <= min(amounts) * 1.15:
+        days = sorted(r.when for r in rs)
+        gaps = [(b - a).days for a, b in zip(days, days[1:], strict=False)]
+        monthly = (
+            bool(gaps) and 24 <= statistics.median(gaps) <= 38
+        )  # weekly milk and two chai in a row are not bills
+        if (
+            len(rs) >= min_hits
+            and len(months) >= 2
+            and monthly
+            and max(amounts) <= min(amounts) * 1.15
+        ):
             avg = sum(amounts) / len(amounts)
             out.append(
                 {
@@ -665,6 +747,8 @@ def net_worth_series(db: Session, user_id: str, days: int = 60) -> list[dict[str
     q = Query(datetime.combine(first, datetime.min.time()), _day_start(_now()) + timedelta(days=1))
     delta: dict[date, float] = defaultdict(float)
     for r in load_rows(db, user_id, q):
+        if not r.applied:
+            continue
         if r.kind == "expense":
             delta[r.day] -= r.amount
         elif r.kind == "income":
@@ -700,7 +784,7 @@ def budget_status(db: Session, user_id: str) -> list[dict[str, Any]]:
                 "spent": _r(used),
                 "left": _r(c.budget_limit - used),
                 "percent": _r(pct),
-                "level": "over" if pct >= 100 else "warn" if pct >= 80 else "ok",
+                "level": "over" if pct > 100 else "warn" if pct >= 80 else "ok",
             }
         )
     return sorted(out, key=lambda r: -r["percent"])
@@ -740,7 +824,10 @@ def month_pace(db: Session, user_id: str) -> dict[str, Any]:
     still_due = sum(
         item["amount"] for item in recurring(history) if item["merchant"] not in charged_now
     )
-    projected = spent + daily_rate * (dim - now.day) + still_due
+    # one or two days say nothing about a month: only add the known bills until there is a week of data
+    projected = (
+        spent + daily_rate * (dim - now.day) + still_due if now.day >= 5 else spent + still_due
+    )
     return {
         "day": now.day,
         "days_in_month": dim,
@@ -759,12 +846,16 @@ def month_pace(db: Session, user_id: str) -> dict[str, Any]:
 def runway(db: Session, user_id: str, days: int = 30) -> dict[str, Any]:
     bal = balances(db, user_id)["total"]
     q = default_query(days)
+    first = first_entry_day(db, user_id)
+    covered = q.effective_days(first)  # a user with 3 days of history has 3 days, not 30
     spent = sum(r.amount for r in _expenses(load_rows(db, user_id, q)))
-    monthly = spent / days * 30
+    monthly = spent / covered * 30
     return {
         "balance": bal,
         "monthly_spend": _r(monthly),
         "months": _r(bal / monthly) if monthly > 0 and bal > 0 else None,
+        "data_days": covered,
+        "low_confidence": covered < 14,  # too little history to promise a number of months
     }
 
 
@@ -829,6 +920,8 @@ def report(
 ) -> dict[str, Any]:
     """Everything the dashboard, chat messages and chart images need, for one query."""
     q = q or default_query(30)
+    first = first_entry_day(db, user_id)
+    q = replace(q, extra={**q.extra, "first_day": first})
     rows = load_rows(db, user_id, q)
     prev_rows = load_rows(db, user_id, q.previous()) if compare else None
     history = load_rows(db, user_id, replace(q, start=q.start - timedelta(days=90), end=q.end))
@@ -855,8 +948,17 @@ def report(
         "sizes": size_distribution(rows),
         "recurring": recurring(history),
         "unusual": unusual(rows, history),
+        # always the last 12 weeks up to today (whatever period is shown), with the same filters
         "heatmap": calendar_heatmap(
-            load_rows(db, user_id, Query(_now() - timedelta(weeks=13), q.end))
+            load_rows(
+                db,
+                user_id,
+                replace(
+                    q,
+                    start=_day_start(_now()) - timedelta(weeks=13),
+                    end=_day_start(_now()) + timedelta(days=1),
+                ),
+            )
         ),
         "balances": balances(db, user_id),
         "budgets": budget_status(db, user_id),
@@ -870,16 +972,16 @@ def report(
 
 # =============================================================================== planning
 
-_ESSENTIAL = {
-    "rent",
-    "bills & utilities",
-    "health",
-    "education",
-    "insurance",
-    "loan",
-    "emi",
-    "groceries",
-}
+_ESSENTIAL_WORDS = {
+    "rent", "bills", "utilities", "utility", "health", "medical", "medicine", "education", "school",
+    "insurance", "loan", "emi", "groceries", "grocery", "tax", "taxes", "investments", "investment",
+    "savings", "transfers", "transfer", "cash", "fees", "fee", "electricity", "water", "mortgage",
+}  # fmt: skip
+
+
+def _is_essential(category: str) -> bool:
+    """True if any word of the category name is a need, an obligation or not really "spending"."""
+    return any(word in _ESSENTIAL_WORDS for word in re.findall(r"[a-z]+", category.lower()))
 
 
 def savings_plan(db: Session, user_id: str, target: float, months: int) -> dict[str, Any]:
@@ -891,9 +993,12 @@ def savings_plan(db: Session, user_id: str, target: float, months: int) -> dict[
     if target <= 0 or months <= 0:
         raise ValueError("target and months must both be greater than zero")
     q = default_query(90)
+    covered_days = q.effective_days(first_entry_day(db, user_id))
+    # two months of history or more counts as the full three-month window; less is averaged over what exists
+    months_covered = 3.0 if covered_days >= 60 else max(covered_days / 30.4, 0.25)
     rows = load_rows(db, user_id, q)
-    income = sum(r.amount for r in _income(rows)) / 3
-    spend = sum(r.amount for r in _expenses(rows)) / 3
+    income = sum(r.amount for r in _income(rows)) / months_covered
+    spend = sum(r.amount for r in _expenses(rows)) / months_covered
     surplus = income - spend
     needed = target / months
     gap = max(0.0, needed - max(0.0, surplus))
@@ -903,7 +1008,7 @@ def savings_plan(db: Session, user_id: str, target: float, months: int) -> dict[
     for c in cats:
         if remaining <= 0.5:
             break
-        if c["category"].lower() in _ESSENTIAL or c["category"] in (UNCATEGORIZED, "Other"):
+        if _is_essential(c["category"]) or c["category"] in (UNCATEGORIZED, "Other"):
             continue
         monthly = c["amount"] / 3
         cut = min(monthly * 0.4, remaining)  # never ask for more than 40% of one category
@@ -925,6 +1030,8 @@ def savings_plan(db: Session, user_id: str, target: float, months: int) -> dict[
         "avg_spend": _r(spend),
         "avg_surplus": _r(surplus),
         "has_income_data": income > 0,
+        "data_days": covered_days,
+        "low_confidence": covered_days < 30,  # under a month of history: a rough guess
         "on_track": surplus >= needed,
         "gap_per_month": _r(gap),
         "suggested_cuts": trim,

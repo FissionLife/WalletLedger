@@ -95,7 +95,7 @@
             </a>
             <a class="btn btn-outlined btn-lg state" data-link="repo" href="https://github.com/FissionLife/WalletLedger">View on GitHub</a>
           </div>
-          <p class="hero-note">Prefer your own copy? <a href="#setup">Run it yourself in three commands.</a> Curious how it works inside? <a href="explore/">Explore the code in five minutes</a> or <a href="docs/">read the docs</a>.</p>
+          <p class="hero-note">Prefer your own copy? <a href="#setup">Run it yourself in two commands.</a> Curious how it works inside? <a href="explore/">Explore the code in five minutes</a> or <a href="docs/">read the docs</a>.</p>
           <ul class="chip-list" aria-label="Highlights">
             <li class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5 9-10"/></svg>Works without an AI key</li>
             <li class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5 9-10"/></svg>PDF statement import</li>
@@ -385,8 +385,8 @@
         <div>
           <div class="section-head">
             <span class="eyebrow">Run your own</span>
-            <h2 id="setup-title">Set it up in 3 commands</h2>
-            <p>A setup wizard asks a few questions, writes the settings for you and checks that everything works.</p>
+            <h2 id="setup-title">Set it up in 2 commands</h2>
+            <p>The first start asks a few questions, writes the settings for you and checks that everything works. After that it starts straight away.</p>
           </div>
           <p><strong>You will need:</strong></p>
           <ul class="prereq">
@@ -411,16 +411,12 @@
                 <button class="copy-btn state" type="button" aria-label="Copy command 1: install"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 012-2h10"/></svg><span>Copy</span></button>
               </li>
               <li class="cmd-row">
-                <div><span class="cmd-label">2. Answer a few questions (bot token, your id, optional AI key)</span><pre><code>uv run python scripts/setup.py</code></pre></div>
-                <button class="copy-btn state" type="button" aria-label="Copy command 2: setup wizard"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 012-2h10"/></svg><span>Copy</span></button>
-              </li>
-              <li class="cmd-row">
-                <div><span class="cmd-label">3. Start the bot</span><pre><code>uv run uvicorn main:app --port 8000</code></pre></div>
-                <button class="copy-btn state" type="button" aria-label="Copy command 3: start the bot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 012-2h10"/></svg><span>Copy</span></button>
+                <div><span class="cmd-label">2. Start the bot (the first start asks a few questions: bot token, your id, optional AI key)</span><pre><code>uv run uvicorn main:app --reload --port 8000</code></pre></div>
+                <button class="copy-btn state" type="button" aria-label="Copy command 2: start the bot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 012-2h10"/></svg><span>Copy</span></button>
               </li>
             </ol>
           </div>
-          <p class="after-setup">Then open your bot in Telegram and send <code>/start</code>. Check everything is healthy any time with <code>uv run python scripts/setup.py --check</code>.</p>
+          <p class="after-setup">Then open your bot in Telegram and send <code>/start</code>. Change an answer later with <code>uv run python scripts/setup.py</code>; check health with <code>uv run python scripts/setup.py --check</code>.</p>
           <p class="visually-hidden" aria-live="polite" id="copy-status"></p>
         </div>
       </div>

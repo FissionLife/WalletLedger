@@ -12,14 +12,11 @@ import io
 import logging
 import re
 from collections import OrderedDict
-from datetime import datetime
 
-from sqlalchemy import select
-
+from app import clock
 from app.bot import fmt, ui
 from app.bot.ui import Btn, Reply
 from app.db import SessionLocal
-from app.models import Category
 from app.services import analytics, ledger
 from app.web import tokens
 
@@ -218,7 +215,7 @@ def _csv(chat_id: str, period: str) -> tuple[bytes, int]:
     with SessionLocal() as db:
         uid = _user_id(db, chat_id)
         q = analytics.parse_period(period) or analytics.default_query(30)
-        rows = analytics.load_rows(db, uid, q)
+        rows = analytics.load_rows(db, uid, q, notes=True)
     buf = io.StringIO()
     w = csv.writer(buf)
     w.writerow(["Date", "Type", "Amount", "Category", "Merchant", "Account", "Note"])
@@ -236,7 +233,7 @@ def _csv(chat_id: str, period: str) -> tuple[bytes, int]:
 
 async def export_csv(chat_id: str, period: str = "30d") -> Reply:
     data, count = await asyncio.to_thread(_csv, chat_id, period)
-    name = f"walletledger-{period}-{datetime.now().strftime('%Y%m%d')}.csv"
+    name = f"walletledger-{period}-{clock.now_local().strftime('%Y%m%d')}.csv"
     if not count:
         return Reply("Nothing to export in that period.")
     return Reply(f"📄 {fmt.plural(count, 'transaction')} exported", document=(data, name))
@@ -249,15 +246,7 @@ def _set_budget(chat_id: str, category: str, amount: float | None) -> str:
     with SessionLocal() as db:
         uid = _user_id(db, chat_id)
         # "food" means the user's "Food & Dining": reuse the category their entries are filed under
-        key = category.strip().lower()
-        mine = list(
-            db.scalars(select(Category).where(Category.user_id == uid, Category.type == "expense"))
-        )
-        cat = next((c for c in mine if c.name.lower() == key), None) or next(
-            (c for c in mine if len(key) >= 3 and key in c.name.lower()), None
-        )
-        if cat is None:
-            cat = ledger.get_or_create_category(db, uid, category, "expense")
+        cat = ledger.resolve_category(db, uid, category, "expense")
         cat.budget_limit = amount
         db.commit()
         return cat.name

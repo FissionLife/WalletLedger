@@ -7,7 +7,7 @@ Everything below works with no AI key except step 7.
 
 ```bash
 uv sync
-uv run python scripts/setup.py                        # bot token + your Telegram id
+# (the first start of the server asks for the bot token and your Telegram id)
 uv run python scripts/seed_demo_data.py --chat-id <your telegram id> --reset
 uv run python scripts/setup_bot.py                    # publishes the "/" menu and bot description
 uv run uvicorn main:app --port 8000

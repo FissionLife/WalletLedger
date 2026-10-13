@@ -160,7 +160,26 @@ NOTES: dict[str, tuple[str, str]] = {
         "Safe `.env` editor used by the setup wizard (keeps comments, makes a backup).",
     ),
     "sql/schema.sql": ("data", "The schema as SQL (generated)."),
-    "scripts/setup.py": ("ops", "Setup wizard and `--check` health check."),
+    "scripts/setup.py": (
+        "ops",
+        "Launches the setup wizard (`--check`, `--defaults`). The code is in app/setup_wizard.py.",
+    ),
+    "app/clock.py": (
+        "data",
+        "One place for time: everything is stored in UTC, everything people see or type uses their TIMEZONE.",
+    ),
+    "app/firstrun.py": (
+        "entry",
+        "First start: if the bot is not set up, asks the questions right inside `uvicorn`, then carries on.",
+    ),
+    "app/setup_wizard.py": (
+        "ops",
+        "The setup wizard and health check: public bot by default, safe to re-run, works without a terminal flag.",
+    ),
+    "tests/test_firstrun.py": (
+        "tests",
+        "First-run detection, the wizard (public by default), --defaults, health notes.",
+    ),
     "scripts/setup_bot.py": (
         "ops",
         "Publishes the command menu and description to Telegram; `--show` compares with the code.",

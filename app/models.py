@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, String, Text
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Index, String, Text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 from app.crypto import EncryptedText  # encrypted at rest, plaintext in Python (docs/SECURITY.md)
@@ -134,6 +134,12 @@ class Transaction(Base):
     entered_at: Mapped[datetime | None] = mapped_column(
         DateTime, default=datetime.utcnow, nullable=True
     )
+    # False for imported history the user chose not to apply to today's balances (reports still count it)
+    affects_balance: Mapped[bool | None] = mapped_column(Boolean, default=True, nullable=True)
+    # the bank's own reference (UTR / transaction id) from a statement, used to spot the same payment twice
+    reference: Mapped[str | None] = mapped_column(String(80), nullable=True)
+
+    __table_args__ = (Index("ix_transactions_user_created", "user_id", "created_at"),)
 
     user: Mapped[User] = relationship("User", back_populates="transactions")
     category: Mapped[Category | None] = relationship("Category", foreign_keys=[category_id])

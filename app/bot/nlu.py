@@ -15,7 +15,9 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
+
+from app import clock
 
 # --------------------------------------------------------------------------------------- types
 
@@ -80,7 +82,7 @@ _MONTHS = {m: i for i, m in enumerate(
 
 def extract_date(text: str, today: date | None = None) -> tuple[str | None, str]:
     """Find a day named in the text. Returns (ISO date or None, text without the date words)."""
-    today = today or datetime.now().date()
+    today = today or clock.today_local()
     t = text
 
     def cut(m: re.Match) -> str:
@@ -667,9 +669,12 @@ def _period_args(low: str) -> str:
         return f"{n}d"
     month = re.match(r"(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*(?:\s+(\d{4}))?$", p)
     if month:
-        year = int(month.group(2) or datetime.now().year)
+        year = int(month.group(2) or clock.today_local().year)
         num = _MONTHS[month.group(1)]
-        if not month.group(2) and (year, num) > (datetime.now().year, datetime.now().month):
+        if not month.group(2) and (year, num) > (
+            clock.today_local().year,
+            clock.today_local().month,
+        ):
             year -= 1
         return f"{year}-{num:02d}"
     return mapping.get(p, p)

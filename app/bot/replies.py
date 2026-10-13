@@ -9,9 +9,10 @@ become a small list. Errors say what to fix in one sentence.
 
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import datetime
 from typing import Any
 
+from app import clock
 from app.bot import fmt
 
 LOGGING_TOOLS = {"log_expense", "log_income", "transfer_funds"}
@@ -25,7 +26,7 @@ def _when(args: dict[str, Any]) -> str:
         d = datetime.fromisoformat(str(raw)[:10]).date()
     except ValueError:
         return ""
-    return "" if d == date.today() else f" · {fmt.day(d)}"
+    return "" if d == clock.today_local() else f" · {fmt.day(d)}"
 
 
 def _line(item: dict[str, Any]) -> str:

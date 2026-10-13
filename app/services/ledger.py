@@ -2,9 +2,10 @@ import re
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import func, select, update
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session, joinedload
 
+from app import clock
 from app.models import Account, Category, Merchant, Transaction, User
 
 VALID_TX_TYPES = {"expense", "income"}
@@ -46,15 +47,21 @@ def parse_when(value: Any) -> datetime | None:
 
 
 def _validate_date(value: Any) -> datetime | None:
-    when = parse_when(value)
-    if when is None:
+    """A date or time typed by a person (their local time) -> the UTC time that is stored.
+
+    A date without a time ("yesterday", a statement row) stays local midnight of that day, which converts
+    back to the same local date (and tells the hour chart that the time of day is unknown).
+    """
+    local = parse_when(value)
+    if local is None:
         return None
-    when = when.replace(tzinfo=None)
-    if when.year < 2000:
+    local = local.replace(tzinfo=None)
+    if local.year < 2000:
         raise LedgerError("Date is too far in the past")
-    if when > _now() + timedelta(days=1):
+    stored = clock.to_utc(local)
+    if stored > _now() + timedelta(days=1):
         raise LedgerError("Date is in the future")
-    return when
+    return stored
 
 
 def validate_when(value: Any) -> datetime | None:
@@ -155,6 +162,28 @@ def get_or_create_category(
     return cat
 
 
+def resolve_category(db: Session, user_id: str, name: str, cat_type: str = "expense") -> Category:
+    """The category a person means by `name`: "food" is their "Food & Dining", not a second "Food".
+
+    Order: exact name (any case) -> a category with that word in its name (only if exactly one) -> a new one.
+    """
+    key = name.strip().lower()
+    mine = list(
+        db.scalars(select(Category).where(Category.user_id == user_id, Category.type == cat_type))
+    )
+    exact = next((c for c in mine if c.name.lower() == key), None)
+    if exact:
+        return exact
+    if len(key) >= 3:
+        words = [c for c in mine if key in re.split(r"[^a-z0-9]+", c.name.lower())]
+        if len(words) == 1:
+            return words[0]
+        partial = [c for c in mine if key in c.name.lower()]
+        if len(partial) == 1:
+            return partial[0]
+    return get_or_create_category(db, user_id, name, cat_type)
+
+
 def get_or_create_merchant(
     db: Session, user_id: str, merchant_name: str, default_category_id: str | None = None
 ) -> Merchant:
@@ -187,11 +216,15 @@ def record_transaction(
     description: str | None = None,
     source: str = "chat",
     created_at: datetime | None = None,
+    affects_balance: bool = True,
+    reference: str | None = None,
 ) -> dict[str, Any]:
     """
     Logs an expense or income and updates the corresponding account balance atomically.
 
     ``created_at`` backdates the transaction (statement imports, "yesterday I spent...").
+    ``affects_balance=False`` records history only (reports count it, today's balance does not move).
+    ``reference`` is the bank's own id for the payment, kept so the same payment is not imported twice.
     """
     when = _validate_date(created_at)
     if tx_type not in VALID_TX_TYPES:
@@ -212,7 +245,8 @@ def record_transaction(
             cat_id = merchant.default_category_id
 
     # Update balance according to Pipe flow (atomically, see _adjust_balance)
-    _adjust_balance(db, account.id, -amount if tx_type == "expense" else amount)
+    if affects_balance:
+        _adjust_balance(db, account.id, -amount if tx_type == "expense" else amount)
 
     tx = Transaction(
         user_id=user_id,
@@ -223,6 +257,8 @@ def record_transaction(
         transaction_type=tx_type,
         description=description,
         source=source,
+        affects_balance=affects_balance,
+        reference=(reference or None) and str(reference)[:80],
         **({"created_at": when} if when else {}),
     )
     db.add(tx)
@@ -349,7 +385,9 @@ def undo_transaction(db: Session, user_id: str, transaction_id: str) -> dict[str
 
     ``transaction_id`` may be the full id or its first 8 or more characters (as shown in buttons).
     """
-    ident = (transaction_id or "").strip()
+    ident = (
+        (transaction_id or "").strip().lower()
+    )  # ids are lowercase UUIDs; LIKE is case-sensitive on Postgres
     if len(ident) < 6:
         raise LedgerError("Transaction id is too short")
     if not re.fullmatch(r"[0-9a-fA-F-]+", ident):  # ids are UUIDs; also keeps LIKE wildcards out
@@ -368,15 +406,26 @@ def undo_transaction(db: Session, user_id: str, transaction_id: str) -> dict[str
     tx = matches[0]
     src = db.get(Account, tx.account_id) if tx.account_id else None
     dst = db.get(Account, tx.to_account_id) if tx.to_account_id else None
-    if tx.transaction_type == "expense" and src:
-        _adjust_balance(db, src.id, tx.amount)
-    elif tx.transaction_type == "income" and src:
-        _adjust_balance(db, src.id, -tx.amount)
-    elif tx.transaction_type == "transfer":
-        if src:
-            _adjust_balance(db, src.id, tx.amount)
-        if dst:
-            _adjust_balance(db, dst.id, -tx.amount)
+    kind, amount, applied = tx.transaction_type, tx.amount, tx.affects_balance is not False
+    # Delete FIRST and look at the row count: a double tap (or two devices) must refund only once.
+    removed = db.execute(
+        delete(Transaction)
+        .where(Transaction.id == tx.id, Transaction.user_id == user_id)
+        .execution_options(synchronize_session=False)
+    ).rowcount
+    if removed != 1:
+        db.rollback()
+        raise LedgerError("That transaction was not found (maybe it was already undone)")
+    if applied:
+        if kind == "expense" and src:
+            _adjust_balance(db, src.id, amount)
+        elif kind == "income" and src:
+            _adjust_balance(db, src.id, -amount)
+        elif kind == "transfer":
+            if src:
+                _adjust_balance(db, src.id, amount)
+            if dst:
+                _adjust_balance(db, dst.id, -amount)
     db.flush()
     if src:
         db.refresh(src)  # the update above bypassed the object; read the real balance
@@ -391,7 +440,6 @@ def undo_transaction(db: Session, user_id: str, transaction_id: str) -> dict[str
         "when": tx.created_at.date().isoformat(),
     }
     try:
-        db.delete(tx)
         db.commit()
     except Exception:
         db.rollback()

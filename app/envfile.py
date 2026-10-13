@@ -10,6 +10,21 @@ import re
 import shutil
 from pathlib import Path
 
+# Public placeholder secrets: they are in the repository, so they protect nothing.
+INSECURE_DEV_KEY = "walletledger-insecure-dev-key-change-in-prod"
+PLACEHOLDER_SECRETS = {INSECURE_DEV_KEY, "change-me-to-a-long-random-string"}
+
+
+def is_weak_secret(value: str | None) -> bool:
+    """True for an empty, placeholder or too-short (under 24 characters) SECRET_KEY."""
+    text = (value or "").strip()
+    return not text or text in PLACEHOLDER_SECRETS or len(text) < 24
+
+
+def truthy(value: str | None) -> bool:
+    return (value or "").strip().lower() in ("1", "true", "yes", "on")
+
+
 _LINE = re.compile(r"^\s*(#\s*)?([A-Za-z_][A-Za-z0-9_]*)\s*=(.*)$")
 
 

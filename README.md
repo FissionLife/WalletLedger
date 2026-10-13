@@ -15,20 +15,24 @@ free-form questions like *"can I afford a ₹50,000 laptop in 5 months?"*.
 New here? Read **[How it works, in plain words](docs/HOW_IT_WORKS.md)** (5 minutes).
 Showing it to someone? Follow the **[demo script](docs/DEMO.md)**.
 
-## Set it up (3 steps)
+## Set it up (2 commands)
 
 ```bash
-uv sync                                 # 1. install
-uv run python scripts/setup.py          # 2. answer a few questions (bot token, your id, optional AI key)
-uv run uvicorn main:app --port 8000     # 3. start the bot
+uv sync                                          # 1. install
+uv run uvicorn main:app --reload --port 8000     # 2. start the bot
 ```
 
-Then open your bot in Telegram and send `/start`.
+**The first start asks a few questions** (bot token, your Telegram id, optional AI key), then carries on
+starting. Every start after that goes straight through. Then open your bot in Telegram and send `/start`.
 
 - You get the bot token from **@BotFather** in Telegram (`/newbot`).
-- The wizard creates `.env`, makes a strong secret key, finds your Telegram id, picks the database
+- The setup creates `.env`, makes a strong secret key, finds your Telegram id, picks the database
   (a SQLite file by default, no install), tests an AI key if you have one, and publishes the command menu.
-- Check that everything is healthy at any time: `uv run python scripts/setup.py --check`
+  The bot is **public** by default (anyone can use it; each chat only sees its own data); "private" is a
+  choice you make in the questions.
+- Change anything later: `uv run python scripts/setup.py` (safe to re-run). Health check:
+  `uv run python scripts/setup.py --check`. No questions (containers, scripts):
+  `uv run python scripts/setup.py --defaults --token <token>`.
 - Needs Python 3.14 and [uv](https://github.com/astral-sh/uv).
 
 ## What you can do
@@ -90,6 +94,7 @@ The ones you will actually touch:
 | `ADMIN_CHAT_IDS` | who may use `/admin` |
 | `SECRET_KEY` | encrypts saved AI keys, chat history and notes (the wizard generates it) |
 | `DB_MODE` | `sqlite` (default, a single file) or `postgres` (`docker compose up -d`) |
+| `SETUP_DONE` / `SETUP_SKIP` | the first-start questions: `SETUP_DONE=true` is written when you finish them; `SETUP_SKIP=1` never asks |
 | `PUBLIC_URL` | optional https address; makes `/dashboard` open inside Telegram as a Mini App |
 
 ## Cloudflare

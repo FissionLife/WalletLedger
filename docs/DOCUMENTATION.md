@@ -30,7 +30,7 @@ Start with the [project guide](PROJECT_GUIDE.md) (what is where, how it works). 
 | `app/services_ai/prompts.py` | the three advice personas |
 | `app/services_ai/transaction_parser.py` | chat, PDF and SMS parsing; statement formats and categories |
 | `scripts/inspect_statement.py` | debug how a statement PDF is read (format, rows, skipped lines) |
-| `scripts/setup.py` | setup wizard and `--check` |
+| `app/firstrun.py`, `app/setup_wizard.py`, `scripts/setup.py` | the first-start questions, the wizard and `--check`/`--defaults` |
 | `scripts/setup_bot.py` | publish/refresh the Telegram command menu |
 | `scripts/seed_demo_data.py` | 90 days of demo data for a chat (`--chat-id`, `--reset`) |
 | `scripts/protect_data.py` | encrypt older rows, show progress, rotate `SECRET_KEY` |
