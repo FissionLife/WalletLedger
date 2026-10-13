@@ -808,7 +808,6 @@ async def _nlu_analysis(chat_id: str, message: str) -> dict[str, Any] | None:
     # Exception: if the message also contains a transfer, the transfer-confirmation flow
     # takes priority — we don't interrupt with an account question.
     expense_entries = [e for e in entries if e.kind == "expense"]
-    non_expense_entries = [e for e in entries if e.kind != "expense"]
     has_transfer = any(e.kind == "transfer" for e in entries)
     has_implicit_expenses = (
         expense_entries

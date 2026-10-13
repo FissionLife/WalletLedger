@@ -404,7 +404,7 @@ class TestAccountSelection(AgentTestCase):
         chat(self.chat_id, "I spent 3k for phone emi 5k for rent")
         # Pending should be set
         self.assertIsNotNone(agent.session_store.get_pending(self.chat_id))
-        reply = chat(self.chat_id, "Bank")
+        chat(self.chat_id, "Bank")
         balances = self.balances()
         self.assertAlmostEqual(
             balances.get("Bank", 0), 50000 - 8000, delta=1,
