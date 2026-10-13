@@ -217,7 +217,15 @@ async def transactions(request: Request, x_dashboard_token: str | None = Header(
             r
             for r in rows
             if search
-            in " ".join([r.merchant, r.category, r.note, r.account, f"{r.amount:g}"]).lower()
+            in " ".join(
+                [
+                    r.merchant,
+                    r.category,
+                    r.note,
+                    r.account,
+                    f"{r.amount:.2f}".rstrip("0").rstrip("."),
+                ]
+            ).lower()
         ]
     keys = {
         "date": lambda r: r.when,

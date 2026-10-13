@@ -149,7 +149,9 @@ class TestStatementImport(BotTestCase):
 
         reply = run(bot.handle_text(self.chat_id, "yes"))
         self.assertIn("Imported 3 transactions", reply)
-        self.assertAlmostEqual(self.balances()["Bank"], 50000 - 670.50)
+        self.assertEqual(
+            self.balances()["Bank"], 0
+        )  # "yes" imports history: today's balance is not rewritten
         db = SessionLocal()
         try:
             user = db.query(User).filter(User.telegram_chat_id == self.chat_id).one()

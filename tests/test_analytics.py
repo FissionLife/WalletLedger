@@ -62,7 +62,7 @@ class FormatTests(unittest.TestCase):
         self.assertEqual(fmt.inr(12345), "₹12,345")
         self.assertEqual(fmt.inr(123456), "₹1,23,456")
         self.assertEqual(fmt.inr(12345678), "₹1,23,45,678")
-        self.assertEqual(fmt.inr(-1234.5, 2), "-₹1,234.50")
+        self.assertEqual(fmt.inr(-1234.5, 2), "−₹1,234.50")
         self.assertEqual(fmt.inr(1000.5, 2), "₹1,000.50")
 
     def test_short_money_and_helpers(self):

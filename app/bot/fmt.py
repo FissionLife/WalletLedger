@@ -6,8 +6,9 @@ from datetime import date, datetime
 
 
 def inr(x: float, decimals: int = 0) -> str:
-    """₹1,23,456 (Indian digit grouping). Negative numbers keep a leading minus."""
-    sign = "-" if x < 0 else ""
+    """₹1,23,456 (Indian digit grouping). Negative numbers keep a leading minus; -0.4 shows as ₹0."""
+    x = round(x, decimals)
+    sign = "−" if x < 0 else ""  # the same minus sign the entry lines use
     x = abs(x)
     whole, _, frac = f"{x:.{decimals}f}".partition(".")
     if len(whole) > 3:
@@ -25,7 +26,7 @@ def inr(x: float, decimals: int = 0) -> str:
 def short(x: float) -> str:
     """Compact money for tight spaces: ₹850, ₹12.5k, ₹3.2L, ₹1.4Cr."""
     a = abs(x)
-    sign = "-" if x < 0 else ""
+    sign = "−" if round(x) < 0 else ""
     if a >= 1e7:
         return f"{sign}₹{a / 1e7:.1f}Cr"
     if a >= 1e5:

@@ -7,13 +7,13 @@ from __future__ import annotations
 
 import functools
 from collections.abc import Callable
-from datetime import datetime, timedelta
+from datetime import datetime
 from itertools import islice
 from typing import Any
 
 from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db import SessionLocal
@@ -24,7 +24,6 @@ from app.services.ledger import (
     get_or_create_account,
     get_or_create_category,
     get_or_create_user,
-    get_spending_summary,
     record_transaction,
     resolve_category,
     transfer_between_pipes,
@@ -63,10 +62,13 @@ def log_expense(
     description: str | None = None,
     source: str = "chat",
     date: str | None = None,
+    affects_balance: bool = True,
+    reference: str | None = None,
 ) -> dict[str, Any]:
     """Record an expense and debit its payment account (``source``: chat, pdf, sms...).
 
-    ``date`` (YYYY-MM-DD) backdates it; leave empty for now.
+    ``date`` (YYYY-MM-DD) backdates it; leave empty for now. ``affects_balance=False`` records it as
+    history only. ``reference`` is the bank's id for the payment (used to spot duplicates).
     """
 
     def run(db: Session, **values: Any) -> dict[str, Any]:
@@ -85,6 +87,8 @@ def log_expense(
         description=description,
         source=source,
         created_at=date,
+        affects_balance=affects_balance,
+        reference=reference,
     )
 
 
@@ -96,10 +100,13 @@ def log_income(
     description: str | None = None,
     source: str = "chat",
     date: str | None = None,
+    affects_balance: bool = True,
+    reference: str | None = None,
 ) -> dict[str, Any]:
     """Record income and credit its destination account (``source``: chat, pdf, sms...).
 
-    ``date`` (YYYY-MM-DD) backdates it; leave empty for now.
+    ``date`` (YYYY-MM-DD) backdates it; leave empty for now. ``affects_balance=False`` records it as
+    history only. ``reference`` is the bank's id for the payment (used to spot duplicates).
     """
 
     def run(db: Session, **values: Any) -> dict[str, Any]:
@@ -117,6 +124,8 @@ def log_income(
         description=description,
         source=source,
         created_at=date,
+        affects_balance=affects_balance,
+        reference=reference,
     )
 
 
@@ -369,26 +378,18 @@ def set_category_budget(
 def get_spending_breakdown(
     user_id: str, period: str = "month", category: str | None = None
 ) -> dict[str, Any]:
-    """Return spending totals; period accepts week, month, quarter, or year."""
+    """Return spending totals; period accepts week, month, quarter, or year (the last 7/30/90/365 days)."""
+    from app.services import analytics
+
     periods = {"week": 7, "month": 30, "quarter": 90, "year": 365}
     if period not in periods:
         raise ValueError("period must be one of: week, month, quarter, year")
 
     def run(db: Session, user_id: str) -> dict[str, Any]:
         uid = _resolve_user(db, user_id).id
-        start = datetime.utcnow() - timedelta(days=periods[period])
-        stmt = (
-            select(Category.name, func.sum(Transaction.amount))
-            .outerjoin(Category, Transaction.category_id == Category.id)
-            .where(
-                Transaction.user_id == uid,
-                Transaction.transaction_type == "expense",
-                Transaction.created_at >= start,
-            )
-            .group_by(Category.name)
-        )
+        rows = analytics.load_rows(db, uid, analytics.default_query(periods[period]))
         breakdown = {
-            name or "Uncategorized": round(float(total), 2) for name, total in db.execute(stmt)
+            c["category"]: c["amount"] for c in analytics.category_breakdown(rows, None, top_n=1000)
         }
         if category:
             breakdown = {
@@ -407,103 +408,66 @@ def get_spending_breakdown(
 
 
 def skill_budget_alert_check(user_id: str) -> dict[str, Any]:
-    """Report categories at or above 80% of their monthly budget."""
+    """Report categories at or above 80% of their monthly budget (same numbers as /budget)."""
+    from app.services import analytics
 
     def run(db: Session, user_id: str) -> dict[str, Any]:
         uid = _resolve_user(db, user_id).id
-        now = datetime.utcnow()
-        month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-        stmt = (
-            select(Category, func.coalesce(func.sum(Transaction.amount), 0.0))
-            .outerjoin(
-                Transaction,
-                (Transaction.category_id == Category.id)
-                & (Transaction.user_id == uid)
-                & (Transaction.transaction_type == "expense")
-                & (Transaction.created_at >= month_start),
-            )
-            .where(
-                Category.user_id == uid,
-                Category.type == "expense",
-                Category.budget_limit.is_not(None),
-            )
-            .group_by(Category.id)
-        )
-        alerts = []
-        for category, spent in db.execute(stmt):
-            limit = float(category.budget_limit or 0)
-            if limit > 0 and spent / limit >= 0.8:
-                alerts.append(
-                    {
-                        "category": category.name,
-                        "spent": round(spent, 2),
-                        "budget": limit,
-                        "used_percent": round(spent / limit * 100, 1),
-                        "level": "exceeded" if spent >= limit else "warning",
-                    }
-                )
-        return {"month": now.strftime("%Y-%m"), "alerts": alerts}
+        alerts = [
+            {
+                "category": b["category"],
+                "spent": b["spent"],
+                "budget": b["budget"],
+                "used_percent": round(b["percent"], 1),
+                "level": "exceeded" if b["level"] == "over" else "warning",
+            }
+            for b in analytics.budget_status(db, uid)
+            if b["percent"] >= 80
+        ]
+        return {"month": analytics._now().strftime("%Y-%m"), "alerts": alerts}
 
     return _with_db(run, user_id=user_id)
 
 
 def skill_recurring_bill_detector(user_id: str) -> dict[str, Any]:
-    """Find merchants with similar expense amounts in at least three months."""
+    """Find merchants charged about every month for a near-constant amount (same rule as the dashboard)."""
+    from app.services import analytics
 
     def run(db: Session, user_id: str) -> dict[str, Any]:
         uid = _resolve_user(db, user_id).id
-        start = datetime.utcnow() - timedelta(days=183)
-        rows = db.execute(
-            select(Transaction, Account.name, Category.name)
-            .outerjoin(Account, Transaction.account_id == Account.id)
-            .outerjoin(Category, Transaction.category_id == Category.id)
-            .where(
-                Transaction.user_id == uid,
-                Transaction.transaction_type == "expense",
-                Transaction.created_at >= start,
-            )
-        )
-        grouped: dict[str, list[tuple[Transaction, str | None, str | None]]] = {}
-        for tx, _account, _category in rows:
-            label = tx.merchant_id or (tx.description or "").strip().casefold()
-            if label:
-                grouped.setdefault(label, []).append((tx, _account, _category))
+        rows = analytics.load_rows(db, uid, analytics.default_query(183))
         bills = []
-        for entries in grouped.values():
-            months = {entry[0].created_at.strftime("%Y-%m") for entry in entries}
-            amounts = [entry[0].amount for entry in entries]
-            if len(months) >= 3 and max(amounts) - min(amounts) <= max(5.0, max(amounts) * 0.1):
-                latest = max(entries, key=lambda item: item[0].created_at)[0]
-                merchant = db.get(Merchant, latest.merchant_id) if latest.merchant_id else None
-                bills.append(
-                    {
-                        "merchant": merchant.name if merchant else latest.description,
-                        "amount": round(sum(amounts) / len(amounts), 2),
-                        "occurrences": len(entries),
-                        "months": len(months),
-                    }
-                )
+        for item in analytics.recurring(rows):
+            hits = [r for r in rows if r.kind == "expense" and r.merchant == item["merchant"]]
+            bills.append(
+                {
+                    "merchant": item["merchant"],
+                    "amount": item["amount"],
+                    "occurrences": item["times"],
+                    "months": len({(r.when.year, r.when.month) for r in hits}),
+                }
+            )
         return {"recurring_bills": bills}
 
     return _with_db(run, user_id=user_id)
 
 
 def skill_emergency_fund_calculator(user_id: str) -> dict[str, Any]:
-    """Estimate liquid runway using current cash-like balances and 90-day spend."""
+    """Estimate how long the money in cash/bank/wallet accounts lasts (same rule as the dashboard)."""
+    from app.services import analytics
 
     def run(db: Session, user_id: str) -> dict[str, Any]:
         uid = _resolve_user(db, user_id).id
-        balances = list(db.scalars(select(Account).where(Account.user_id == uid)))
-        liquid = sum(a.balance for a in balances if a.type.casefold() in {"cash", "bank", "wallet"})
-        summary = get_spending_summary(db, uid, 90)
-        monthly_burn = summary["total_expenses"] / 3
-        months = liquid / monthly_burn if monthly_burn > 0 else None
+        runway = analytics.runway(db, uid)
+        burn = runway["monthly_spend"]
+        liquid = runway["liquid_balance"]
         return {
-            "liquid_balance": round(liquid, 2),
-            "average_monthly_expenses": round(monthly_burn, 2),
-            "runway_months": round(months, 2) if months is not None else None,
-            "target_3_month_fund": round(monthly_burn * 3, 2),
-            "shortfall_to_3_month_target": round(max(0, monthly_burn * 3 - liquid), 2),
+            "liquid_balance": liquid,
+            "average_monthly_expenses": burn,
+            "runway_months": runway["months"],
+            "target_3_month_fund": round(burn * 3, 2),
+            "shortfall_to_3_month_target": round(max(0, burn * 3 - liquid), 2),
+            "low_confidence": runway["low_confidence"],
         }
 
     return _with_db(run, user_id=user_id)

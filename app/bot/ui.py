@@ -96,7 +96,11 @@ def confirm_rows(pending_id: str | None = None) -> list[list[Btn]]:
 
 
 def import_rows() -> list[list[Btn]]:
-    return [[Btn("✅ Import", "imp:yes"), Btn("✖ Skip", "imp:no")]]
+    """History only (balances stay as they are), history plus balance update, or skip."""
+    return [
+        [Btn("📚 Import as history", "imp:hist"), Btn("💰 Import + update balance", "imp:apply")],
+        [Btn("✖ Skip", "imp:no")],
+    ]
 
 
 # Telegram limits a button's data to 64 bytes. Up to 6 ids fit in the button itself; a bigger batch

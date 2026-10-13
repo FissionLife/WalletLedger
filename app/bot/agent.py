@@ -93,8 +93,10 @@ def confirmation_reason(tool_name: str | None, args: Any) -> str | None:
     if not isinstance(args, dict):
         return None
     if tool_name == "transfer_funds" and _amount_of(args) >= CONFIRMATION_TRANSFER_THRESHOLD:
+        amount = _amount_of(args)
+        shown = f"{amount:,.0f}" if amount == int(amount) else f"{amount:,.2f}"
         return (
-            f"Transfer ₹{_amount_of(args):,.2f} from {args.get('from_account', 'Source')} "
+            f"Transfer ₹{shown} from {args.get('from_account', 'Source')} "
             f"to {args.get('to_account', 'Destination')}"
         )
     if tool_name == "edit_transaction":

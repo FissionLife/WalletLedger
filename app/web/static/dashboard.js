@@ -230,7 +230,7 @@
     }
     box.append(kpi("Spent", inr(s.spent), s.spent_change_pct, true, `${s.expense_count} purchases`), kpi("Earned", inr(s.earned), s.earned_change_pct, false),
       kpi("Saved", inr(s.net), null, false, s.savings_rate === null ? "" : `${s.savings_rate.toFixed(0)}% of income`), kpi("Per day", inr(s.avg_per_day), null, false, `${s.no_spend_days} no-spend days`),
-      kpi("Money now", inr(rep.balances.total), null, false, rep.runway.months ? `lasts ~${rep.runway.months} months` : ""));
+      kpi("Money now", inr(rep.balances.total), null, false, rep.runway.months && !rep.runway.low_confidence ? `lasts ~${rep.runway.months} months` : ""));
   }
 
   function renderInsights(rep) {
@@ -362,8 +362,8 @@
     series[1].values = p.this_month;
     const ymax = Math.max(p.projected, ...p.last_month, 1);
     lineChart(el, [{ values: [ymax], color: "transparent" }, ...series], cw(el), hh(cw(el)), { l: 50, r: 12, t: 16, b: 30 }, Array.from({ length: days }, (_, i) => String(i + 1)), short, (svg, xs, ys) => {
-      svg.append(s("path", { d: `M${xs(p.day - 1)},${ys(p.spent)} L${xs(days - 1)},${ys(p.projected)}`, fill: "none", stroke: "var(--primary)", "stroke-width": 2, "stroke-dasharray": "2 5" }),
-        s("text", { x: xs(days - 1), y: ys(p.projected) - 8, "text-anchor": "end", "font-size": 11, fill: "var(--link)", text: short(p.projected) }));
+      svg.append(s("path", { d: `M${xs(p.day - 1)},${ys(p.spent)} L${xs(p.days_in_month - 1)},${ys(p.projected)}`, fill: "none", stroke: "var(--primary)", "stroke-width": 2, "stroke-dasharray": "2 5" }),
+        s("text", { x: xs(p.days_in_month - 1), y: ys(p.projected) - 8, "text-anchor": "end", "font-size": 11, fill: "var(--link)", text: short(p.projected) }));
     });
   }
 
@@ -379,7 +379,7 @@
       let y = H - m.b;
       st.categories.forEach((c, ci) => {
         const v = p.values[c] || 0, hgt = (H - m.t - m.b) * (v / ymax);
-        if (hgt > 0) svg.append(s("rect", { class: "bar", x: xs(i) - bw * 0.36, width: bw * 0.72, y: y - hgt, height: hgt, fill: COLORS[ci % 10], "data-tip": `${p.label} · ${c}: ${inr(v)}` }));
+        if (hgt > 0) svg.append(s("rect", { class: "bar", x: xs(i) - bw * 0.36, width: bw * 0.72, y: y - hgt, height: hgt, fill: catColor(c, ci), "data-tip": `${p.label} · ${c}: ${inr(v)}` }));
         y -= hgt;
       });
     });

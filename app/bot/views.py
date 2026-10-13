@@ -14,7 +14,7 @@ import re
 from collections import OrderedDict
 
 from app import clock
-from app.bot import fmt, ui
+from app.bot import fmt, nlu, ui
 from app.bot.ui import Btn, Reply
 from app.db import SessionLocal
 from app.services import analytics, ledger
@@ -48,9 +48,11 @@ def _words_for(ctx: str) -> list[str]:
 def parse_args(text: str) -> tuple[str, list[str]]:
     """'last month food hdfc' -> ('last month', ['food', 'hdfc']). Period defaults to 30d."""
     tokens_ = [t for t in (text or "").replace(",", " ").split() if t]
-    for n in (2, 1):
-        if len(tokens_) >= n and analytics.parse_period(" ".join(tokens_[:n])):
-            return " ".join(tokens_[:n]), tokens_[n:]
+    for start in range(len(tokens_)):  # "food 7d" and "last month food" both work
+        for n in (2, 1):
+            chunk = tokens_[start : start + n]
+            if len(chunk) == n and analytics.parse_period(" ".join(chunk)):
+                return " ".join(chunk), tokens_[:start] + tokens_[start + n :]
     return "30d", tokens_
 
 
@@ -91,8 +93,12 @@ def caption(rep: dict, unmatched: list[str] | None = None) -> str:
                 )
         else:
             lines.append(f"{spent}  ·  Earned {fmt.inr(s['earned'])}")
-            saved = f"Saved {fmt.inr(s['net'])}"
-            if s["savings_rate"] is not None:
+            saved = (
+                f"Saved {fmt.inr(s['net'])}"
+                if s["net"] >= 0
+                else f"Spent {fmt.inr(-s['net'])} more than earned"
+            )
+            if s["savings_rate"] is not None and s["net"] >= 0:
                 saved += f" ({s['savings_rate']:.0f}%)"
             lines.append(f"{saved}  ·  {fmt.inr(s['avg_per_day'])} a day")
             top = rep["categories"][:3]
@@ -213,10 +219,12 @@ async def history(chat_id: str, page: int = 0, *, edit: bool = False) -> Reply:
 # ---------------------------------------------------------------------------------------- export
 
 
-def _csv(chat_id: str, period: str) -> tuple[bytes, int]:
+def _csv(chat_id: str, period: str, words: list[str] | None = None) -> tuple[bytes, int]:
     with SessionLocal() as db:
         uid = _user_id(db, chat_id)
         q = analytics.parse_period(period) or analytics.default_query(30)
+        if words:
+            q, _ = analytics.resolve_filters(db, uid, q, words)  # "/export food last month"
         rows = analytics.load_rows(db, uid, q, notes=True)
     buf = io.StringIO()
     w = csv.writer(buf)
@@ -233,8 +241,8 @@ def _csv(chat_id: str, period: str) -> tuple[bytes, int]:
     return ("﻿" + buf.getvalue()).encode("utf-8"), len(rows)  # BOM so Excel reads ₹ and accents
 
 
-async def export_csv(chat_id: str, period: str = "30d") -> Reply:
-    data, count = await asyncio.to_thread(_csv, chat_id, period)
+async def export_csv(chat_id: str, period: str = "30d", words: list[str] | None = None) -> Reply:
+    data, count = await asyncio.to_thread(_csv, chat_id, period, words or [])
     name = f"walletledger-{period}-{clock.now_local().strftime('%Y%m%d')}.csv"
     if not count:
         return Reply("Nothing to export in that period.")
@@ -272,9 +280,10 @@ async def budgets(chat_id: str, args: str = "") -> Reply:
                 return Reply(
                     f"🎯 Budget for {name} removed.", rows=[[Btn("🎯 Budgets", "go:budgets")]]
                 )
-            amount = ledger.validate_amount(
-                float(last.replace(",", "").rstrip("k")) * (1000 if last.endswith("k") else 1)
-            )
+            parsed = nlu.parse_amount(last)
+            if parsed is None:
+                raise ValueError("amount")
+            amount = ledger.validate_amount(parsed)
             if category:
                 name = await asyncio.to_thread(_set_budget, chat_id, category, amount)
                 return Reply(
@@ -324,6 +333,10 @@ def plan_text(p: dict) -> str:
         f"You keep about {sign}{fmt.inr(abs(p['avg_surplus']))} a month "
         f"({fmt.short(p['avg_income'])} in, {fmt.short(p['avg_spend'])} out)"
     )
+    if p.get("low_confidence"):
+        lines.append(
+            f"⚠️ Only {p['data_days']} days of history so far, so treat this as a rough guess."
+        )
     if p["on_track"]:
         lines.append("✅ On track at your current pace.")
         return "\n".join(lines)

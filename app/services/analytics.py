@@ -105,9 +105,9 @@ class Query:
         month_aligned = self.start.day == 1 and (self.end.day == 1 or self.end == tomorrow)
         if month_aligned and span.days <= 31:
             prev_start = (self.start - timedelta(days=1)).replace(day=1)
-            prev_end = min(
-                prev_start + span, self.start
-            )  # same number of days, never past the month
+            finished = self.end.day == 1 and self.end <= tomorrow  # a complete calendar month
+            # a finished month is compared with the whole month before; one still running, with the same days
+            prev_end = self.start if finished else min(prev_start + span, self.start)
             return replace(self, start=prev_start, end=prev_end, label=label)
         if self.label == "This week":
             return replace(
@@ -153,7 +153,7 @@ def parse_period(text: str, now: datetime | None = None) -> Query | None:
         n, unit = int(m.group(1)), m.group(2)[0]
         days = {"d": 1, "w": 7, "m": 30, "y": 365}[unit] * n
         days = min(max(days, 1), 3650)
-        return Query(end - timedelta(days=days), end, f"Last {days} days")
+        return Query(end - timedelta(days=days), end, f"Last {days} day{'s' if days != 1 else ''}")
     if t in ("today",):
         return Query(end - timedelta(days=1), end, "Today")
     if t in ("yesterday",):
@@ -708,12 +708,14 @@ def unusual(rows: list[Row], history: list[Row] | None = None, n: int = 5) -> li
     by_cat: dict[str, list[float]] = defaultdict(list)
     for r in base:
         by_cat[r.category].append(r.amount)
+    medians = {
+        c: statistics.median(v) for c, v in by_cat.items() if len(v) >= 4
+    }  # once per category
     flagged = []
     for r in _expenses(rows):
-        vals = by_cat[r.category]
-        if len(vals) < 4:
+        med = medians.get(r.category)
+        if med is None:
             continue
-        med = statistics.median(vals)
         if r.amount >= 3 * med and r.amount >= 500:
             flagged.append(
                 {
@@ -843,17 +845,28 @@ def month_pace(db: Session, user_id: str) -> dict[str, Any]:
     }
 
 
-def runway(db: Session, user_id: str, days: int = 30) -> dict[str, Any]:
-    bal = balances(db, user_id)["total"]
+_LIQUID_TYPES = {"cash", "bank", "wallet"}
+
+
+def runway(db: Session, user_id: str, days: int = 90) -> dict[str, Any]:
+    """How many months the money in cash/bank/wallet accounts lasts at the recent pace of spending.
+
+    The pace is averaged over the days that really have history (at most `days`), so a new user with
+    three days of data is not told something precise.
+    """
+    accounts = balances(db, user_id)["accounts"]
+    total = balances(db, user_id)["total"]
+    liquid = sum(a["balance"] for a in accounts if a["type"].lower() in _LIQUID_TYPES)
     q = default_query(days)
     first = first_entry_day(db, user_id)
-    covered = q.effective_days(first)  # a user with 3 days of history has 3 days, not 30
+    covered = q.effective_days(first)
     spent = sum(r.amount for r in _expenses(load_rows(db, user_id, q)))
     monthly = spent / covered * 30
     return {
-        "balance": bal,
+        "balance": total,
+        "liquid_balance": _r(liquid),
         "monthly_spend": _r(monthly),
-        "months": _r(bal / monthly) if monthly > 0 and bal > 0 else None,
+        "months": _r(liquid / monthly) if monthly > 0 and liquid > 0 else None,
         "data_days": covered,
         "low_confidence": covered < 14,  # too little history to promise a number of months
     }
@@ -906,7 +919,9 @@ def insights(rep: dict[str, Any]) -> list[str]:
             f"One {u['category']} expense of ₹{u['amount']:,.0f} was far above your usual ₹{u['usual']:,.0f}."
         )
     wd = rep.get("weekdays", [])
-    if wd and max(w["avg"] for w in wd) > 0:
+    if (
+        wd and max(w["avg"] for w in wd) > 0 and rep["query"]["days"] >= 14
+    ):  # a week says nothing about weekdays
         peak = max(wd, key=lambda w: w["avg"])
         out.append(f"{peak['day']} is your costliest day (about ₹{peak['avg']:,.0f}).")
     pace = rep.get("pace")

@@ -467,7 +467,7 @@ class EndToEndTests(unittest.TestCase):
         )
         with patch.object(gw, "complete", ai):
             first = self.say("Please move some money to cash so I can afford the trip next week")
-        self.assertIn("Transfer ₹9,000.00", first.text)
+        self.assertIn("Transfer ₹9,000", first.text)
         done = self.say("yes")
         self.assertIn("9,000", done.text)
 

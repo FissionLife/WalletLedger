@@ -70,6 +70,15 @@ def _plausible(m: re.Match) -> bool:
     return not (len(digits) >= 8 and digits.isdigit() and not m.group(2))
 
 
+def parse_amount(text: str) -> float | None:
+    """ "6000", "6k", "2l", "1.5 lakh", "₹6,000" -> 6000.0 ... ; None if it is not just an amount."""
+    m = _MONEY.fullmatch((text or "").strip())
+    if not m or not _plausible(m):
+        return None
+    value = _to_amount(m.group(1), m.group(2))
+    return value if value > 0 else None
+
+
 def _to_amount(num: str, suffix: str | None) -> float:
     value = float(num.replace(",", ""))
     return round(value * _MULT.get((suffix or "").lower(), 1), 2)

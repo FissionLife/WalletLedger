@@ -9,10 +9,10 @@ Every channel uses the same logic so there is one code path:
 
 from __future__ import annotations
 
+import asyncio
 import difflib
 import hmac
 import logging
-from collections import Counter
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Any
@@ -29,7 +29,7 @@ from app.bot.ui import Reply
 from app.config import dev_endpoints_enabled, is_chat_allowed
 from app.db import SessionLocal
 from app.health import user_status_text
-from app.models import Transaction
+from app.models import Merchant, Transaction
 from app.services.ledger import get_or_create_user
 from app.services_ai import tool_client
 from app.services_ai.ai_gateway import extract_api_keys
@@ -281,8 +281,8 @@ async def _view_command(chat_id: str, command: str, args: str) -> Reply | None:
     if command == "/undo":
         return await views.undo(chat_id, "last")
     if command == "/export":
-        period, _ = views.parse_args(args)
-        return await views.export_csv(chat_id, period)
+        period, words = views.parse_args(args)
+        return await views.export_csv(chat_id, period, words)
     if command == "/budget":
         return await views.budgets(chat_id, args)
     if command == "/dashboard":
@@ -313,6 +313,13 @@ def upload_type(file_name: str) -> str | None:
     return None
 
 
+def _parse_upload(chat_id: str, file_bytes: bytes, kind: str) -> list[dict[str, Any]]:
+    """Runs in a worker thread: its own database session, its own event loop for the parser."""
+    with SessionLocal() as db:
+        user_id = get_or_create_user(db, telegram_chat_id=chat_id).id
+        return asyncio.run(parse_statement_file(file_bytes, kind, user_id=user_id, db=db))
+
+
 async def handle_document(chat_id: str, file_name: str, file_bytes: bytes) -> str:
     """Parse an uploaded statement and ask the user to confirm the import."""
     chat_id = str(chat_id)
@@ -322,17 +329,14 @@ async def handle_document(chat_id: str, file_name: str, file_bytes: bytes) -> st
     if kind is None:
         return "📄 Please upload a PDF statement (or a .txt file with bank SMS lines)."
 
-    db = SessionLocal()
     try:
-        user_id = get_or_create_user(db, telegram_chat_id=chat_id).id
-        rows = await parse_statement_file(file_bytes, kind, user_id=user_id, db=db)
+        # PDF reading is slow CPU work: do it in a worker thread so the bot keeps answering everyone else
+        rows = await asyncio.to_thread(_parse_upload, chat_id, file_bytes, kind)
     except ValueError as e:
         return f"⚠️ Could not read `{file_name}`: {e}"
     except Exception as e:
         logger.error("Statement parsing failed for chat %s: %s", chat_id, e, exc_info=True)
         return f"⚠️ Could not read `{file_name}`. Please try another file."
-    finally:
-        db.close()
 
     rows = [r for r in rows if float(r.get("amount") or 0) > 0]
     if not rows:
@@ -360,14 +364,26 @@ def _import_preview(file_name: str, rows: list[dict[str, Any]]) -> str:
         for r in rows[:PREVIEW_ROWS]
     )
     more = f"\n  …and {len(rows) - PREVIEW_ROWS} more" if len(rows) > PREVIEW_ROWS else ""
+    net = summary["total_credit"] - summary["total_debit"]
+    unclear = sum(1 for r in rows if "guessed" in str(r.get("note") or ""))
+    warning = (
+        f"\n⚠️ {unclear} row{'s' if unclear != 1 else ''} had no clear debit/credit marker and "
+        "was read as an expense. Check them in /history afterwards.\n"
+        if unclear
+        else ""
+    )
+    sign = "−" if net < 0 else "+"
     return (
         f"📄 **Statement:** `{file_name}`{kind}\n"
         f"Found **{summary['count']} transactions**{period}: ₹{summary['total_debit']:,.2f} spent, "
         f"₹{summary['total_credit']:,.2f} received.\n"
         + (f"Top: {top}\n" if top else "")
-        + f"\n{sample}{more}\n\n"
-        f"Import them into your **{IMPORT_ACCOUNT}** pipe?\n"
-        f"👉 Reply **'yes'** to import or **'no'** to cancel."
+        + f"\n{sample}{more}\n{warning}\n"
+        f"They go into your **{IMPORT_ACCOUNT}** account.\n"
+        f"📚 **History**: reports and charts count them; your balance stays as it is. (Reply 'yes')\n"
+        f"💰 **History + balance**: also changes {IMPORT_ACCOUNT} by {sign}₹{abs(net):,.2f}. "
+        "Pick this if the statement is the money you are tracking from now on.\n"
+        "Reply 'no' to cancel."
     )
 
 
@@ -377,15 +393,28 @@ def _row_day(row: dict[str, Any]) -> str:
     return raw if len(raw) == 10 else clock.today_local().isoformat()
 
 
+def _merchant_match(a: str, b: str) -> bool:
+    a, b = (a or "").strip().lower(), (b or "").strip().lower()
+    if not a or not b or "unknown" in (a, b):
+        return True  # one side has no merchant: amount and date have to carry it
+    return a == b or a in b or b in a
+
+
 def _drop_already_imported(chat_id: str, rows: list[dict[str, Any]]) -> tuple[list, int]:
-    """Skip rows already in the ledger (same type, amount, date and note), so uploading the same
-    statement twice never double-counts. Compared in Python because notes are stored encrypted."""
+    """Skip rows that are already in the ledger, so the same payment is never counted twice.
+
+    A row is a duplicate when (1) it has the same bank reference (UTR) as an existing entry, or
+    (2) an existing entry has the same type, amount and day (one day either way) and a matching
+    merchant: that covers the same statement uploaded twice, the same payment in a bank statement AND
+    a PhonePe statement, and an entry you already typed in chat. Each existing entry can match only
+    one new row, so two genuine identical payments in one statement are both kept.
+    Compared in Python because notes are stored encrypted.
+    """
     if not rows:
         return rows, 0
     days = sorted(_row_day(r) for r in rows)
-    start = datetime.fromisoformat(days[0])
-    end = datetime.fromisoformat(days[-1]) + timedelta(days=1)
-    existing: Counter = Counter()
+    start = datetime.fromisoformat(days[0]) - timedelta(days=1)
+    end = datetime.fromisoformat(days[-1]) + timedelta(days=2)
     db = SessionLocal()
     try:
         user_id = get_or_create_user(db, telegram_chat_id=chat_id).id
@@ -394,68 +423,110 @@ def _drop_already_imported(chat_id: str, rows: list[dict[str, Any]]) -> tuple[li
                 Transaction.transaction_type,
                 Transaction.amount,
                 Transaction.created_at,
-                Transaction.description,
+                Merchant.name,
+                Transaction.reference,
             )
+            .select_from(Transaction)
+            .outerjoin(Merchant, Merchant.id == Transaction.merchant_id)
             .where(Transaction.user_id == user_id)
-            .where(Transaction.source == "pdf")
-            .where(Transaction.created_at >= start)
-            .where(Transaction.created_at < end)
-        )
-        existing.update((t, round(a, 2), c.date().isoformat(), d or "") for t, a, c, d in found)
+            .where(Transaction.transaction_type.in_(("expense", "income")))
+            .where(Transaction.created_at >= clock.to_utc(start))
+            .where(Transaction.created_at < clock.to_utc(end))
+        ).all()
     finally:
         db.close()
+    # a bank reference identifies a payment whatever its date: look the references up across all time
+    wanted = {str(r.get("reference")).strip() for r in rows if r.get("reference")}
+    refs: set[str] = set()
+    if wanted:
+        with SessionLocal() as db:
+            refs = set(
+                db.scalars(
+                    select(Transaction.reference).where(
+                        Transaction.user_id == user_id, Transaction.reference.in_(wanted)
+                    )
+                )
+            )
+    pool = [(t, round(a, 2), clock.to_local(c).date(), m or "") for t, a, c, m, _ in found]
     fresh, duplicates = [], 0
     for row in rows:
-        tx_type = "income" if row.get("type") == "income" else "expense"
-        key = (tx_type, round(float(row["amount"]), 2), _row_day(row), row.get("description") or "")
-        if existing[key] > 0:
-            existing[key] -= 1
+        ref = str(row.get("reference") or "").strip()
+        if ref and ref in refs:
             duplicates += 1
-        else:
-            fresh.append(row)
+            continue
+        tx_type = "income" if row.get("type") == "income" else "expense"
+        amount = round(float(row["amount"]), 2)
+        day = datetime.fromisoformat(_row_day(row)).date()
+        hit = next(
+            (
+                i
+                for i, (t, a, d, m) in enumerate(pool)
+                if t == tx_type
+                and a == amount
+                and abs((d - day).days) <= 1
+                and _merchant_match(row.get("merchant") or "", m)
+            ),
+            None,
+        )
+        if hit is not None:
+            pool.pop(hit)  # one existing entry matches one new row
+            duplicates += 1
+            continue
+        fresh.append(
+            row
+        )  # (two rows of ONE statement may share a reference; only the ledger is checked)
     return fresh, duplicates
 
 
 async def _finish_import(chat_id: str, decision: str) -> str:
+    """decision: "history" (also what a typed "yes" means), "apply" (also change the balance), or cancel."""
     pending = _pending_imports.pop(chat_id, None)
     if pending is None:
         return "⌛ That import expired. Please upload the statement again."
-    if decision != "confirmed":
+    if decision not in ("history", "apply", "confirmed"):
         return "❌ **Import cancelled.** Nothing was added to your ledger."
+    apply_balance = decision == "apply"
 
     rows, duplicates = _drop_already_imported(chat_id, pending.rows)
     imported, failed = 0, 0
     for row in rows:
+        common = {
+            "user_id": chat_id,
+            "amount": row["amount"],
+            "description": row.get("description"),
+            "source": "pdf",
+            "date": row.get("date"),
+            "affects_balance": apply_balance,
+            "reference": row.get("reference"),
+        }
         try:
             if row.get("type") == "income":
                 await tool_client.call_tool(
                     "log_income",
-                    user_id=chat_id,
-                    amount=row["amount"],
                     source_account=IMPORT_ACCOUNT,
                     category=row.get("category") or "Income",
-                    description=row.get("description"),
-                    source="pdf",
-                    date=row.get("date"),
+                    **common,
                 )
             else:
                 await tool_client.call_tool(
                     "log_expense",
-                    user_id=chat_id,
-                    amount=row["amount"],
                     category=row.get("category") or "Uncategorized",
                     merchant=row.get("merchant") if row.get("merchant") != "Unknown" else None,
                     account_name=IMPORT_ACCOUNT,
-                    description=row.get("description"),
-                    source="pdf",
-                    date=row.get("date"),
+                    **common,
                 )
             imported += 1
         except Exception as e:
             failed += 1
             logger.warning("Import row failed for chat %s: %s", chat_id, e)
 
-    text = f"✅ **Imported {imported} transactions** from `{pending.file_name}`."
+    noun = "transaction" if imported == 1 else "transactions"
+    text = f"✅ **Imported {imported} {noun}** from `{pending.file_name}`."
+    text += (
+        f"\n💰 {IMPORT_ACCOUNT} balance updated."
+        if apply_balance
+        else f"\n📚 Added as history: your {IMPORT_ACCOUNT} balance did not change."
+    )
     if duplicates:
         text += f"\n↩️ Skipped {duplicates} already in your ledger."
     if failed:

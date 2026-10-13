@@ -53,11 +53,12 @@ async def handle_callback(chat_id: str, data: str) -> Reply:
             reply.notice = reply.notice or ("Done" if decision == "yes" else "Cancelled")
             return reply
         if action == "imp":
-            reply = await bot_main.answer_pending_import(
-                chat_id, "confirmed" if rest == "yes" else "cancelled"
+            decision = {"hist": "history", "yes": "history", "apply": "apply"}.get(
+                rest, "cancelled"
             )
+            reply = await bot_main.answer_pending_import(chat_id, decision)
             reply.edit = True
-            reply.notice = reply.notice or ("Done" if rest == "yes" else "Skipped")
+            reply.notice = reply.notice or ("Skipped" if decision == "cancelled" else "Done")
             return reply
         if action == "key":
             sub, _, n = rest.partition(":")

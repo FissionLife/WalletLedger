@@ -586,7 +586,10 @@ class FileAndImportTests(unittest.TestCase):
         pdf = make_pdf([[line for line in HDFC.splitlines() if line.isascii()]])
         first = asyncio.run(bot.handle_document(self.chat_id, "hdfc.pdf", pdf))
         self.assertIn("Found **9 transactions**", first)
-        self.assertIn("Imported 9 transactions", asyncio.run(bot.handle_text(self.chat_id, "yes")))
+        done = asyncio.run(
+            bot.answer_pending_import(self.chat_id, "apply")
+        ).text  # history + balance
+        self.assertIn("Imported 9 transactions", done)
         balance = self.bank_balance()
         self.assertAlmostEqual(balance, 75473.0 - 12599.0)
 

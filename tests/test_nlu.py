@@ -319,7 +319,7 @@ class ReplyTests(unittest.TestCase):
             }
         )
         self.assertIn("Starbucks · Food & Dining", r)
-        self.assertIn("Cash -₹150", r)
+        self.assertIn("Cash −₹150", r)
         r = replies.compact(
             {
                 "tool_results": [
