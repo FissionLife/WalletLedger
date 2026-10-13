@@ -23,7 +23,7 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from langgraph.graph import END, START, StateGraph
 from sqlalchemy import select
 
-from app.bot import nlu, orchestrator, replies
+from app.bot import fmt, nlu, orchestrator, replies
 from app.bot.keys import save_keys
 from app.db import SessionLocal
 from app.models import ChatMessage, User
@@ -483,7 +483,7 @@ SYSTEM_AGENT_PROMPT = """You are WalletLedger's Financial AI Agent Brain modeled
 Your job is to understand natural language user messages, analyze finances, and invoke appropriate tools dynamically.
 
 Key Guidelines:
-1. Account Pipes: Map colloquial payment accounts to clean pipe names (e.g. 'Bank', 'Cash', 'UPI Wallet'). If the user clearly specifies the payment medium (e.g. 'via bank', 'from cash', 'through UPI'), use that. If the payment account is NOT mentioned, do NOT assume or guess an account — instead, omit the `account_name` field from the `log_expense` call and do NOT call any tool; instead reply asking the user which account they paid from (e.g. "Which account did you pay from? Your accounts: Bank, Cash"). Use 'Bank' for income/transfers.
+1. Account Pipes: Map colloquial payment accounts to clean pipe names (e.g. 'Bank', 'Cash', 'UPI Wallet'). If the user clearly specifies the payment medium (e.g. 'via bank', 'from cash', 'through UPI'), use that. If the payment account is NOT mentioned, omit `account_name` (the app uses the user's default account). Use 'Bank' for income/transfers.
 2. Categories: Infer accurate, standard expense or income categories based on context (e.g. Food, Groceries, Transport, Shopping, Utilities, Subscriptions, Health, Personal Care, Entertainment, Gifts, Salary, Freelance, Stipend, Cashback).
 3. Multi-Item & Batch Transactions:
    When the user provides a list of expenses (e.g. '190=poornima pizza Dosa\\n80=Neeraj Dosa\\n115.62=petrol...'), multiple purchases, or an income together with expenses ('got stipend 15000 and spent 190 on dosa, 80 on coffee'), YOU MUST CALL THE RELEVANT TOOL FOR EACH INDIVIDUAL ITEM (call `log_income` for the stipend, and call `log_expense` for EVERY single expense item). Do not truncate, merge, or ignore any item.
@@ -512,7 +512,6 @@ class PendingAction(TypedDict, total=False):
     tool_calls: list[dict[str, Any]]  # everything from the same message, run together on Yes
     description: str
     created_at: str
-    kind: str  # "transfer_confirm" | "account_selection"
 
 
 @dataclass
@@ -704,9 +703,27 @@ _OFFLINE_INTENTS: list[tuple[tuple[str, ...], str, dict[str, Any]]] = [
 ]
 
 
+_hinted_about_keys: set[str] = set()
+_SMALL_TALK = re.compile(
+    r"(?:hi+|hello+|hey+|hii+|yo|hola|namaste|sup|good (?:morning|afternoon|evening|night)|"
+    r"thanks?(?: you| a lot)?|thx|ty|ok(?:ay)?|cool|great|nice|got it|👍|🙏|😀|🙂)(?: there| bot| buddy)?"
+)
+
+
 def _offline_intent(message: str) -> dict[str, Any]:
     """Without an AI key: a few fixed requests by keyword, otherwise a short, honest hint."""
     lower = message.strip().lower()
+    if _SMALL_TALK.fullmatch(lower.strip(" !.,?")):
+        thanks = bool(re.match(r"thank|thx|ty\b|ok|okay|cool|great|nice|got it|👍", lower))
+        return {"type": "direct_text", "content": replies.THANKS if thanks else replies.HELLO}
+    bare = nlu.parse_amount(lower.strip(" .!"))
+    if bare is not None:
+        return {
+            "type": "direct_text",
+            "content": replies.BARE_AMOUNT.format(
+                amount=fmt.inr(bare, 2 if bare % 1 else 0), plain=f"{bare:g}"
+            ),
+        }
     if nlu.is_question(lower) and re.search(r"\d", lower):
         return {"type": "direct_text", "content": replies.QUESTION_NEEDS_AI}
     for keywords, tool, args in _OFFLINE_INTENTS:
@@ -723,6 +740,8 @@ def _offline_intent(message: str) -> dict[str, Any]:
                 "tool_name": tool,
                 "tool_args": args,
             }
+    if nlu.is_question(lower):
+        return {"type": "direct_text", "content": replies.QUESTION_NEEDS_AI}
     if lower in {"/help", "help", "/start", "menu", "commands"}:
         return {"type": "direct_text", "content": replies.GREETING}
     if re.search(
@@ -770,64 +789,11 @@ def _nlu_context(chat_id: str) -> nlu.Context:
         return nlu.Context(
             accounts=names,
             merchants=merchants,
-            default_expense_account=last_account("expense")
+            default_expense_account=user.default_account
+            or last_account("expense")
             or ("Cash" if "Cash" in names else bank),
             default_income_account=last_account("income") or bank,
         )
-
-
-def _account_selection_prompt(chat_id: str) -> str:
-    """Build a message asking the user which account they paid from."""
-    ctx = _nlu_context(chat_id)
-    account_list = ", ".join(ctx.accounts) if ctx.accounts else "Bank, Cash"
-    return (
-        "💳 Which account did you pay from?\n"
-        f"Your accounts: {account_list}\n\n"
-        'Just reply with the account name (e.g., "Bank" or "Cash")'
-    )
-
-
-def _resolve_account_from_reply(message: str, chat_id: str) -> str | None:
-    """Try to resolve the user's reply to a known account name. Returns None if unrecognised."""
-    ctx = _nlu_context(chat_id)
-    msg_lower = message.strip().lower()
-    for name in ctx.accounts:
-        if name.lower() in msg_lower or msg_lower in name.lower():
-            return name
-    # Also accept generic keywords even if not yet in the user's accounts
-    generic_map = {
-        "bank": "Bank",
-        "cash": "Cash",
-        "upi": "UPI Wallet",
-        "wallet": "UPI Wallet",
-        "card": "Credit Card",
-        "credit": "Credit Card",
-        "debit": "Bank",
-    }
-    for keyword, fallback in generic_map.items():
-        if keyword in msg_lower:
-            # prefer a matching real account name
-            for name in ctx.accounts:
-                if keyword in name.lower():
-                    return name
-            return fallback
-    return None
-
-
-def _inject_account_into_calls(
-    tool_calls: list[dict[str, Any]], account: str
-) -> list[dict[str, Any]]:
-    """Return tool_calls with account_name filled in for every log_expense call missing one."""
-    result = []
-    for tc in tool_calls:
-        if tc.get("tool_name") == "log_expense":
-            args = dict(tc["tool_args"])
-            if not args.get("account_name"):
-                args["account_name"] = account
-            result.append({"tool_name": tc["tool_name"], "tool_args": args})
-        else:
-            result.append(tc)
-    return result
 
 
 async def _nlu_analysis(chat_id: str, message: str) -> dict[str, Any] | None:
@@ -836,18 +802,6 @@ async def _nlu_analysis(chat_id: str, message: str) -> dict[str, Any] | None:
     entries = nlu.parse_entries(message, ctx)
     if not entries:
         return None
-
-    # Check whether all expense entries are missing an explicit account.
-    # If so, hold them as a pending account_selection rather than defaulting to Cash.
-    # Exception: if the message also contains a transfer, the transfer-confirmation flow
-    # takes priority — we don't interrupt with an account question.
-    expense_entries = [e for e in entries if e.kind == "expense"]
-    has_transfer = any(e.kind == "transfer" for e in entries)
-    has_implicit_expenses = (
-        expense_entries
-        and all(not e.account_explicit for e in expense_entries)
-        and not has_transfer  # transfers take priority; don't layer on account prompts
-    )
 
     calls: list[dict[str, Any]] = []
     for e in entries:
@@ -869,12 +823,11 @@ async def _nlu_analysis(chat_id: str, message: str) -> dict[str, Any] | None:
                 }
             )
         else:
-            # Build expense call; omit account_name so _inject_account_into_calls can fill it later
             args = {
                 "amount": e.amount,
                 "category": e.category or "Uncategorized",
                 "merchant": e.merchant,
-                "account_name": e.account if e.account_explicit else None,
+                "account_name": e.account,
                 "description": e.note,
                 "date": e.when,
             }
@@ -884,23 +837,6 @@ async def _nlu_analysis(chat_id: str, message: str) -> dict[str, Any] | None:
                     "tool_args": {k: v for k, v in args.items() if v is not None},
                 }
             )
-
-    if has_implicit_expenses:
-        # Suspend all expense calls; ask the user which account they paid from.
-        # Non-expense calls (income, transfers) from the same message are included so they
-        # are all executed together once the user answers.
-        pending_action: PendingAction = {
-            "tool_calls": calls,
-            "tool_name": "log_expense",
-            "description": "Expense account selection pending",
-            "created_at": _utc_now().isoformat(),
-            "kind": "account_selection",
-        }
-        session_store.set_pending(chat_id, pending_action)
-        return {
-            "type": "account_selection",
-            "prompt": await asyncio.to_thread(_account_selection_prompt, chat_id),
-        }
 
     return {"type": "tool_calls", "tool_calls": calls}
 
@@ -972,39 +908,7 @@ async def llm_reasoning_node(state: AgentState) -> dict[str, Any]:
     # 1. Human-in-the-loop: a yes/no answer to a pending action never goes to the AI.
     pending = session_store.get_pending(chat_id)
     if pending:
-        # 1a. Account selection reply — user is answering "which account did you pay from?"
-        if pending.get("kind") == "account_selection":
-            resolved = await asyncio.to_thread(_resolve_account_from_reply, user_message, chat_id)
-            if resolved:
-                # Inject the resolved account into every log_expense call that lacks one
-                raw_pending_calls = pending.get("tool_calls") or []
-                injected = _inject_account_into_calls(raw_pending_calls, resolved)
-                # Stamp user_id on each call
-                tool_calls_with_uid: list[dict[str, Any]] = []
-                for tc in injected:
-                    t_args = dict(tc.get("tool_args") or {})
-                    t_args["user_id"] = chat_id
-                    tool_calls_with_uid.append({"tool_name": tc["tool_name"], "tool_args": t_args})
-                session_store.clear_pending(chat_id)
-                first_name = tool_calls_with_uid[0]["tool_name"] if tool_calls_with_uid else None
-                first_args = tool_calls_with_uid[0]["tool_args"] if tool_calls_with_uid else None
-                return {
-                    "tool_calls": tool_calls_with_uid,
-                    "tool_name": first_name,
-                    "tool_args": first_args,
-                    "requires_confirmation": False,
-                }
-            # Unrecognised reply → re-prompt (keep pending alive)
-            prompt = await asyncio.to_thread(_account_selection_prompt, chat_id)
-            return {
-                "response_text": f"❓ I didn't recognise that account. {prompt}",
-                "tool_name": None,
-                "tool_args": None,
-                "tool_calls": None,
-                "requires_confirmation": False,
-            }
-
-        # 1b. Transfer confirmation — yes/no reply
+        # Transfer / AI-action confirmation — yes/no reply
         decision = classify_reply(user_message)
         if decision:
             return {
@@ -1052,16 +956,6 @@ async def llm_reasoning_node(state: AgentState) -> dict[str, Any]:
     offline = (
         {"offline_reason": analysis["offline_reason"]} if analysis.get("offline_reason") else {}
     )
-
-    # NLU set a pending account_selection and returned a prompt — surface it to the user.
-    if analysis.get("type") == "account_selection":
-        return {
-            "response_text": analysis["prompt"],
-            "tool_name": None,
-            "tool_args": None,
-            "tool_calls": None,
-            "requires_confirmation": False,
-        }
 
     if analysis.get("type") == "tool_calls" or analysis.get("tool_calls"):
         raw_calls = analysis.get("tool_calls") or []
@@ -1113,8 +1007,15 @@ async def llm_reasoning_node(state: AgentState) -> dict[str, Any]:
         }
 
     text = analysis.get("content", "")
-    if text == replies.GREETING and not get_user_api_keys(chat_id):
-        text += "\n\n" + replies.NO_AI_HINT  # bring-your-own-key: tell them how, once
+    if (
+        text in (replies.GREETING, replies.NOT_UNDERSTOOD, replies.HELLO)
+        and chat_id not in _hinted_about_keys
+        and not get_user_api_keys(chat_id)
+    ):
+        _hinted_about_keys.add(
+            chat_id
+        )  # bring-your-own-key: tell them how, once per run, not every message
+        text += "\n\n" + replies.NO_AI_HINT
     return {
         "response_text": text,
         "tool_name": None,
@@ -1399,21 +1300,9 @@ def _template_response_dict(state: AgentState) -> dict[str, Any]:
 
     # 4. Pipe Balances
     if tool_name == "get_pipe_balances":
-        total = tool_result.get("total_net_worth", 0.0)
-        accounts = tool_result.get("accounts", [])
-        acc_lines = (
-            "\n".join(
-                [f"  • **{a['name']}** ({a['type']}): ₹{a['balance']:,.2f}" for a in accounts]
-            )
-            or "  No active accounts found."
-        )
-        return {
-            "response_text": (
-                f"🏦 **Your WalletLedger Tank:**\n"
-                f"💰 **Total Net Worth:** ₹{total:,.2f}\n\n"
-                f"**Pipes In (Liquid Accounts):**\n{acc_lines}"
-            )
-        }
+        from app.bot import views
+
+        return {"response_text": views.balance_text(tool_result)}
 
     # 5. Spending Breakdown
     if tool_name == "get_spending_breakdown":
@@ -1548,7 +1437,18 @@ def _template_response_dict(state: AgentState) -> dict[str, Any]:
             )
         }
 
-    return {"response_text": "✨ Done."}
+    if (
+        tool_name == "savings_plan"
+        and isinstance(tool_result, dict)
+        and "needed_per_month" in tool_result
+    ):
+        from app.bot import views
+
+        return {"response_text": views.plan_text(tool_result)}
+    summary = (
+        replies.tool_summary(tool_name, tool_result) if isinstance(tool_result, dict) else None
+    )
+    return {"response_text": summary or "✅ Done."}
 
 
 # ---------------------------------------------------------------------------

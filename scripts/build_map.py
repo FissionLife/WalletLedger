@@ -99,6 +99,10 @@ NOTES: dict[str, tuple[str, str]] = {
         "brain",
         "The LangGraph agent: remembers pending confirmations, picks tools, writes replies, falls back to rules when the AI fails.",
     ),
+    "app/bot/onboarding.py": (
+        "brain",
+        "First contact for a new user: one question (where do you pay from?), an optional opening balance, and the default account.",
+    ),
     "app/bot/orchestrator.py": (
         "brain",
         "The multi-step loop for goals and questions: AI picks tools, we run them, AI answers. Capped steps, safe tool list.",
@@ -259,6 +263,10 @@ NOTES: dict[str, tuple[str, str]] = {
     "tests/test_chat_fixes.py": (
         "tests",
         "Regression tests for the chat audit: reading messages, confirmations, buttons, keys, orchestrator.",
+    ),
+    "tests/test_onboarding.py": (
+        "tests",
+        "Regression tests for first contact: the one setup question, the default account, no dead ends.",
     ),
     "tests/test_security_fixes.py": (
         "tests",

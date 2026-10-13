@@ -59,6 +59,7 @@ def describe_database() -> str:
 # Columns added after the first release. `create_all` never alters an existing table, and the project has
 # no migration tool, so a database made by an older version gets these added here (safe to repeat).
 _ADDED_COLUMNS = [
+    ("users", "default_account", "VARCHAR(80)"),
     ("transactions", "entered_at", "TIMESTAMP"),
     ("transactions", "affects_balance", "BOOLEAN DEFAULT TRUE"),
     ("transactions", "reference", "VARCHAR(80)"),

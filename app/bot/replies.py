@@ -102,17 +102,85 @@ def compact(state: dict[str, Any]) -> str | None:
     return "\n".join(lines)
 
 
+def _signed(kind: str, amount: float) -> str:
+    text = fmt.inr(amount, 2 if round(amount, 2) % 1 else 0)
+    return f"+{text}" if kind == "income" else f"−{text}" if kind == "expense" else text
+
+
+def tool_summary(name: str, res: dict[str, Any]) -> str | None:
+    """Plain text for tools the logging templates do not cover (edits, searches, lists, budgets)."""
+    if name == "edit_transaction":
+        where = f" · {res['account']}" if res.get("account") else ""
+        return f"✏️ Updated · {_signed(res.get('type', ''), res['amount'])}{where}"
+    if name == "search_transactions":
+        rows = res.get("transactions") or []
+        if not rows:
+            return "I couldn't find anything like that."
+        lines = [f"🧾 {len(rows)} found"]
+        for tx in rows[:10]:
+            what = tx.get("merchant") or tx.get("category") or tx.get("description") or ""
+            lines.append(
+                f"{fmt.day(tx['date'])}  {_signed(tx['type'], tx['amount'])}  {what}".rstrip()
+            )
+        if len(rows) > 10:
+            lines.append(f"… and {len(rows) - 10} more (see /history)")
+        return "\n".join(lines)
+    if name == "list_accounts":
+        accounts = res.get("accounts") or []
+        if not accounts:
+            return "No accounts yet."
+        return "💰 Your accounts\n" + "\n".join(
+            f"{a['name']}  {fmt.inr(a['balance'])}" for a in accounts
+        )
+    if name == "list_categories":
+        cats = res.get("categories") or []
+        if not cats:
+            return "No categories yet."
+        return "🏷 Categories\n" + "\n".join(
+            f"{c['name']}"
+            + (f"  (budget {fmt.inr(c['monthly_budget'])})" if c.get("monthly_budget") else "")
+            for c in cats
+        )
+    if name == "set_category_budget":
+        if res.get("monthly_budget"):
+            return f"🎯 {res['category']} budget: {fmt.inr(res['monthly_budget'])} a month"
+        return f"🎯 {res['category']} budget removed"
+    if name == "get_financial_snapshot":
+        lines = [
+            f"📊 {res.get('period', 'Recently')}",
+            f"Spent {fmt.inr(res.get('spent', 0))}  ·  Earned {fmt.inr(res.get('earned', 0))}",
+        ]
+        top = res.get("top_categories") or []
+        if top:
+            lines.append(
+                "Top: " + " · ".join(f"{c['name']} {fmt.short(c['amount'])}" for c in top[:3])
+            )
+        for tip in (res.get("insights") or [])[:2]:
+            lines.append(f"💡 {tip}")
+        return "\n".join(lines)
+    return None
+
+
 def confirm_prompt(description: str) -> str:
     return f"⚠️ {description}?\nTap Yes to go ahead, or Cancel."
 
 
 CANCELLED = "👍 Cancelled. Nothing changed."
-NOTHING_PENDING = "Nothing is waiting for an answer. Try /menu."
+NOTHING_PENDING = "👍 Nothing is waiting for an answer. Tell me what you spent, or try /menu."
 
 GREETING = (
     "I log what you spend and earn.\n"
     "Try: Spent 450 on dinner, or Received 50000 salary.\n"
     "Then /stats, /balance, /history. More: /help"
+)
+HELLO = (
+    'Hey! 👋 Tell me what you spent or earned, like "coffee 120" or "got salary 50000".\n'
+    'Or ask me, like "how much did I spend this week?" or "what\'s my balance?"'
+)
+THANKS = "Anytime! 🙂"
+BARE_AMOUNT = (
+    "{amount}: did you spend it or receive it?\n"
+    'Say it like "spent {plain} on lunch" or "received {plain} from Ravi".'
 )
 QUESTION_NEEDS_AI = (
     "That sounds like a question, so I didn't record anything.\n"

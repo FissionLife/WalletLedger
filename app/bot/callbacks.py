@@ -52,6 +52,16 @@ async def handle_callback(chat_id: str, data: str) -> Reply:
             reply.edit = True
             reply.notice = reply.notice or ("Done" if decision == "yes" else "Cancelled")
             return reply
+        if action == "ob":
+            from app.bot import onboarding
+
+            kind, _, which = rest.partition(":")
+            if kind == "skip":
+                return await onboarding.skipped(chat_id)
+            account = onboarding.CHOICES.get(which)
+            if kind != "acct" or account is None:
+                return Reply(notice="That button is out of date")
+            return await onboarding.answered(chat_id, account)
         if action == "imp":
             decision = {"hist": "history", "yes": "history", "apply": "apply"}.get(
                 rest, "cancelled"

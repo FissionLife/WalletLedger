@@ -21,6 +21,8 @@ class User(Base):
         String(64), unique=True, index=True, nullable=False
     )
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    # Where a payment goes when the message names no account (chosen on first contact, changeable in chat)
+    default_account: Mapped[str | None] = mapped_column(String(80), nullable=True)
 
     accounts: Mapped[list[Account]] = relationship(
         "Account", back_populates="user", cascade="all, delete-orphan"

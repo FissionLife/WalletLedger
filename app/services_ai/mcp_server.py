@@ -58,7 +58,7 @@ def log_expense(
     amount: float,
     category: str,
     merchant: str | None = None,
-    account_name: str = "Cash",
+    account_name: str | None = None,
     description: str | None = None,
     source: str = "chat",
     date: str | None = None,
@@ -75,6 +75,8 @@ def log_expense(
         user = _resolve_user(db, values.pop("user_id"))
         values["user_id"] = user.id
         values["amount"] = _positive_amount(values["amount"])
+        if not values.get("account_name"):  # none named: the user's default, else Cash
+            values["account_name"] = user.default_account or "Cash"
         return record_transaction(db, tx_type="expense", **values)
 
     return _with_db(

@@ -127,9 +127,9 @@ class Query:
         parts = [self.label]
         parts += list(self.categories) + list(self.accounts) + list(self.merchants)
         if self.min_amount is not None:
-            parts.append(f"over ₹{self.min_amount:,.0f}")
+            parts.append(f"over {_inr(self.min_amount)}")
         if self.max_amount is not None:
-            parts.append(f"under ₹{self.max_amount:,.0f}")
+            parts.append(f"under {_inr(self.max_amount)}")
         return " · ".join(parts)
 
 
@@ -334,11 +334,33 @@ def load_rows(db: Session, user_id: str, q: Query, notes: bool = False) -> list[
 
 
 def _expenses(rows):
-    return [r for r in rows if r.kind == "expense"]
+    return [r for r in rows if r.kind == "expense" and r.category != ADJUSTMENT]
+
+
+def _inr(x: float) -> str:
+    """₹1,50,500 (Indian grouping), for the plain-language insights."""
+    whole = f"{abs(round(x)):d}"
+    if len(whole) > 3:
+        head, tail = whole[:-3], whole[-3:]
+        parts = []
+        while len(head) > 2:
+            parts.insert(0, head[-2:])
+            head = head[:-2]
+        if head:
+            parts.insert(0, head)
+        whole = ",".join(parts + [tail])
+    return f"{'−' if round(x) < 0 else ''}₹{whole}"
+
+
+OPENING = "Opening Balance"  # what the user already had: it is money, but not earnings
+ADJUSTMENT = (
+    "Balance Adjustment"  # "my bank balance is really 25000": fixes the total, is not spending
+)
+NOT_FLOW = (OPENING, ADJUSTMENT)
 
 
 def _income(rows):
-    return [r for r in rows if r.kind == "income"]
+    return [r for r in rows if r.kind == "income" and r.category not in NOT_FLOW]
 
 
 LEADING_FORMULA_CHARS = ("=", "+", "-", "@", chr(9), chr(13))
@@ -472,7 +494,7 @@ def by_account(rows: list[Row]) -> list[dict]:
     for r in rows:
         if r.kind == "expense":
             spent[r.account or "—"] += r.amount
-        elif r.kind == "income":
+        elif r.kind == "income" and r.category not in NOT_FLOW:
             earned[r.account or "—"] += r.amount
     names = set(spent) | set(earned)
     return sorted(
@@ -535,7 +557,7 @@ def series(rows: list[Row], q: Query) -> dict[str, Any]:
         key = _bucket(r.day, group)
         if r.kind == "expense":
             spent[key] += r.amount
-        elif r.kind == "income":
+        elif r.kind == "income" and r.category not in NOT_FLOW:
             earned[key] += r.amount
     first = _bucket(q.start.date(), group)
     if q.extra.get("trim") and rows:  # "all time": begin at the first transaction, not in 2000
@@ -885,7 +907,7 @@ def insights(rep: dict[str, Any]) -> list[str]:
     if cats:
         top = cats[0]
         out.append(
-            f"{top['category']} is your biggest spend: ₹{top['amount']:,.0f} ({top['share_pct']:.0f}%)."
+            f"{top['category']} is your biggest spend: {_inr(top['amount'])} ({top['share_pct']:.0f}%)."
         )
     ch = s.get("spent_change_pct")
     if ch is not None and abs(ch) >= 5:
@@ -912,21 +934,21 @@ def insights(rep: dict[str, Any]) -> list[str]:
     rec = rep.get("recurring", [])
     if rec:
         total = sum(r["amount"] for r in rec)
-        out.append(f"{len(rec)} recurring payments add up to about ₹{total:,.0f} a month.")
+        out.append(f"{len(rec)} recurring payments add up to about {_inr(total)} a month.")
     if rep.get("unusual"):
         u = rep["unusual"][0]
         out.append(
-            f"One {u['category']} expense of ₹{u['amount']:,.0f} was far above your usual ₹{u['usual']:,.0f}."
+            f"One {u['category']} expense of {_inr(u['amount'])} was far above your usual {_inr(u['usual'])}."
         )
     wd = rep.get("weekdays", [])
     if (
         wd and max(w["avg"] for w in wd) > 0 and rep["query"]["days"] >= 14
     ):  # a week says nothing about weekdays
         peak = max(wd, key=lambda w: w["avg"])
-        out.append(f"{peak['day']} is your costliest day (about ₹{peak['avg']:,.0f}).")
+        out.append(f"{peak['day']} is your costliest day (about {_inr(peak['avg'])}).")
     pace = rep.get("pace")
     if pace and pace["day"] >= 5 and rep["query"]["days"] <= 62:
-        out.append(f"At this pace the month ends near ₹{pace['projected']:,.0f}.")
+        out.append(f"At this pace the month ends near {_inr(pace['projected'])}.")
     return out[:7]
 
 

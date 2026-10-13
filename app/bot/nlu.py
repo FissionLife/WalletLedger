@@ -44,7 +44,6 @@ class Entry:
     merchant: str | None = None
     note: str = ""
     when: str | None = None  # ISO date, only when the user named a day
-    account_explicit: bool = False  # True only when the user explicitly named the account
 
 
 @dataclass
@@ -436,6 +435,12 @@ _NOT_AN_ITEM = re.compile(
 )
 
 
+_WAS_COST = re.compile(
+    r"^(?!(?:it|that|this|there|balance|total|salary|income|bill is|amount)\b)[a-z][a-z&' -]{1,24}\s+(?:was|were|cost|costs|came to)\s+"
+    r"(?:about |around |roughly |only |just )?(?:₹|rs\.?\s*|inr\s*)?\d"
+)
+
+
 def _short_item(text: str) -> bool:
     """A short 'thing + amount' fragment such as 'chai 20' (no verb, not a question)."""
     if "?" in text or len(text.split()) > 5:
@@ -511,11 +516,12 @@ def _parse_clause(raw: str, ctx: Context, inherit_kind: str | None) -> Entry | N
         kind = "expense"  # "450 on dinner" / "450 at Starbucks" with no verb
     elif _short_item(text):
         kind = "expense"  # "chai 20", "190=pizza", "Netflix 649 via credit card"
+    elif _WAS_COST.match(re.sub(r"^(?:the|my|our)\s+", "", low)):
+        kind = "expense"  # "the rent was 5000", "dinner cost 400"
     if kind is None:
         return None
 
     account = _account_phrase(text, kind, ctx)
-    account_explicit = account is not None  # user explicitly named an account
 
     merchant = None
     for known in sorted(ctx.merchants, key=len, reverse=True):
@@ -577,7 +583,6 @@ def _parse_clause(raw: str, ctx: Context, inherit_kind: str | None) -> Entry | N
         merchant,
         note=raw.strip(),
         when=when,
-        account_explicit=account_explicit,
     )
 
 
@@ -697,13 +702,18 @@ def is_question(text: str) -> bool:
     )
 
 
+_LEADING_MINUS = re.compile(
+    r"^\s*[-−–]\s*(?=(?:₹|rs\.?\s*|inr\s*)?\d)", re.I
+)  # "-60 chai": money going out
+
+
 def parse_entries(text: str, ctx: Context | None = None) -> list[Entry]:
     """All transactions in the message, or [] if it does not clearly describe any."""
     ctx = ctx or Context()
     text = (text or "").strip()
     if not text or len(text) > 3000 or is_question(text) or _NOT_A_TRANSACTION.search(text):
         return []
-    lines = [line for line in text.split("\n") if line.strip()]
+    lines = [_LEADING_MINUS.sub("", line) for line in text.split("\n") if line.strip()]
     per_line = [split_clauses(line) for line in lines]
     clauses = [c for group in per_line for c in group]
     if not clauses or len(clauses) > 40:
@@ -821,6 +831,120 @@ def parse_goal(text: str) -> tuple[float, int] | None:
     return amount, months
 
 
+@dataclass
+class Fix:
+    """A correction to something already recorded: change its amount, or remove it."""
+
+    action: str  # "edit" | "delete"
+    amount: float | None = None  # the right amount (edit)
+    old_amount: float | None = None  # "... not 450": helps find the right entry
+    keyword: str | None = None  # "the dinner": which entry; None means the last one
+
+
+_AMT = r"((?:₹|rs\.?\s*|inr\s*)?\d[\d,]*(?:\.\d+)?\s*(?:k|lakhs?|lacs?|l|cr)?)"
+_FIX_PREFIX = (
+    r"^(?:(?:oops|oh|ops|sorry|wait|no|nope|hmm|actually|correction|my bad|whoops)[,!.]?\s+)*"
+)
+_NOT_KW = {"last", "previous", "prev", "that", "it", "this", "latest", "one", "entry", "expense"}
+
+
+def _amt(text: str | None) -> float | None:
+    if not text:
+        return None
+    return parse_amount(text.strip())
+
+
+def parse_fix(text: str) -> Fix | None:
+    """ "oops the dinner was actually 540 not 450", "change the last one to 600", "delete the coffee"."""
+    low = re.sub(r"\s+", " ", (text or "").strip().lower()).rstrip("?!. ")
+    if not low or len(low) > 120:
+        return None
+    # "... was/is/should be 540 (not 450)"
+    m = re.match(
+        _FIX_PREFIX
+        + r"(?:(?:the|my|that|this)\s+)?(?P<kw>[a-z][a-z &'-]{1,30}?)\s+(?:was|were|is|should\s+(?:be|have\s+been)|cost|costs|came to|came out to)\s+"
+        r"(?:actually\s+|really\s+|only\s+|in fact\s+)?"
+        + _AMT
+        + r"(?:\s+(?:not|instead of|and not|rather than)\s+"
+        + _AMT
+        + ")?$",
+        low,
+    )
+    if m:
+        kw = m.group("kw").strip()
+        amount = _amt(m.group(2))
+        marked = (
+            bool(re.match(_FIX_PREFIX, low).group(0))
+            or bool(m.group(3))
+            or bool(re.search(r"\b(?:actually|really|should|in fact)\b", low))
+        )  # "dinner was 400" alone is a new entry; "oops, dinner was actually 400" is a correction
+        if amount and marked:
+            return Fix(
+                "edit", amount, _amt(m.group(3)), None if kw in _NOT_KW else _tidy_keyword(kw)
+            )
+    # "change/edit/update/fix (the last one | the coffee) to 600", "make it 600"
+    m = re.match(
+        _FIX_PREFIX
+        + r"(?:(?:please\s+)?(?:change|edit|update|fix|correct|set|make)\s+(?:the\s+|my\s+)?(?P<kw>[a-z][a-z &'-]{1,30}?)\s+(?:to|as|=)\s+|make\s+(?P<it>it|that)\s+)"
+        + _AMT
+        + r"$",
+        low,
+    )
+    if m:
+        kw = (m.group("kw") or "").strip()
+        amount = _amt(m.group(3))
+        if amount:
+            last = (
+                not kw
+                or kw in _NOT_KW
+                or bool(re.fullmatch(r"(?:last|previous|latest)(?: \w+)?", kw))
+            )
+            return Fix("edit", amount, None, None if last else _tidy_keyword(kw))
+    # "delete/remove the coffee (entry)"
+    m = re.match(
+        r"^(?:please\s+)?(?:delete|remove|erase|scrap)\s+(?:the\s+|my\s+|that\s+)?(?P<kw>[a-z][a-z &'-]{1,30}?)(?:\s+(?:entry|expense|transaction|payment|spend|one))?$",
+        low,
+    )
+    if m:
+        kw = m.group("kw").strip()
+        if kw in _NOT_KW or re.fullmatch(r"(?:last|previous|latest)(?: \w+)?", kw):
+            return None  # "delete the last one" is the undo button
+        return Fix("delete", keyword=_tidy_keyword(kw))
+    return None
+
+
+def parse_set_balance(text: str) -> tuple[str, float] | None:
+    """ "bank balance is 25000", "set cash balance to 500", "I have 25000 in my bank" -> (account words, amount).
+
+    The account words may be empty ("my balance is 25000"): the caller then uses the default account."""
+    low = re.sub(r"\s+", " ", (text or "").strip().lower()).rstrip("?!. ")
+    if not low or len(low) > 100:
+        return None
+    pre = r"^(?:(?:ok|okay|so|btw|actually|well)[,]?\s+)?(?:please\s+)?"
+    patterns = (
+        pre
+        + r"(?:set\s+)?(?:my\s+|the\s+)?(?P<acc>[a-z ]{0,25}?)\s*balance\s+(?:is|are|=|to|as|should be|now|now is)\s+"
+        + _AMT
+        + r"$",
+        pre
+        + r"(?:i\s+(?:currently\s+)?have|i've got|i have got|there(?:'s| is))\s+"
+        + _AMT
+        + r"\s+(?:left\s+)?(?:in|on)\s+(?:my\s+|the\s+)?(?P<acc>[a-z ]{2,25}?)$",
+    )
+    for pattern in patterns:
+        m = re.match(pattern, low)
+        if m:
+            amount = _amt(m.group(2) if pattern is patterns[0] else m.group(1))
+            if amount is None:
+                continue
+            return (m.group("acc") or "").strip(), amount
+    return None
+
+
+def _tidy_keyword(kw: str) -> str:
+    return re.sub(r"\s+(?:entry|expense|transaction|payment|spend|bill)s?$", "", kw).strip()
+
+
 def detect_screen(text: str) -> Screen | None:
     """Questions that should open a screen (stats, balance, history...) instead of logging."""
     t = (text or "").strip()
@@ -851,7 +975,12 @@ def detect_screen(text: str) -> Screen | None:
     ):
         return Screen("/export", _period_args(low))
     if re.fullmatch(
-        r"(?:show |see |list |open )?(?:my |the )?(?:recent |last )?(?:\d+ )?(?:transactions|history|entries)",
+        r"(?:show |see |list |open |view )?(?:me )?(?:my |the |all )?(?:recent |last |latest )?(?:\d+ )?(?:transactions|history|entries|spends|expenses|purchases)",
+        low,
+    ) or re.search(
+        r"\b(?:what|everything|all)\b.*\b(?:i(?:'ve| have)?|have i|did i)\s+(?:logged|entered|added|recorded|tracked|saved)\b"
+        r"|\b(?:my|the)\s+(?:last|recent|latest)\s+(?:\d+\s+)?(?:transactions?|entries|spends?|expenses?|purchases?|payments?)\b"
+        r"|\bwhat\s+(?:did|have)\s+i\s+(?:spend|spent|buy|bought|pay|paid)\s+(?:on\s+)?(?:recently|lately)\b",
         low,
     ):
         return Screen("/history")
@@ -891,10 +1020,34 @@ def detect_screen(text: str) -> Screen | None:
                 return Screen(
                     "/budget", f"{name} {int(amount) if amount == int(amount) else amount}"
                 )
+    if re.fullmatch(
+        r"(?:(?:show|see|check|view|open)\s+)?(?:me\s+)?(?:my\s+|the\s+)?(?:\w+\s+)?budgets?(?:\s+(?:status|left|usage))?"
+        r"|how(?:'s|\s+is|\s+are)?\s+(?:my\s+|the\s+)?(?:\w+\s+)?budgets?(?:\s+(?:going|looking|doing))?"
+        r"|am i (?:over|within|on|under) (?:my )?budgets?",
+        low,
+    ):
+        return Screen("/budget")
+    if re.search(
+        r"\b(?:biggest|largest|top|highest|most)\s+(?:expenses?|spend(?:ing|s)?|categor(?:y|ies))\b"
+        r"|\bwhere\s+(?:does|is|did)\s+(?:all\s+)?my\s+money\s+(?:go|going|went)\b"
+        r"|\bwhat\s+(?:do|did)\s+i\s+spend\s+(?:the\s+)?most\s+on\b",
+        low,
+    ):
+        return Screen("/chart", "categories " + _period_args(low))
+    if re.search(
+        r"\bhow much\s+(?:money\s+|cash\s+)?(?:do i have\s+|is\s+|have i\s+(?:got\s+)?|left\s+)?(?:in|left in|is in)\s+(?:my\s+)?(?:bank|cash|wallet|upi|savings|credit card|account)\b",
+        low,
+    ):
+        return Screen("/balance")
     asks_total = re.search(
         r"\b(how much|total|what(?:'s| is| was| did| were)|show|give|see|tell)\b.*\b(spend|spent|spending|expenses?|earn(?:ed)?|income|saved?|cost|report|stats|summary|breakdown)\b",
         low,
     ) or re.fullmatch(r"(?:my )?(?:spending|expenses|stats|report|summary|breakdown)(?: .*)?", low)
+    if not asks_total and re.fullmatch(
+        r"(?:(?:i\s+)?(?:spent|spend|spending|expenses?)\s+(?:on\s+)?)(?P<what>[a-z&\s]{2,30}?)\s+(?P<per>today|this week|this month|last week|last month|this year|yesterday)",
+        low,
+    ):
+        asks_total = True  # "spent on food this week"
     if asks_total and not (_EXPENSE.search(low) and _MONEY.search(low)):
         period = _period_args(low)
         rest = re.sub(_PERIOD_WORDS, " ", low, flags=re.I)

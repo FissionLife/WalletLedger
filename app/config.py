@@ -78,6 +78,9 @@ class Settings(BaseSettings):
     # /bot/simulate_chat and the token-less /bot/webhook let the caller act as ANY chat id.
     # Unset = enabled only while no bot token is configured; true/false overrides.
     enable_dev_endpoints: bool | None = None
+    onboarding: bool | None = (
+        None  # ask a new user where they pay from; None = on (off in the test suite)
+    )
 
     # The timezone people live in. Times are stored in UTC; "today", daily totals and budget months follow this.
     timezone: str = (

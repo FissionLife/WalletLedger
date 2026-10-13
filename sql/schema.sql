@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS users (
     id VARCHAR(36) NOT NULL,
     telegram_chat_id VARCHAR(64) NOT NULL,
     created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL,
+    default_account VARCHAR(80),
     PRIMARY KEY (id)
 );
 CREATE UNIQUE INDEX IF NOT EXISTS ix_users_telegram_chat_id ON users (telegram_chat_id);

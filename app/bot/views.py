@@ -14,7 +14,7 @@ import re
 from collections import OrderedDict
 
 from app import clock
-from app.bot import fmt, nlu, ui
+from app.bot import fmt, nlu, replies, ui
 from app.bot.ui import Btn, Reply
 from app.db import SessionLocal
 from app.services import analytics, ledger
@@ -163,12 +163,22 @@ async def chart(chat_id: str, kind: str, period: str = "30d", ctx: str = "") -> 
 def _balance_text(chat_id: str) -> str:
     with SessionLocal() as db:
         data = ledger.get_account_balances(db, _user_id(db, chat_id))
+    return balance_text(data)
+
+
+def balance_text(data: dict) -> str:
+    """The balance screen from get_account_balances(): one look, same wording everywhere."""
     lines = [f"💰 Total  {fmt.inr(data['total_net_worth'])}", ""]
     for a in sorted(data["accounts"], key=lambda a: -a["balance"]):
         icon = _ICONS.get(a["type"], "🏦")
         lines.append(f"{icon} {a['name']}  {fmt.inr(a['balance'])}")
     if not data["accounts"]:
         lines.append("No accounts yet. Say: Received 5000 in Bank")
+    elif any(a["balance"] < 0 for a in data["accounts"]):
+        lines.append("")
+        lines.append(
+            "💡 Low or negative? I only know what you've told me. Tell me the real amount, like “bank balance is 25000”."
+        )
     return "\n".join(lines)
 
 
@@ -408,6 +418,66 @@ def _undo(chat_id: str, ident: str) -> Reply:
 
 async def undo(chat_id: str, ident: str = "last") -> Reply:
     return await asyncio.to_thread(_undo, chat_id, ident)
+
+
+# ------------------------------------------------------------------------------------- corrections
+
+
+def _find_entry(db, uid: str, fix: nlu.Fix) -> dict | None:
+    """The entry a correction is about: the newest one matching the words (and the old amount if given)."""
+    if not fix.keyword:
+        latest = ledger.last_entered_transaction_id(db, uid)
+        if latest is None:
+            return None
+        rows, _ = ledger.recent_transactions(db, uid, limit=200)
+        return next((r for r in rows if r["id"] == latest), None)
+    words = fix.keyword.lower().split()
+    rows, _ = ledger.recent_transactions(db, uid, limit=200)
+    hits = [
+        r
+        for r in rows
+        if r["type"] != "transfer"
+        and all(w in f"{r['note']} {r['merchant']} {r['category']}".lower() for w in words)
+    ]
+    if fix.old_amount is not None:
+        exact = [r for r in hits if abs(r["amount"] - fix.old_amount) < 0.01]
+        hits = exact or hits
+    return hits[0] if hits else None
+
+
+def _fix(chat_id: str, fix: nlu.Fix) -> Reply | None:
+    from app.services_ai import mcp_server
+
+    with SessionLocal() as db:
+        uid = _user_id(db, chat_id)
+        entry = _find_entry(db, uid, fix)
+    if entry is None and fix.action == "edit" and fix.keyword:
+        return None  # "the rent was 5000" with no rent entry yet: probably a new entry, not a correction
+    if entry is None:
+        what = f"“{fix.keyword}”" if fix.keyword else "that"
+        return Reply(
+            f"I couldn't find an entry for {what}. Check /history, or tap Undo under the entry.",
+            rows=ui.back_home(),
+        )
+    label = (fix.keyword or "").title() or entry["merchant"] or entry["category"] or "entry"
+    if fix.action == "delete":
+        return _undo(chat_id, entry["id"])
+    if entry["type"] == "transfer":
+        return Reply("Transfers can't be edited. Undo it and record it again.")
+    try:
+        mcp_server.edit_transaction(user_id=chat_id, transaction_id=entry["id"], amount=fix.amount)
+    except ValueError as exc:
+        return Reply(f"⚠️ {replies.friendly_error(str(exc))}")
+    sign = "−" if entry["type"] == "expense" else "+"
+    return Reply(
+        f"✏️ Fixed: {label} {sign}{fmt.inr(entry['amount'])} → {sign}{fmt.inr(fix.amount)}"
+        + (f" ({entry['account']})" if entry["account"] else ""),
+        rows=[[Btn("🧾 History", "go:history")]],
+    )
+
+
+async def fix(chat_id: str, correction: nlu.Fix) -> Reply | None:
+    return await asyncio.to_thread(_fix, chat_id, correction)
 
 
 # -------------------------------------------------------------------------------------- dashboard

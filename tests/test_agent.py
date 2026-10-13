@@ -248,10 +248,9 @@ class TestPersonas(AgentTestCase):
             # Step 1: expense without explicit account — NLU intercepts, no AI call
             reply1 = chat(self.chat_id, "spent 200 on food")
         self.assertEqual(mock.await_count, 0)  # clear messages are handled by rules: no AI call
-        # The NLU now asks which account before logging
-        self.assertIn("account", reply1.lower())
-        # Step 2: user replies with account → executes
-        reply = chat(self.chat_id, "Cash")
+        # no question: it goes to the default account straight away
+        self.assertNotIn("which account", reply1.lower())
+        reply = reply1
         self.assertIn("−₹200", reply)
         self.assertIn("Food", reply)
 
@@ -288,7 +287,7 @@ class TestHistoryAndOfflineMode(AgentTestCase):
         ):
             reply = chat(self.chat_id, "what is my balance")
         self.assertIn("basic rules", reply)
-        self.assertIn("Tank", reply)
+        self.assertIn("Total", reply)
         self.assertTrue(any("AI unavailable" in line for line in logs.output))
 
     def test_no_key_has_no_offline_note(self):
@@ -314,11 +313,9 @@ class TestMultiTransactionAndBatchIngestion(AgentTestCase):
             "100=haircut\n"
             "340=team lunch"
         )
-        # Step 1: no account mentioned → bot prompts
-        reply1 = chat(self.chat_id, message)
-        self.assertIn("account", reply1.lower())
-        # Step 2: user replies with account → all 12 entries execute
-        reply = chat(self.chat_id, "Cash")
+        # no account mentioned: all 12 entries are logged to the default account
+        reply = chat(self.chat_id, message)
+        self.assertNotIn("which account", reply.lower())
         self.assertIn("12 entries", reply)
         self.assertIn("1,489.62", reply)
 
@@ -337,11 +334,9 @@ class TestMultiTransactionAndBatchIngestion(AgentTestCase):
             "100=haircut\n"
             "340=team lunch"
         )
-        # Step 1: expenses without explicit account → bot prompts (income bundled in pending)
-        reply1 = chat(self.chat_id, message)
-        self.assertIn("account", reply1.lower())
-        # Step 2: user specifies account → all 13 entries (1 income + 12 expenses) execute
-        reply = chat(self.chat_id, "Cash")
+        # all 13 entries (1 income + 12 expenses) are logged straight away
+        reply = chat(self.chat_id, message)
+        self.assertNotIn("which account", reply.lower())
         self.assertIn("13 entries", reply)
         self.assertIn("+₹15,000", reply)
         self.assertIn("1,489.62", reply)
@@ -388,36 +383,32 @@ class TestMultiTransactionAndBatchIngestion(AgentTestCase):
 
 
 class TestAccountSelection(AgentTestCase):
-    """Fix: when user logs expense without mentioning an account, ask which account they paid from."""
+    """An expense that names no account goes to the user's default account: no question, no dead end."""
 
-    def test_no_account_prompts_user(self):
-        """Saying 'I spent 3k for rent' with no account mention must prompt for account."""
+    def test_no_account_uses_the_default_account(self):
+        from app.bot import onboarding
+
+        onboarding._set_default(self.chat_id, "Bank")
         reply = chat(self.chat_id, "I spent 3k for rent")
-        self.assertIn("account", reply.lower(), f"Expected account prompt, got: {reply}")
-        # Balance must NOT have changed yet
+        self.assertNotIn("which account", reply.lower(), f"Should not ask: {reply}")
         balances = self.balances()
-        self.assertEqual(balances.get("Bank", 50000), 50000, "Bank should be untouched")
+        self.assertAlmostEqual(balances.get("Bank", 0), 50000 - 3000, delta=1)
+        self.assertAlmostEqual(balances.get("Cash", 0), 0, delta=1)
 
-    def test_account_reply_executes_expense(self):
-        """After prompting, replying 'Bank' should deduct the expense from Bank."""
-        chat(self.chat_id, "I spent 3k for phone emi 5k for rent")
-        # Pending should be set
-        self.assertIsNotNone(agent.session_store.get_pending(self.chat_id))
-        chat(self.chat_id, "Bank")
-        balances = self.balances()
-        self.assertAlmostEqual(
-            balances.get("Bank", 0),
-            50000 - 8000,
-            delta=1,
-            msg=f"Expected Bank=42000 after 8k expense, got {balances}",
+    def test_changing_the_default_moves_later_expenses(self):
+        from app.bot import onboarding
+
+        onboarding._set_default(self.chat_id, "Bank")
+        execute_tool(
+            "transfer_funds",
+            user_id=self.chat_id,
+            from_account="Bank",
+            to_account="Cash",
+            amount=1000,
         )
-        # Cash must remain at 0 (not negatively charged)
-        self.assertAlmostEqual(
-            balances.get("Cash", 0),
-            0,
-            delta=1,
-            msg=f"Cash must not be debited, got {balances}",
-        )
+        onboarding._set_default(self.chat_id, "Cash")
+        chat(self.chat_id, "chai 20")
+        self.assertAlmostEqual(self.balances().get("Cash", 0), 1000 - 20, delta=1)
 
     def test_explicit_account_runs_immediately(self):
         """An expense that explicitly names the account should NOT trigger a prompt."""
@@ -431,14 +422,6 @@ class TestAccountSelection(AgentTestCase):
             delta=1,
             msg=f"Expected Bank=49500, got {balances}",
         )
-
-    def test_unrecognised_reply_reprompts(self):
-        """An unrecognisable account reply should re-prompt, not clear pending."""
-        chat(self.chat_id, "I spent 1000 on groceries")
-        reply = chat(self.chat_id, "xyzzznotanaccount")
-        self.assertIn("account", reply.lower(), f"Expected re-prompt, got: {reply}")
-        # Pending should still be set (not cleared)
-        self.assertIsNotNone(agent.session_store.get_pending(self.chat_id))
 
     def test_cash_expense_runs_immediately_when_explicit(self):
         """'Spent 200 on chai from cash' must not prompt — cash is explicit."""

@@ -22,7 +22,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 
 from app import clock
-from app.bot import nlu, replies, ui, views
+from app.bot import nlu, onboarding, replies, ui, views
 from app.bot.agent import classify_reply, process_user_interaction_ex, session_store
 from app.bot.keys import KEY_COMMANDS, handle_admin_command, handle_key_command
 from app.bot.ui import Reply
@@ -191,8 +191,24 @@ async def handle_incoming(chat_id: str, text: str) -> Reply:
         if command not in PERSONA_COMMANDS:
             return Reply(unknown_command_text(command))
 
+    if not extract_api_keys(clean):
+        changed = await onboarding.default_command(chat_id, clean)  # "use cash by default"
+        if changed is None and not session_store.get_pending(chat_id):
+            changed = await onboarding.balance_command(chat_id, clean)  # "bank balance is 25000"
+        if changed is not None:
+            return changed
+        if not session_store.get_pending(chat_id):
+            first = await onboarding.intercept(chat_id, clean)  # new user: ask where they pay from
+            if first is not None:
+                return first
+
     if classify_reply(clean) and not session_store.get_pending(chat_id):
         return Reply(replies.NOTHING_PENDING, rows=ui.back_home())
+    correction = nlu.parse_fix(clean)  # "oops the dinner was actually 540", "delete the coffee"
+    if correction is not None and not session_store.get_pending(chat_id):
+        fixed = await views.fix(chat_id, correction)
+        if fixed is not None:
+            return fixed
     screen = nlu.detect_screen(clean)  # "how much did I spend on food last month" -> stats screen
     if screen is not None:
         view = await _view_command(chat_id, screen.command, screen.args)
@@ -251,6 +267,8 @@ async def _view_command(chat_id: str, command: str, args: str) -> Reply | None:
     """Commands that open a screen (stats, history, ...). None if `command` is not one of them."""
     if command == "/start":
         _ensure_user(chat_id)
+        if await onboarding.needs_setup(chat_id):
+            return await onboarding.start(chat_id)
         return Reply(START_TEXT, rows=ui.home_rows())
     if command == "/menu":
         return views.home()

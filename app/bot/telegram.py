@@ -20,6 +20,7 @@ import hashlib
 import io
 import logging
 import re
+import time
 from typing import Any
 
 from aiogram import Bot, Dispatcher, F, Router
@@ -49,6 +50,34 @@ from app.bot.ui import Btn, Reply
 from app.config import bot_tokens, settings
 
 logger = logging.getLogger(__name__)
+
+
+class _ConflictFilter(logging.Filter):
+    """aiogram prints two lines every few seconds while another copy of the bot is polling the same token.
+    Say it once in plain words (and again every 5 minutes), and hide the spam in between."""
+
+    HINT = (
+        "Another copy of this bot is polling the same token (another terminal, computer, server, or a "
+        "teammate). Telegram gives each message to only ONE of them, so some of your messages will vanish. "
+        "Stop the other copy, or give each copy its own bot (create one with @BotFather, /newbot)."
+    )
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._last = 0.0
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        text = record.getMessage()
+        if "TelegramConflictError" in text:
+            now = time.monotonic()
+            if now - self._last > 300:
+                self._last = now
+                logger.warning(self.HINT)
+            return False
+        return not ("Sleep for" in text and "try again" in text and self._last)
+
+
+logging.getLogger("aiogram.dispatcher").addFilter(_ConflictFilter())
 
 TELEGRAM_LIMIT = 4096
 CHUNK_SIZE = 4000  # leave room so Markdown fallbacks never exceed the limit
