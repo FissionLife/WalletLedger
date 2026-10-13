@@ -1,0 +1,5943 @@
+{
+ "meta": {
+  "date": "2026-10-12T17:23:48+00:00",
+  "local_date": "2026-10-12",
+  "commit": "e3b3058",
+  "tier": "rules",
+  "mode": "direct",
+  "repeat": 1,
+  "replay": false,
+  "llm_budget": 60,
+  "real_provider_requests": 0,
+  "provider_errors": 0,
+  "model": null,
+  "golden": "golden.jsonl"
+ },
+ "metrics": {
+  "cases_total": 34,
+  "cases_run": 34,
+  "cases_passed": 33,
+  "not_run": 0,
+  "task_success_rate": 0.9706,
+  "groups": {
+   "command_safety": {
+    "run": 5,
+    "passed": 5,
+    "rate": 1.0
+   },
+   "expense": {
+    "run": 7,
+    "passed": 7,
+    "rate": 1.0
+   },
+   "income": {
+    "run": 4,
+    "passed": 4,
+    "rate": 1.0
+   },
+   "messy": {
+    "run": 4,
+    "passed": 3,
+    "rate": 0.75
+   },
+   "multi_item": {
+    "run": 5,
+    "passed": 5,
+    "rate": 1.0
+   },
+   "question": {
+    "run": 4,
+    "passed": 4,
+    "rate": 1.0
+   },
+   "transfer": {
+    "run": 5,
+    "passed": 5,
+    "rate": 1.0
+   }
+  },
+  "tool_selection_accuracy": 1.0,
+  "tool_selection_turns": 36,
+  "argument_accuracy": {
+   "account": {
+    "correct": 25,
+    "checked": 25,
+    "rate": 1.0
+   },
+   "amount": {
+    "correct": 29,
+    "checked": 29,
+    "rate": 1.0
+   },
+   "category": {
+    "correct": 25,
+    "checked": 26,
+    "rate": 0.9615
+   },
+   "date": {
+    "correct": 7,
+    "checked": 7,
+    "rate": 1.0
+   }
+  },
+  "confirmation_recall": 1.0,
+  "confirmation_turns": 3,
+  "false_confirmations": 0,
+  "question_never_logged": 1.0,
+  "question_turns": 4,
+  "safety_violations": 0,
+  "faithfulness": null,
+  "faithfulness_turns": 0,
+  "paths": {
+   "rules": {
+    "turns": 25,
+    "share": 0.6579
+   },
+   "offline": {
+    "turns": 4,
+    "share": 0.1053
+   },
+   "confirmation": {
+    "turns": 3,
+    "share": 0.0789
+   },
+   "other": {
+    "turns": 3,
+    "share": 0.0789
+   },
+   "command": {
+    "turns": 2,
+    "share": 0.0526
+   },
+   "screen": {
+    "turns": 1,
+    "share": 0.0263
+   }
+  },
+  "provider_requests_total": 1,
+  "provider_requests_per_case": {
+   "R-30": 1
+  },
+  "latency_ms_p50": 31.2,
+  "latency_ms_p95": 59.3,
+  "repeat": 1
+ },
+ "results": [
+  {
+   "id": "R-01",
+   "tier": "rules",
+   "group": "expense",
+   "priority": 1,
+   "status": "passed",
+   "passed": true,
+   "passed_any": true,
+   "provider_requests": 0,
+   "runs": [
+    {
+     "passed": true,
+     "provider_requests": 0,
+     "turns": [
+      {
+       "user": "spent 200 on chai",
+       "expect": {
+        "path": "rules",
+        "calls": [
+         {
+          "tool": "log_expense",
+          "args": {
+           "amount": 200,
+           "category": "Food & Dining",
+           "account_name": "Cash",
+           "date": null
+          }
+         }
+        ],
+        "tools_forbidden": [
+         "transfer_funds"
+        ],
+        "needs_confirmation": false,
+        "ledger_after": {
+         "balances": {
+          "Cash": 800.0,
+          "Bank": 20000.0
+         },
+         "new_transactions": 1
+        },
+        "reply": {
+         "must_include_any": [
+          "200"
+         ],
+         "must_not_include": [
+          "Traceback"
+         ],
+         "max_words": 60
+        }
+       },
+       "observed": {
+        "user": "spent 200 on chai",
+        "reply_text": "💸 −₹200 · Food & Dining\nCash ₹800",
+        "path": "rules",
+        "needs_confirmation": false,
+        "calls": [
+         {
+          "tool": "log_expense",
+          "args": {
+           "amount": 200.0,
+           "category": "Food & Dining",
+           "account_name": "Cash",
+           "description": "spent 200 on chai",
+           "user_id": "eval-R-01-1-180b50"
+          },
+          "result": {
+           "status": "success",
+           "transaction_id": "f8c9917d-b046-4569-b117-20e6e300dff4",
+           "amount": 200.0,
+           "type": "expense",
+           "account": "Cash",
+           "new_balance": 800.0,
+           "category": "Food & Dining",
+           "merchant": "N/A"
+          },
+          "error": null
+         }
+        ],
+        "balances": {
+         "Cash": 800.0,
+         "Bank": 20000.0
+        },
+        "new_transactions": 1,
+        "provider_requests": 0,
+        "provider_errors": 0,
+        "latency_ms": 98.7,
+        "chat_history": [
+         "spent 200 on chai",
+         "💸 −₹200 · Food & Dining\nCash ₹800"
+        ]
+       },
+       "checks": [
+        {
+         "check": "path",
+         "ok": true,
+         "detail": "expected 'rules', got 'rules'"
+        },
+        {
+         "check": "calls",
+         "ok": true,
+         "detail": "expected tools ['log_expense'], got ['log_expense']"
+        },
+        {
+         "check": "arg:log_expense.amount",
+         "ok": true,
+         "detail": "expected 200, got 200.0",
+         "field": "amount"
+        },
+        {
+         "check": "arg:log_expense.category",
+         "ok": true,
+         "detail": "expected Food & Dining, got Food & Dining",
+         "field": "category"
+        },
+        {
+         "check": "arg:log_expense.account_name",
+         "ok": true,
+         "detail": "expected Cash, got Cash",
+         "field": "account"
+        },
+        {
+         "check": "arg:log_expense.date",
+         "ok": true,
+         "detail": "expected null, got null",
+         "field": "date"
+        },
+        {
+         "check": "tools_forbidden",
+         "ok": true,
+         "detail": "forbidden tools called: []"
+        },
+        {
+         "check": "needs_confirmation",
+         "ok": true,
+         "detail": "expected False, got False"
+        },
+        {
+         "check": "balance:Cash",
+         "ok": true,
+         "detail": "expected 800.0, got 800.0"
+        },
+        {
+         "check": "balance:Bank",
+         "ok": true,
+         "detail": "expected 20000.0, got 20000.0"
+        },
+        {
+         "check": "new_transactions",
+         "ok": true,
+         "detail": "expected 1, got 1"
+        },
+        {
+         "check": "reply.must_include_any",
+         "ok": true,
+         "detail": "none of ['200'] in reply"
+        },
+        {
+         "check": "reply.must_not_include",
+         "ok": true,
+         "detail": "reply contains []"
+        },
+        {
+         "check": "reply.max_words",
+         "ok": true,
+         "detail": "8 > 60"
+        }
+       ]
+      }
+     ],
+     "checks": [
+      {
+       "check": "used_ai_unexpectedly",
+       "ok": true,
+       "detail": "0 provider request attempt(s) in a rules case (allowed 0)"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "R-02",
+   "tier": "rules",
+   "group": "expense",
+   "priority": 1,
+   "status": "passed",
+   "passed": true,
+   "passed_any": true,
+   "provider_requests": 0,
+   "runs": [
+    {
+     "passed": true,
+     "provider_requests": 0,
+     "turns": [
+      {
+       "user": "uber 340 from bank",
+       "expect": {
+        "path": "rules",
+        "calls": [
+         {
+          "tool": "log_expense",
+          "args": {
+           "amount": 340,
+           "category": "Transport",
+           "account_name": "Bank"
+          }
+         }
+        ],
+        "tools_forbidden": [
+         "transfer_funds"
+        ],
+        "needs_confirmation": false,
+        "ledger_after": {
+         "balances": {
+          "Cash": 1000.0,
+          "Bank": 19660.0
+         },
+         "new_transactions": 1
+        },
+        "reply": {
+         "must_include_any": [
+          "340"
+         ],
+         "must_not_include": [
+          "Traceback"
+         ],
+         "max_words": 60
+        }
+       },
+       "observed": {
+        "user": "uber 340 from bank",
+        "reply_text": "💸 −₹340 · Transport\nBank ₹19,660",
+        "path": "rules",
+        "needs_confirmation": false,
+        "calls": [
+         {
+          "tool": "log_expense",
+          "args": {
+           "amount": 340.0,
+           "category": "Transport",
+           "account_name": "Bank",
+           "description": "uber 340 from bank",
+           "user_id": "eval-R-02-1-cc29d1"
+          },
+          "result": {
+           "status": "success",
+           "transaction_id": "76f213c6-e9d7-4878-8b49-213545f46d81",
+           "amount": 340.0,
+           "type": "expense",
+           "account": "Bank",
+           "new_balance": 19660.0,
+           "category": "Transport",
+           "merchant": "N/A"
+          },
+          "error": null
+         }
+        ],
+        "balances": {
+         "Cash": 1000.0,
+         "Bank": 19660.0
+        },
+        "new_transactions": 1,
+        "provider_requests": 0,
+        "provider_errors": 0,
+        "latency_ms": 37.5,
+        "chat_history": [
+         "uber 340 from bank",
+         "💸 −₹340 · Transport\nBank ₹19,660"
+        ]
+       },
+       "checks": [
+        {
+         "check": "path",
+         "ok": true,
+         "detail": "expected 'rules', got 'rules'"
+        },
+        {
+         "check": "calls",
+         "ok": true,
+         "detail": "expected tools ['log_expense'], got ['log_expense']"
+        },
+        {
+         "check": "arg:log_expense.amount",
+         "ok": true,
+         "detail": "expected 340, got 340.0",
+         "field": "amount"
+        },
+        {
+         "check": "arg:log_expense.category",
+         "ok": true,
+         "detail": "expected Transport, got Transport",
+         "field": "category"
+        },
+        {
+         "check": "arg:log_expense.account_name",
+         "ok": true,
+         "detail": "expected Bank, got Bank",
+         "field": "account"
+        },
+        {
+         "check": "tools_forbidden",
+         "ok": true,
+         "detail": "forbidden tools called: []"
+        },
+        {
+         "check": "needs_confirmation",
+         "ok": true,
+         "detail": "expected False, got False"
+        },
+        {
+         "check": "balance:Cash",
+         "ok": true,
+         "detail": "expected 1000.0, got 1000.0"
+        },
+        {
+         "check": "balance:Bank",
+         "ok": true,
+         "detail": "expected 19660.0, got 19660.0"
+        },
+        {
+         "check": "new_transactions",
+         "ok": true,
+         "detail": "expected 1, got 1"
+        },
+        {
+         "check": "reply.must_include_any",
+         "ok": true,
+         "detail": "none of ['340'] in reply"
+        },
+        {
+         "check": "reply.must_not_include",
+         "ok": true,
+         "detail": "reply contains []"
+        },
+        {
+         "check": "reply.max_words",
+         "ok": true,
+         "detail": "6 > 60"
+        }
+       ]
+      }
+     ],
+     "checks": [
+      {
+       "check": "used_ai_unexpectedly",
+       "ok": true,
+       "detail": "0 provider request attempt(s) in a rules case (allowed 0)"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "R-03",
+   "tier": "rules",
+   "group": "expense",
+   "priority": 1,
+   "status": "passed",
+   "passed": true,
+   "passed_any": true,
+   "provider_requests": 0,
+   "runs": [
+    {
+     "passed": true,
+     "provider_requests": 0,
+     "turns": [
+      {
+       "user": "paid 1200 for groceries in cash",
+       "expect": {
+        "path": "rules",
+        "calls": [
+         {
+          "tool": "log_expense",
+          "args": {
+           "amount": 1200,
+           "category": "Groceries",
+           "account_name": "Cash"
+          }
+         }
+        ],
+        "tools_forbidden": [
+         "transfer_funds"
+        ],
+        "needs_confirmation": false,
+        "ledger_after": {
+         "balances": {
+          "Cash": 3800.0,
+          "Bank": 20000.0
+         },
+         "new_transactions": 1
+        },
+        "reply": {
+         "must_include_any": [
+          "1,200",
+          "1200"
+         ],
+         "must_not_include": [
+          "Traceback"
+         ],
+         "max_words": 60
+        }
+       },
+       "observed": {
+        "user": "paid 1200 for groceries in cash",
+        "reply_text": "💸 −₹1,200 · Groceries\nCash ₹3,800",
+        "path": "rules",
+        "needs_confirmation": false,
+        "calls": [
+         {
+          "tool": "log_expense",
+          "args": {
+           "amount": 1200.0,
+           "category": "Groceries",
+           "account_name": "Cash",
+           "description": "paid 1200 for groceries in cash",
+           "user_id": "eval-R-03-1-37153c"
+          },
+          "result": {
+           "status": "success",
+           "transaction_id": "215cc48d-6856-403f-a1be-76bb20dc6b6e",
+           "amount": 1200.0,
+           "type": "expense",
+           "account": "Cash",
+           "new_balance": 3800.0,
+           "category": "Groceries",
+           "merchant": "N/A"
+          },
+          "error": null
+         }
+        ],
+        "balances": {
+         "Cash": 3800.0,
+         "Bank": 20000.0
+        },
+        "new_transactions": 1,
+        "provider_requests": 0,
+        "provider_errors": 0,
+        "latency_ms": 24.1,
+        "chat_history": [
+         "paid 1200 for groceries in cash",
+         "💸 −₹1,200 · Groceries\nCash ₹3,800"
+        ]
+       },
+       "checks": [
+        {
+         "check": "path",
+         "ok": true,
+         "detail": "expected 'rules', got 'rules'"
+        },
+        {
+         "check": "calls",
+         "ok": true,
+         "detail": "expected tools ['log_expense'], got ['log_expense']"
+        },
+        {
+         "check": "arg:log_expense.amount",
+         "ok": true,
+         "detail": "expected 1200, got 1200.0",
+         "field": "amount"
+        },
+        {
+         "check": "arg:log_expense.category",
+         "ok": true,
+         "detail": "expected Groceries, got Groceries",
+         "field": "category"
+        },
+        {
+         "check": "arg:log_expense.account_name",
+         "ok": true,
+         "detail": "expected Cash, got Cash",
+         "field": "account"
+        },
+        {
+         "check": "tools_forbidden",
+         "ok": true,
+         "detail": "forbidden tools called: []"
+        },
+        {
+         "check": "needs_confirmation",
+         "ok": true,
+         "detail": "expected False, got False"
+        },
+        {
+         "check": "balance:Cash",
+         "ok": true,
+         "detail": "expected 3800.0, got 3800.0"
+        },
+        {
+         "check": "balance:Bank",
+         "ok": true,
+         "detail": "expected 20000.0, got 20000.0"
+        },
+        {
+         "check": "new_transactions",
+         "ok": true,
+         "detail": "expected 1, got 1"
+        },
+        {
+         "check": "reply.must_include_any",
+         "ok": true,
+         "detail": "none of ['1,200', '1200'] in reply"
+        },
+        {
+         "check": "reply.must_not_include",
+         "ok": true,
+         "detail": "reply contains []"
+        },
+        {
+         "check": "reply.max_words",
+         "ok": true,
+         "detail": "6 > 60"
+        }
+       ]
+      }
+     ],
+     "checks": [
+      {
+       "check": "used_ai_unexpectedly",
+       "ok": true,
+       "detail": "0 provider request attempt(s) in a rules case (allowed 0)"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "R-04",
+   "tier": "rules",
+   "group": "expense",
+   "priority": 1,
+   "status": "passed",
+   "passed": true,
+   "passed_any": true,
+   "provider_requests": 0,
+   "runs": [
+    {
+     "passed": true,
+     "provider_requests": 0,
+     "turns": [
+      {
+       "user": "bought medicines for 380",
+       "expect": {
+        "path": "rules",
+        "calls": [
+         {
+          "tool": "log_expense",
+          "args": {
+           "amount": 380,
+           "category": "Health",
+           "account_name": "Cash"
+          }
+         }
+        ],
+        "tools_forbidden": [
+         "transfer_funds"
+        ],
+        "needs_confirmation": false,
+        "ledger_after": {
+         "balances": {
+          "Cash": 620.0,
+          "Bank": 20000.0
+         },
+         "new_transactions": 1
+        },
+        "reply": {
+         "must_include_any": [
+          "380"
+         ],
+         "must_not_include": [
+          "Traceback"
+         ],
+         "max_words": 60
+        }
+       },
+       "observed": {
+        "user": "bought medicines for 380",
+        "reply_text": "💸 −₹380 · Health\nCash ₹620",
+        "path": "rules",
+        "needs_confirmation": false,
+        "calls": [
+         {
+          "tool": "log_expense",
+          "args": {
+           "amount": 380.0,
+           "category": "Health",
+           "account_name": "Cash",
+           "description": "bought medicines for 380",
+           "user_id": "eval-R-04-1-555aaf"
+          },
+          "result": {
+           "status": "success",
+           "transaction_id": "83972de4-cad0-4db0-a210-8bfcbc2f095a",
+           "amount": 380.0,
+           "type": "expense",
+           "account": "Cash",
+           "new_balance": 620.0,
+           "category": "Health",
+           "merchant": "N/A"
+          },
+          "error": null
+         }
+        ],
+        "balances": {
+         "Cash": 620.0,
+         "Bank": 20000.0
+        },
+        "new_transactions": 1,
+        "provider_requests": 0,
+        "provider_errors": 0,
+        "latency_ms": 31.1,
+        "chat_history": [
+         "bought medicines for 380",
+         "💸 −₹380 · Health\nCash ₹620"
+        ]
+       },
+       "checks": [
+        {
+         "check": "path",
+         "ok": true,
+         "detail": "expected 'rules', got 'rules'"
+        },
+        {
+         "check": "calls",
+         "ok": true,
+         "detail": "expected tools ['log_expense'], got ['log_expense']"
+        },
+        {
+         "check": "arg:log_expense.amount",
+         "ok": true,
+         "detail": "expected 380, got 380.0",
+         "field": "amount"
+        },
+        {
+         "check": "arg:log_expense.category",
+         "ok": true,
+         "detail": "expected Health, got Health",
+         "field": "category"
+        },
+        {
+         "check": "arg:log_expense.account_name",
+         "ok": true,
+         "detail": "expected Cash, got Cash",
+         "field": "account"
+        },
+        {
+         "check": "tools_forbidden",
+         "ok": true,
+         "detail": "forbidden tools called: []"
+        },
+        {
+         "check": "needs_confirmation",
+         "ok": true,
+         "detail": "expected False, got False"
+        },
+        {
+         "check": "balance:Cash",
+         "ok": true,
+         "detail": "expected 620.0, got 620.0"
+        },
+        {
+         "check": "balance:Bank",
+         "ok": true,
+         "detail": "expected 20000.0, got 20000.0"
+        },
+        {
+         "check": "new_transactions",
+         "ok": true,
+         "detail": "expected 1, got 1"
+        },
+        {
+         "check": "reply.must_include_any",
+         "ok": true,
+         "detail": "none of ['380'] in reply"
+        },
+        {
+         "check": "reply.must_not_include",
+         "ok": true,
+         "detail": "reply contains []"
+        },
+        {
+         "check": "reply.max_words",
+         "ok": true,
+         "detail": "6 > 60"
+        }
+       ]
+      }
+     ],
+     "checks": [
+      {
+       "check": "used_ai_unexpectedly",
+       "ok": true,
+       "detail": "0 provider request attempt(s) in a rules case (allowed 0)"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "R-05",
+   "tier": "rules",
+   "group": "expense",
+   "priority": 1,
+   "status": "passed",
+   "passed": true,
+   "passed_any": true,
+   "provider_requests": 0,
+   "runs": [
+    {
+     "passed": true,
+     "provider_requests": 0,
+     "turns": [
+      {
+       "user": "got a haircut for 300",
+       "expect": {
+        "path": "rules",
+        "calls": [
+         {
+          "tool": "log_expense",
+          "args": {
+           "amount": 300,
+           "category": "Personal Care",
+           "account_name": "Cash"
+          }
+         }
+        ],
+        "tools_forbidden": [
+         "log_income",
+         "transfer_funds"
+        ],
+        "needs_confirmation": false,
+        "ledger_after": {
+         "balances": {
+          "Cash": 700.0,
+          "Bank": 20000.0
+         },
+         "new_transactions": 1
+        },
+        "reply": {
+         "must_include_any": [
+          "300"
+         ],
+         "must_not_include": [
+          "Traceback"
+         ],
+         "max_words": 60
+        }
+       },
+       "observed": {
+        "user": "got a haircut for 300",
+        "reply_text": "💸 −₹300 · Personal Care\nCash ₹700",
+        "path": "rules",
+        "needs_confirmation": false,
+        "calls": [
+         {
+          "tool": "log_expense",
+          "args": {
+           "amount": 300.0,
+           "category": "Personal Care",
+           "account_name": "Cash",
+           "description": "got a haircut for 300",
+           "user_id": "eval-R-05-1-e0122d"
+          },
+          "result": {
+           "status": "success",
+           "transaction_id": "4f4c6118-ed15-4d9e-bfe4-c266b4e04fde",
+           "amount": 300.0,
+           "type": "expense",
+           "account": "Cash",
+           "new_balance": 700.0,
+           "category": "Personal Care",
+           "merchant": "N/A"
+          },
+          "error": null
+         }
+        ],
+        "balances": {
+         "Cash": 700.0,
+         "Bank": 20000.0
+        },
+        "new_transactions": 1,
+        "provider_requests": 0,
+        "provider_errors": 0,
+        "latency_ms": 28.9,
+        "chat_history": [
+         "got a haircut for 300",
+         "💸 −₹300 · Personal Care\nCash ₹700"
+        ]
+       },
+       "checks": [
+        {
+         "check": "path",
+         "ok": true,
+         "detail": "expected 'rules', got 'rules'"
+        },
+        {
+         "check": "calls",
+         "ok": true,
+         "detail": "expected tools ['log_expense'], got ['log_expense']"
+        },
+        {
+         "check": "arg:log_expense.amount",
+         "ok": true,
+         "detail": "expected 300, got 300.0",
+         "field": "amount"
+        },
+        {
+         "check": "arg:log_expense.category",
+         "ok": true,
+         "detail": "expected Personal Care, got Personal Care",
+         "field": "category"
+        },
+        {
+         "check": "arg:log_expense.account_name",
+         "ok": true,
+         "detail": "expected Cash, got Cash",
+         "field": "account"
+        },
+        {
+         "check": "tools_forbidden",
+         "ok": true,
+         "detail": "forbidden tools called: []"
+        },
+        {
+         "check": "needs_confirmation",
+         "ok": true,
+         "detail": "expected False, got False"
+        },
+        {
+         "check": "balance:Cash",
+         "ok": true,
+         "detail": "expected 700.0, got 700.0"
+        },
+        {
+         "check": "balance:Bank",
+         "ok": true,
+         "detail": "expected 20000.0, got 20000.0"
+        },
+        {
+         "check": "new_transactions",
+         "ok": true,
+         "detail": "expected 1, got 1"
+        },
+        {
+         "check": "reply.must_include_any",
+         "ok": true,
+         "detail": "none of ['300'] in reply"
+        },
+        {
+         "check": "reply.must_not_include",
+         "ok": true,
+         "detail": "reply contains []"
+        },
+        {
+         "check": "reply.max_words",
+         "ok": true,
+         "detail": "7 > 60"
+        }
+       ]
+      }
+     ],
+     "checks": [
+      {
+       "check": "used_ai_unexpectedly",
+       "ok": true,
+       "detail": "0 provider request attempt(s) in a rules case (allowed 0)"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "R-06",
+   "tier": "rules",
+   "group": "expense",
+   "priority": 1,
+   "status": "passed",
+   "passed": true,
+   "passed_any": true,
+   "provider_requests": 0,
+   "runs": [
+    {
+     "passed": true,
+     "provider_requests": 0,
+     "turns": [
+      {
+       "user": "netflix 649",
+       "expect": {
+        "path": "rules",
+        "calls": [
+         {
+          "tool": "log_expense",
+          "args": {
+           "amount": 649,
+           "category": "Entertainment",
+           "account_name": "Cash"
+          }
+         }
+        ],
+        "tools_forbidden": [
+         "transfer_funds"
+        ],
+        "needs_confirmation": false,
+        "ledger_after": {
+         "balances": {
+          "Cash": 351.0,
+          "Bank": 20000.0
+         },
+         "new_transactions": 1
+        },
+        "reply": {
+         "must_include_any": [
+          "649"
+         ],
+         "must_not_include": [
+          "Traceback"
+         ],
+         "max_words": 60
+        }
+       },
+       "observed": {
+        "user": "netflix 649",
+        "reply_text": "💸 −₹649 · Entertainment\nCash ₹351",
+        "path": "rules",
+        "needs_confirmation": false,
+        "calls": [
+         {
+          "tool": "log_expense",
+          "args": {
+           "amount": 649.0,
+           "category": "Entertainment",
+           "account_name": "Cash",
+           "description": "netflix 649",
+           "user_id": "eval-R-06-1-495573"
+          },
+          "result": {
+           "status": "success",
+           "transaction_id": "55f94397-2d15-4280-b529-012e7f03692f",
+           "amount": 649.0,
+           "type": "expense",
+           "account": "Cash",
+           "new_balance": 351.0,
+           "category": "Entertainment",
+           "merchant": "N/A"
+          },
+          "error": null
+         }
+        ],
+        "balances": {
+         "Cash": 351.0,
+         "Bank": 20000.0
+        },
+        "new_transactions": 1,
+        "provider_requests": 0,
+        "provider_errors": 0,
+        "latency_ms": 31.6,
+        "chat_history": [
+         "netflix 649",
+         "💸 −₹649 · Entertainment\nCash ₹351"
+        ]
+       },
+       "checks": [
+        {
+         "check": "path",
+         "ok": true,
+         "detail": "expected 'rules', got 'rules'"
+        },
+        {
+         "check": "calls",
+         "ok": true,
+         "detail": "expected tools ['log_expense'], got ['log_expense']"
+        },
+        {
+         "check": "arg:log_expense.amount",
+         "ok": true,
+         "detail": "expected 649, got 649.0",
+         "field": "amount"
+        },
+        {
+         "check": "arg:log_expense.category",
+         "ok": true,
+         "detail": "expected Entertainment, got Entertainment",
+         "field": "category"
+        },
+        {
+         "check": "arg:log_expense.account_name",
+         "ok": true,
+         "detail": "expected Cash, got Cash",
+         "field": "account"
+        },
+        {
+         "check": "tools_forbidden",
+         "ok": true,
+         "detail": "forbidden tools called: []"
+        },
+        {
+         "check": "needs_confirmation",
+         "ok": true,
+         "detail": "expected False, got False"
+        },
+        {
+         "check": "balance:Cash",
+         "ok": true,
+         "detail": "expected 351.0, got 351.0"
+        },
+        {
+         "check": "balance:Bank",
+         "ok": true,
+         "detail": "expected 20000.0, got 20000.0"
+        },
+        {
+         "check": "new_transactions",
+         "ok": true,
+         "detail": "expected 1, got 1"
+        },
+        {
+         "check": "reply.must_include_any",
+         "ok": true,
+         "detail": "none of ['649'] in reply"
+        },
+        {
+         "check": "reply.must_not_include",
+         "ok": true,
+         "detail": "reply contains []"
+        },
+        {
+         "check": "reply.max_words",
+         "ok": true,
+         "detail": "6 > 60"
+        }
+       ]
+      }
+     ],
+     "checks": [
+      {
+       "check": "used_ai_unexpectedly",
+       "ok": true,
+       "detail": "0 provider request attempt(s) in a rules case (allowed 0)"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "R-07",
+   "tier": "rules",
+   "group": "expense",
+   "priority": 1,
+   "status": "passed",
+   "passed": true,
+   "passed_any": true,
+   "provider_requests": 0,
+   "runs": [
+    {
+     "passed": true,
+     "provider_requests": 0,
+     "turns": [
+      {
+       "user": "rent 15k",
+       "expect": {
+        "path": "rules",
+        "calls": [
+         {
+          "tool": "log_expense",
+          "args": {
+           "amount": 15000,
+           "category": "Rent",
+           "account_name": "Cash"
+          }
+         }
+        ],
+        "tools_forbidden": [
+         "transfer_funds"
+        ],
+        "needs_confirmation": false,
+        "ledger_after": {
+         "balances": {
+          "Cash": 5000.0,
+          "Bank": 50000.0
+         },
+         "new_transactions": 1
+        },
+        "reply": {
+         "must_include_any": [
+          "15,000",
+          "15000"
+         ],
+         "must_not_include": [
+          "Traceback"
+         ],
+         "max_words": 60
+        }
+       },
+       "observed": {
+        "user": "rent 15k",
+        "reply_text": "💸 −₹15,000 · Rent\nCash ₹5,000",
+        "path": "rules",
+        "needs_confirmation": false,
+        "calls": [
+         {
+          "tool": "log_expense",
+          "args": {
+           "amount": 15000.0,
+           "category": "Rent",
+           "account_name": "Cash",
+           "description": "rent 15k",
+           "user_id": "eval-R-07-1-d45ffc"
+          },
+          "result": {
+           "status": "success",
+           "transaction_id": "d332909e-36b2-46e8-a169-d10dc9a07be7",
+           "amount": 15000.0,
+           "type": "expense",
+           "account": "Cash",
+           "new_balance": 5000.0,
+           "category": "Rent",
+           "merchant": "N/A"
+          },
+          "error": null
+         }
+        ],
+        "balances": {
+         "Cash": 5000.0,
+         "Bank": 50000.0
+        },
+        "new_transactions": 1,
+        "provider_requests": 0,
+        "provider_errors": 0,
+        "latency_ms": 24.1,
+        "chat_history": [
+         "rent 15k",
+         "💸 −₹15,000 · Rent\nCash ₹5,000"
+        ]
+       },
+       "checks": [
+        {
+         "check": "path",
+         "ok": true,
+         "detail": "expected 'rules', got 'rules'"
+        },
+        {
+         "check": "calls",
+         "ok": true,
+         "detail": "expected tools ['log_expense'], got ['log_expense']"
+        },
+        {
+         "check": "arg:log_expense.amount",
+         "ok": true,
+         "detail": "expected 15000, got 15000.0",
+         "field": "amount"
+        },
+        {
+         "check": "arg:log_expense.category",
+         "ok": true,
+         "detail": "expected Rent, got Rent",
+         "field": "category"
+        },
+        {
+         "check": "arg:log_expense.account_name",
+         "ok": true,
+         "detail": "expected Cash, got Cash",
+         "field": "account"
+        },
+        {
+         "check": "tools_forbidden",
+         "ok": true,
+         "detail": "forbidden tools called: []"
+        },
+        {
+         "check": "needs_confirmation",
+         "ok": true,
+         "detail": "expected False, got False"
+        },
+        {
+         "check": "balance:Cash",
+         "ok": true,
+         "detail": "expected 5000.0, got 5000.0"
+        },
+        {
+         "check": "balance:Bank",
+         "ok": true,
+         "detail": "expected 50000.0, got 50000.0"
+        },
+        {
+         "check": "new_transactions",
+         "ok": true,
+         "detail": "expected 1, got 1"
+        },
+        {
+         "check": "reply.must_include_any",
+         "ok": true,
+         "detail": "none of ['15,000', '15000'] in reply"
+        },
+        {
+         "check": "reply.must_not_include",
+         "ok": true,
+         "detail": "reply contains []"
+        },
+        {
+         "check": "reply.max_words",
+         "ok": true,
+         "detail": "6 > 60"
+        }
+       ]
+      }
+     ],
+     "checks": [
+      {
+       "check": "used_ai_unexpectedly",
+       "ok": true,
+       "detail": "0 provider request attempt(s) in a rules case (allowed 0)"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "R-08",
+   "tier": "rules",
+   "group": "income",
+   "priority": 1,
+   "status": "passed",
+   "passed": true,
+   "passed_any": true,
+   "provider_requests": 0,
+   "runs": [
+    {
+     "passed": true,
+     "provider_requests": 0,
+     "turns": [
+      {
+       "user": "got salary 50000",
+       "expect": {
+        "path": "rules",
+        "calls": [
+         {
+          "tool": "log_income",
+          "args": {
+           "amount": 50000,
+           "category": "Salary",
+           "source_account": "Bank"
+          }
+         }
+        ],
+        "tools_forbidden": [
+         "log_expense",
+         "transfer_funds"
+        ],
+        "needs_confirmation": false,
+        "ledger_after": {
+         "balances": {
+          "Cash": 1000.0,
+          "Bank": 70000.0
+         },
+         "new_transactions": 1
+        },
+        "reply": {
+         "must_include_any": [
+          "50,000",
+          "50000"
+         ],
+         "must_not_include": [
+          "Traceback"
+         ],
+         "max_words": 60
+        }
+       },
+       "observed": {
+        "user": "got salary 50000",
+        "reply_text": "💰 +₹50,000 · Salary\nBank ₹70,000",
+        "path": "rules",
+        "needs_confirmation": false,
+        "calls": [
+         {
+          "tool": "log_income",
+          "args": {
+           "amount": 50000.0,
+           "source_account": "Bank",
+           "category": "Salary",
+           "description": "got salary 50000",
+           "user_id": "eval-R-08-1-3d52b3"
+          },
+          "result": {
+           "status": "success",
+           "transaction_id": "9f931283-f351-4f7b-a674-c2282e0c9108",
+           "amount": 50000.0,
+           "type": "income",
+           "account": "Bank",
+           "new_balance": 70000.0,
+           "category": "Salary",
+           "merchant": "N/A"
+          },
+          "error": null
+         }
+        ],
+        "balances": {
+         "Cash": 1000.0,
+         "Bank": 70000.0
+        },
+        "new_transactions": 1,
+        "provider_requests": 0,
+        "provider_errors": 0,
+        "latency_ms": 22.6,
+        "chat_history": [
+         "got salary 50000",
+         "💰 +₹50,000 · Salary\nBank ₹70,000"
+        ]
+       },
+       "checks": [
+        {
+         "check": "path",
+         "ok": true,
+         "detail": "expected 'rules', got 'rules'"
+        },
+        {
+         "check": "calls",
+         "ok": true,
+         "detail": "expected tools ['log_income'], got ['log_income']"
+        },
+        {
+         "check": "arg:log_income.amount",
+         "ok": true,
+         "detail": "expected 50000, got 50000.0",
+         "field": "amount"
+        },
+        {
+         "check": "arg:log_income.category",
+         "ok": true,
+         "detail": "expected Salary, got Salary",
+         "field": "category"
+        },
+        {
+         "check": "arg:log_income.source_account",
+         "ok": true,
+         "detail": "expected Bank, got Bank",
+         "field": "account"
+        },
+        {
+         "check": "tools_forbidden",
+         "ok": true,
+         "detail": "forbidden tools called: []"
+        },
+        {
+         "check": "needs_confirmation",
+         "ok": true,
+         "detail": "expected False, got False"
+        },
+        {
+         "check": "balance:Cash",
+         "ok": true,
+         "detail": "expected 1000.0, got 1000.0"
+        },
+        {
+         "check": "balance:Bank",
+         "ok": true,
+         "detail": "expected 70000.0, got 70000.0"
+        },
+        {
+         "check": "new_transactions",
+         "ok": true,
+         "detail": "expected 1, got 1"
+        },
+        {
+         "check": "reply.must_include_any",
+         "ok": true,
+         "detail": "none of ['50,000', '50000'] in reply"
+        },
+        {
+         "check": "reply.must_not_include",
+         "ok": true,
+         "detail": "reply contains []"
+        },
+        {
+         "check": "reply.max_words",
+         "ok": true,
+         "detail": "6 > 60"
+        }
+       ]
+      }
+     ],
+     "checks": [
+      {
+       "check": "used_ai_unexpectedly",
+       "ok": true,
+       "detail": "0 provider request attempt(s) in a rules case (allowed 0)"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "R-09",
+   "tier": "rules",
+   "group": "income",
+   "priority": 1,
+   "status": "passed",
+   "passed": true,
+   "passed_any": true,
+   "provider_requests": 0,
+   "runs": [
+    {
+     "passed": true,
+     "provider_requests": 0,
+     "turns": [
+      {
+       "user": "received 2000 freelance payment",
+       "expect": {
+        "path": "rules",
+        "calls": [
+         {
+          "tool": "log_income",
+          "args": {
+           "amount": 2000,
+           "category": "Freelance",
+           "source_account": "Bank"
+          }
+         }
+        ],
+        "tools_forbidden": [
+         "log_expense",
+         "transfer_funds"
+        ],
+        "needs_confirmation": false,
+        "ledger_after": {
+         "balances": {
+          "Cash": 1000.0,
+          "Bank": 22000.0
+         },
+         "new_transactions": 1
+        },
+        "reply": {
+         "must_include_any": [
+          "2,000",
+          "2000"
+         ],
+         "must_not_include": [
+          "Traceback"
+         ],
+         "max_words": 60
+        }
+       },
+       "observed": {
+        "user": "received 2000 freelance payment",
+        "reply_text": "💰 +₹2,000 · Freelance\nBank ₹22,000",
+        "path": "rules",
+        "needs_confirmation": false,
+        "calls": [
+         {
+          "tool": "log_income",
+          "args": {
+           "amount": 2000.0,
+           "source_account": "Bank",
+           "category": "Freelance",
+           "description": "received 2000 freelance payment",
+           "user_id": "eval-R-09-1-7e5b20"
+          },
+          "result": {
+           "status": "success",
+           "transaction_id": "895856d8-f132-4265-9f89-2432c5fc8291",
+           "amount": 2000.0,
+           "type": "income",
+           "account": "Bank",
+           "new_balance": 22000.0,
+           "category": "Freelance",
+           "merchant": "N/A"
+          },
+          "error": null
+         }
+        ],
+        "balances": {
+         "Cash": 1000.0,
+         "Bank": 22000.0
+        },
+        "new_transactions": 1,
+        "provider_requests": 0,
+        "provider_errors": 0,
+        "latency_ms": 31.9,
+        "chat_history": [
+         "received 2000 freelance payment",
+         "💰 +₹2,000 · Freelance\nBank ₹22,000"
+        ]
+       },
+       "checks": [
+        {
+         "check": "path",
+         "ok": true,
+         "detail": "expected 'rules', got 'rules'"
+        },
+        {
+         "check": "calls",
+         "ok": true,
+         "detail": "expected tools ['log_income'], got ['log_income']"
+        },
+        {
+         "check": "arg:log_income.amount",
+         "ok": true,
+         "detail": "expected 2000, got 2000.0",
+         "field": "amount"
+        },
+        {
+         "check": "arg:log_income.category",
+         "ok": true,
+         "detail": "expected Freelance, got Freelance",
+         "field": "category"
+        },
+        {
+         "check": "arg:log_income.source_account",
+         "ok": true,
+         "detail": "expected Bank, got Bank",
+         "field": "account"
+        },
+        {
+         "check": "tools_forbidden",
+         "ok": true,
+         "detail": "forbidden tools called: []"
+        },
+        {
+         "check": "needs_confirmation",
+         "ok": true,
+         "detail": "expected False, got False"
+        },
+        {
+         "check": "balance:Cash",
+         "ok": true,
+         "detail": "expected 1000.0, got 1000.0"
+        },
+        {
+         "check": "balance:Bank",
+         "ok": true,
+         "detail": "expected 22000.0, got 22000.0"
+        },
+        {
+         "check": "new_transactions",
+         "ok": true,
+         "detail": "expected 1, got 1"
+        },
+        {
+         "check": "reply.must_include_any",
+         "ok": true,
+         "detail": "none of ['2,000', '2000'] in reply"
+        },
+        {
+         "check": "reply.must_not_include",
+         "ok": true,
+         "detail": "reply contains []"
+        },
+        {
+         "check": "reply.max_words",
+         "ok": true,
+         "detail": "6 > 60"
+        }
+       ]
+      }
+     ],
+     "checks": [
+      {
+       "check": "used_ai_unexpectedly",
+       "ok": true,
+       "detail": "0 provider request attempt(s) in a rules case (allowed 0)"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "R-10",
+   "tier": "rules",
+   "group": "income",
+   "priority": 1,
+   "status": "passed",
+   "passed": true,
+   "passed_any": true,
+   "provider_requests": 0,
+   "runs": [
+    {
+     "passed": true,
+     "provider_requests": 0,
+     "turns": [
+      {
+       "user": "got 500 refund",
+       "expect": {
+        "path": "rules",
+        "calls": [
+         {
+          "tool": "log_income",
+          "args": {
+           "amount": 500,
+           "category": "Refund",
+           "source_account": "Bank"
+          }
+         }
+        ],
+        "tools_forbidden": [
+         "log_expense",
+         "transfer_funds"
+        ],
+        "needs_confirmation": false,
+        "ledger_after": {
+         "balances": {
+          "Cash": 1000.0,
+          "Bank": 20500.0
+         },
+         "new_transactions": 1
+        },
+        "reply": {
+         "must_include_any": [
+          "500"
+         ],
+         "must_not_include": [
+          "Traceback"
+         ],
+         "max_words": 60
+        }
+       },
+       "observed": {
+        "user": "got 500 refund",
+        "reply_text": "💰 +₹500 · Refund\nBank ₹20,500",
+        "path": "rules",
+        "needs_confirmation": false,
+        "calls": [
+         {
+          "tool": "log_income",
+          "args": {
+           "amount": 500.0,
+           "source_account": "Bank",
+           "category": "Refund",
+           "description": "got 500 refund",
+           "user_id": "eval-R-10-1-8d5d30"
+          },
+          "result": {
+           "status": "success",
+           "transaction_id": "ec3f7559-a6a6-45b8-8c25-ddb94bd6fdc7",
+           "amount": 500.0,
+           "type": "income",
+           "account": "Bank",
+           "new_balance": 20500.0,
+           "category": "Refund",
+           "merchant": "N/A"
+          },
+          "error": null
+         }
+        ],
+        "balances": {
+         "Cash": 1000.0,
+         "Bank": 20500.0
+        },
+        "new_transactions": 1,
+        "provider_requests": 0,
+        "provider_errors": 0,
+        "latency_ms": 32.8,
+        "chat_history": [
+         "got 500 refund",
+         "💰 +₹500 · Refund\nBank ₹20,500"
+        ]
+       },
+       "checks": [
+        {
+         "check": "path",
+         "ok": true,
+         "detail": "expected 'rules', got 'rules'"
+        },
+        {
+         "check": "calls",
+         "ok": true,
+         "detail": "expected tools ['log_income'], got ['log_income']"
+        },
+        {
+         "check": "arg:log_income.amount",
+         "ok": true,
+         "detail": "expected 500, got 500.0",
+         "field": "amount"
+        },
+        {
+         "check": "arg:log_income.category",
+         "ok": true,
+         "detail": "expected Refund, got Refund",
+         "field": "category"
+        },
+        {
+         "check": "arg:log_income.source_account",
+         "ok": true,
+         "detail": "expected Bank, got Bank",
+         "field": "account"
+        },
+        {
+         "check": "tools_forbidden",
+         "ok": true,
+         "detail": "forbidden tools called: []"
+        },
+        {
+         "check": "needs_confirmation",
+         "ok": true,
+         "detail": "expected False, got False"
+        },
+        {
+         "check": "balance:Cash",
+         "ok": true,
+         "detail": "expected 1000.0, got 1000.0"
+        },
+        {
+         "check": "balance:Bank",
+         "ok": true,
+         "detail": "expected 20500.0, got 20500.0"
+        },
+        {
+         "check": "new_transactions",
+         "ok": true,
+         "detail": "expected 1, got 1"
+        },
+        {
+         "check": "reply.must_include_any",
+         "ok": true,
+         "detail": "none of ['500'] in reply"
+        },
+        {
+         "check": "reply.must_not_include",
+         "ok": true,
+         "detail": "reply contains []"
+        },
+        {
+         "check": "reply.max_words",
+         "ok": true,
+         "detail": "6 > 60"
+        }
+       ]
+      }
+     ],
+     "checks": [
+      {
+       "check": "used_ai_unexpectedly",
+       "ok": true,
+       "detail": "0 provider request attempt(s) in a rules case (allowed 0)"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "R-11",
+   "tier": "rules",
+   "group": "income",
+   "priority": 1,
+   "status": "passed",
+   "passed": true,
+   "passed_any": true,
+   "provider_requests": 0,
+   "runs": [
+    {
+     "passed": true,
+     "provider_requests": 0,
+     "turns": [
+      {
+       "user": "cashback of 120 received",
+       "expect": {
+        "path": "rules",
+        "calls": [
+         {
+          "tool": "log_income",
+          "args": {
+           "amount": 120,
+           "category": "Cashback",
+           "source_account": "Bank"
+          }
+         }
+        ],
+        "tools_forbidden": [
+         "log_expense",
+         "transfer_funds"
+        ],
+        "needs_confirmation": false,
+        "ledger_after": {
+         "balances": {
+          "Cash": 1000.0,
+          "Bank": 20120.0
+         },
+         "new_transactions": 1
+        },
+        "reply": {
+         "must_include_any": [
+          "120"
+         ],
+         "must_not_include": [
+          "Traceback"
+         ],
+         "max_words": 60
+        }
+       },
+       "observed": {
+        "user": "cashback of 120 received",
+        "reply_text": "💰 +₹120 · Cashback\nBank ₹20,120",
+        "path": "rules",
+        "needs_confirmation": false,
+        "calls": [
+         {
+          "tool": "log_income",
+          "args": {
+           "amount": 120.0,
+           "source_account": "Bank",
+           "category": "Cashback",
+           "description": "cashback of 120 received",
+           "user_id": "eval-R-11-1-2c146d"
+          },
+          "result": {
+           "status": "success",
+           "transaction_id": "5fe8d143-e588-49b1-8738-4ce211652521",
+           "amount": 120.0,
+           "type": "income",
+           "account": "Bank",
+           "new_balance": 20120.0,
+           "category": "Cashback",
+           "merchant": "N/A"
+          },
+          "error": null
+         }
+        ],
+        "balances": {
+         "Cash": 1000.0,
+         "Bank": 20120.0
+        },
+        "new_transactions": 1,
+        "provider_requests": 0,
+        "provider_errors": 0,
+        "latency_ms": 30.0,
+        "chat_history": [
+         "cashback of 120 received",
+         "💰 +₹120 · Cashback\nBank ₹20,120"
+        ]
+       },
+       "checks": [
+        {
+         "check": "path",
+         "ok": true,
+         "detail": "expected 'rules', got 'rules'"
+        },
+        {
+         "check": "calls",
+         "ok": true,
+         "detail": "expected tools ['log_income'], got ['log_income']"
+        },
+        {
+         "check": "arg:log_income.amount",
+         "ok": true,
+         "detail": "expected 120, got 120.0",
+         "field": "amount"
+        },
+        {
+         "check": "arg:log_income.category",
+         "ok": true,
+         "detail": "expected Cashback, got Cashback",
+         "field": "category"
+        },
+        {
+         "check": "arg:log_income.source_account",
+         "ok": true,
+         "detail": "expected Bank, got Bank",
+         "field": "account"
+        },
+        {
+         "check": "tools_forbidden",
+         "ok": true,
+         "detail": "forbidden tools called: []"
+        },
+        {
+         "check": "needs_confirmation",
+         "ok": true,
+         "detail": "expected False, got False"
+        },
+        {
+         "check": "balance:Cash",
+         "ok": true,
+         "detail": "expected 1000.0, got 1000.0"
+        },
+        {
+         "check": "balance:Bank",
+         "ok": true,
+         "detail": "expected 20120.0, got 20120.0"
+        },
+        {
+         "check": "new_transactions",
+         "ok": true,
+         "detail": "expected 1, got 1"
+        },
+        {
+         "check": "reply.must_include_any",
+         "ok": true,
+         "detail": "none of ['120'] in reply"
+        },
+        {
+         "check": "reply.must_not_include",
+         "ok": true,
+         "detail": "reply contains []"
+        },
+        {
+         "check": "reply.max_words",
+         "ok": true,
+         "detail": "6 > 60"
+        }
+       ]
+      }
+     ],
+     "checks": [
+      {
+       "check": "used_ai_unexpectedly",
+       "ok": true,
+       "detail": "0 provider request attempt(s) in a rules case (allowed 0)"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "R-12",
+   "tier": "rules",
+   "group": "multi_item",
+   "priority": 1,
+   "status": "passed",
+   "passed": true,
+   "passed_any": true,
+   "provider_requests": 0,
+   "runs": [
+    {
+     "passed": true,
+     "provider_requests": 0,
+     "turns": [
+      {
+       "user": "200 chai, 80 auto yesterday",
+       "expect": {
+        "path": "rules",
+        "calls": [
+         {
+          "tool": "log_expense",
+          "args": {
+           "amount": 200,
+           "category": "Food & Dining",
+           "account_name": "Cash",
+           "date": null
+          }
+         },
+         {
+          "tool": "log_expense",
+          "args": {
+           "amount": 80,
+           "category": "Transport",
+           "account_name": "Cash",
+           "date": "$TODAY-1"
+          }
+         }
+        ],
+        "tools_forbidden": [
+         "transfer_funds"
+        ],
+        "needs_confirmation": false,
+        "ledger_after": {
+         "balances": {
+          "Cash": 4720.0,
+          "Bank": 20000.0
+         },
+         "new_transactions": 2
+        },
+        "reply": {
+         "must_include_any": [
+          "200"
+         ],
+         "must_not_include": [
+          "Traceback"
+         ],
+         "max_words": 90
+        }
+       },
+       "observed": {
+        "user": "200 chai, 80 auto yesterday",
+        "reply_text": "✅ 2 entries · −₹280\n• −₹200 · Food & Dining\n• −₹80 · Transport · 11 Oct\nCash ₹4,720",
+        "path": "rules",
+        "needs_confirmation": false,
+        "calls": [
+         {
+          "tool": "log_expense",
+          "args": {
+           "amount": 200.0,
+           "category": "Food & Dining",
+           "account_name": "Cash",
+           "description": "200 chai",
+           "user_id": "eval-R-12-1-7a9dc0"
+          },
+          "result": {
+           "status": "success",
+           "transaction_id": "9ca9b548-5ad3-4864-9d4e-7352f3d2d7b9",
+           "amount": 200.0,
+           "type": "expense",
+           "account": "Cash",
+           "new_balance": 4800.0,
+           "category": "Food & Dining",
+           "merchant": "N/A"
+          },
+          "error": null
+         },
+         {
+          "tool": "log_expense",
+          "args": {
+           "amount": 80.0,
+           "category": "Transport",
+           "account_name": "Cash",
+           "description": "80 auto yesterday",
+           "date": "2026-10-11",
+           "user_id": "eval-R-12-1-7a9dc0"
+          },
+          "result": {
+           "status": "success",
+           "transaction_id": "d49a619a-98b4-4e0b-a8a6-3d0efa8b1af0",
+           "amount": 80.0,
+           "type": "expense",
+           "account": "Cash",
+           "new_balance": 4720.0,
+           "category": "Transport",
+           "merchant": "N/A"
+          },
+          "error": null
+         }
+        ],
+        "balances": {
+         "Cash": 4720.0,
+         "Bank": 20000.0
+        },
+        "new_transactions": 2,
+        "provider_requests": 0,
+        "provider_errors": 0,
+        "latency_ms": 59.3,
+        "chat_history": [
+         "200 chai, 80 auto yesterday",
+         "✅ 2 entries · −₹280\n• −₹200 · Food & Dining\n• −₹80 · Transport · 11 Oct\nCash ₹4,720"
+        ]
+       },
+       "checks": [
+        {
+         "check": "path",
+         "ok": true,
+         "detail": "expected 'rules', got 'rules'"
+        },
+        {
+         "check": "calls",
+         "ok": true,
+         "detail": "expected tools ['log_expense', 'log_expense'], got ['log_expense', 'log_expense']"
+        },
+        {
+         "check": "arg:log_expense.amount",
+         "ok": true,
+         "detail": "expected 200, got 200.0",
+         "field": "amount"
+        },
+        {
+         "check": "arg:log_expense.category",
+         "ok": true,
+         "detail": "expected Food & Dining, got Food & Dining",
+         "field": "category"
+        },
+        {
+         "check": "arg:log_expense.account_name",
+         "ok": true,
+         "detail": "expected Cash, got Cash",
+         "field": "account"
+        },
+        {
+         "check": "arg:log_expense.date",
+         "ok": true,
+         "detail": "expected null, got null",
+         "field": "date"
+        },
+        {
+         "check": "arg:log_expense.amount",
+         "ok": true,
+         "detail": "expected 80, got 80.0",
+         "field": "amount"
+        },
+        {
+         "check": "arg:log_expense.category",
+         "ok": true,
+         "detail": "expected Transport, got Transport",
+         "field": "category"
+        },
+        {
+         "check": "arg:log_expense.account_name",
+         "ok": true,
+         "detail": "expected Cash, got Cash",
+         "field": "account"
+        },
+        {
+         "check": "arg:log_expense.date",
+         "ok": true,
+         "detail": "expected $TODAY-1, got 2026-10-11",
+         "field": "date"
+        },
+        {
+         "check": "tools_forbidden",
+         "ok": true,
+         "detail": "forbidden tools called: []"
+        },
+        {
+         "check": "needs_confirmation",
+         "ok": true,
+         "detail": "expected False, got False"
+        },
+        {
+         "check": "balance:Cash",
+         "ok": true,
+         "detail": "expected 4720.0, got 4720.0"
+        },
+        {
+         "check": "balance:Bank",
+         "ok": true,
+         "detail": "expected 20000.0, got 20000.0"
+        },
+        {
+         "check": "new_transactions",
+         "ok": true,
+         "detail": "expected 2, got 2"
+        },
+        {
+         "check": "reply.must_include_any",
+         "ok": true,
+         "detail": "none of ['200'] in reply"
+        },
+        {
+         "check": "reply.must_not_include",
+         "ok": true,
+         "detail": "reply contains []"
+        },
+        {
+         "check": "reply.max_words",
+         "ok": true,
+         "detail": "20 > 90"
+        }
+       ]
+      }
+     ],
+     "checks": [
+      {
+       "check": "used_ai_unexpectedly",
+       "ok": true,
+       "detail": "0 provider request attempt(s) in a rules case (allowed 0)"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "R-13",
+   "tier": "rules",
+   "group": "multi_item",
+   "priority": 1,
+   "status": "passed",
+   "passed": true,
+   "passed_any": true,
+   "provider_requests": 0,
+   "runs": [
+    {
+     "passed": true,
+     "provider_requests": 0,
+     "turns": [
+      {
+       "user": "190=pizza\n80=dosa\n115.62=petrol",
+       "expect": {
+        "path": "rules",
+        "calls": [
+         {
+          "tool": "log_expense",
+          "args": {
+           "amount": 190,
+           "category": "Food & Dining"
+          }
+         },
+         {
+          "tool": "log_expense",
+          "args": {
+           "amount": 80,
+           "category": "Food & Dining"
+          }
+         },
+         {
+          "tool": "log_expense",
+          "args": {
+           "amount": 115.62,
+           "category": "Transport"
+          }
+         }
+        ],
+        "tools_forbidden": [
+         "transfer_funds"
+        ],
+        "needs_confirmation": false,
+        "ledger_after": {
+         "balances": {
+          "Cash": 4614.38,
+          "Bank": 20000.0
+         },
+         "new_transactions": 3
+        },
+        "reply": {
+         "must_include_any": [
+          "190"
+         ],
+         "must_not_include": [
+          "Traceback"
+         ],
+         "max_words": 90
+        }
+       },
+       "observed": {
+        "user": "190=pizza\n80=dosa\n115.62=petrol",
+        "reply_text": "✅ 3 entries · −₹385.62\n• −₹190 · Food & Dining\n• −₹80 · Food & Dining\n• −₹115.62 · Transport\nCash ₹4,614",
+        "path": "rules",
+        "needs_confirmation": false,
+        "calls": [
+         {
+          "tool": "log_expense",
+          "args": {
+           "amount": 190.0,
+           "category": "Food & Dining",
+           "account_name": "Cash",
+           "description": "190=pizza",
+           "user_id": "eval-R-13-1-97890d"
+          },
+          "result": {
+           "status": "success",
+           "transaction_id": "8dc73253-2d84-4ab2-b4d8-f59a16292886",
+           "amount": 190.0,
+           "type": "expense",
+           "account": "Cash",
+           "new_balance": 4810.0,
+           "category": "Food & Dining",
+           "merchant": "N/A"
+          },
+          "error": null
+         },
+         {
+          "tool": "log_expense",
+          "args": {
+           "amount": 80.0,
+           "category": "Food & Dining",
+           "account_name": "Cash",
+           "description": "80=dosa",
+           "user_id": "eval-R-13-1-97890d"
+          },
+          "result": {
+           "status": "success",
+           "transaction_id": "ea5c54c3-26a9-4fd5-8e85-1eef322d0312",
+           "amount": 80.0,
+           "type": "expense",
+           "account": "Cash",
+           "new_balance": 4730.0,
+           "category": "Food & Dining",
+           "merchant": "N/A"
+          },
+          "error": null
+         },
+         {
+          "tool": "log_expense",
+          "args": {
+           "amount": 115.62,
+           "category": "Transport",
+           "account_name": "Cash",
+           "description": "115.62=petrol",
+           "user_id": "eval-R-13-1-97890d"
+          },
+          "result": {
+           "status": "success",
+           "transaction_id": "60b81405-738c-43e2-8bed-06f476ab6b95",
+           "amount": 115.62,
+           "type": "expense",
+           "account": "Cash",
+           "new_balance": 4614.38,
+           "category": "Transport",
+           "merchant": "N/A"
+          },
+          "error": null
+         }
+        ],
+        "balances": {
+         "Cash": 4614.38,
+         "Bank": 20000.0
+        },
+        "new_transactions": 3,
+        "provider_requests": 0,
+        "provider_errors": 0,
+        "latency_ms": 44.8,
+        "chat_history": [
+         "190=pizza\n80=dosa\n115.62=petrol",
+         "✅ 3 entries · −₹385.62\n• −₹190 · Food & Dining\n• −₹80 · Food & Dining\n• −₹115.62 · Transport\nCash ₹4,614"
+        ]
+       },
+       "checks": [
+        {
+         "check": "path",
+         "ok": true,
+         "detail": "expected 'rules', got 'rules'"
+        },
+        {
+         "check": "calls",
+         "ok": true,
+         "detail": "expected tools ['log_expense', 'log_expense', 'log_expense'], got ['log_expense', 'log_expense', 'log_expense']"
+        },
+        {
+         "check": "arg:log_expense.amount",
+         "ok": true,
+         "detail": "expected 190, got 190.0",
+         "field": "amount"
+        },
+        {
+         "check": "arg:log_expense.category",
+         "ok": true,
+         "detail": "expected Food & Dining, got Food & Dining",
+         "field": "category"
+        },
+        {
+         "check": "arg:log_expense.amount",
+         "ok": true,
+         "detail": "expected 80, got 80.0",
+         "field": "amount"
+        },
+        {
+         "check": "arg:log_expense.category",
+         "ok": true,
+         "detail": "expected Food & Dining, got Food & Dining",
+         "field": "category"
+        },
+        {
+         "check": "arg:log_expense.amount",
+         "ok": true,
+         "detail": "expected 115.62, got 115.62",
+         "field": "amount"
+        },
+        {
+         "check": "arg:log_expense.category",
+         "ok": true,
+         "detail": "expected Transport, got Transport",
+         "field": "category"
+        },
+        {
+         "check": "tools_forbidden",
+         "ok": true,
+         "detail": "forbidden tools called: []"
+        },
+        {
+         "check": "needs_confirmation",
+         "ok": true,
+         "detail": "expected False, got False"
+        },
+        {
+         "check": "balance:Cash",
+         "ok": true,
+         "detail": "expected 4614.38, got 4614.38"
+        },
+        {
+         "check": "balance:Bank",
+         "ok": true,
+         "detail": "expected 20000.0, got 20000.0"
+        },
+        {
+         "check": "new_transactions",
+         "ok": true,
+         "detail": "expected 3, got 3"
+        },
+        {
+         "check": "reply.must_include_any",
+         "ok": true,
+         "detail": "none of ['190'] in reply"
+        },
+        {
+         "check": "reply.must_not_include",
+         "ok": true,
+         "detail": "reply contains []"
+        },
+        {
+         "check": "reply.max_words",
+         "ok": true,
+         "detail": "23 > 90"
+        }
+       ]
+      }
+     ],
+     "checks": [
+      {
+       "check": "used_ai_unexpectedly",
+       "ok": true,
+       "detail": "0 provider request attempt(s) in a rules case (allowed 0)"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "R-14",
+   "tier": "rules",
+   "group": "multi_item",
+   "priority": 1,
+   "status": "passed",
+   "passed": true,
+   "passed_any": true,
+   "provider_requests": 0,
+   "runs": [
+    {
+     "passed": true,
+     "provider_requests": 0,
+     "turns": [
+      {
+       "user": "got 1000 bonus and spent 300 on lunch",
+       "expect": {
+        "path": "rules",
+        "calls": [
+         {
+          "tool": "log_income",
+          "args": {
+           "amount": 1000,
+           "category": "Bonus",
+           "source_account": "Bank"
+          }
+         },
+         {
+          "tool": "log_expense",
+          "args": {
+           "amount": 300,
+           "category": "Food & Dining",
+           "account_name": "Cash"
+          }
+         }
+        ],
+        "tools_forbidden": [
+         "transfer_funds"
+        ],
+        "needs_confirmation": false,
+        "ledger_after": {
+         "balances": {
+          "Cash": 4700.0,
+          "Bank": 21000.0
+         },
+         "new_transactions": 2
+        },
+        "reply": {
+         "must_include_any": [
+          "1,000",
+          "1000"
+         ],
+         "must_not_include": [
+          "Traceback"
+         ],
+         "max_words": 90
+        }
+       },
+       "observed": {
+        "user": "got 1000 bonus and spent 300 on lunch",
+        "reply_text": "✅ 2 entries · −₹300 · +₹1,000\n• +₹1,000 · Bonus\n• −₹300 · Food & Dining\nBank ₹21,000 · Cash ₹4,700",
+        "path": "rules",
+        "needs_confirmation": false,
+        "calls": [
+         {
+          "tool": "log_income",
+          "args": {
+           "amount": 1000.0,
+           "source_account": "Bank",
+           "category": "Bonus",
+           "description": "got 1000 bonus",
+           "user_id": "eval-R-14-1-9e8005"
+          },
+          "result": {
+           "status": "success",
+           "transaction_id": "fbbdd35b-ab3a-482a-a877-6dcbc9150521",
+           "amount": 1000.0,
+           "type": "income",
+           "account": "Bank",
+           "new_balance": 21000.0,
+           "category": "Bonus",
+           "merchant": "N/A"
+          },
+          "error": null
+         },
+         {
+          "tool": "log_expense",
+          "args": {
+           "amount": 300.0,
+           "category": "Food & Dining",
+           "account_name": "Cash",
+           "description": "spent 300 on lunch",
+           "user_id": "eval-R-14-1-9e8005"
+          },
+          "result": {
+           "status": "success",
+           "transaction_id": "78f75ee0-1efd-4bba-b6c5-62bbf11e70fa",
+           "amount": 300.0,
+           "type": "expense",
+           "account": "Cash",
+           "new_balance": 4700.0,
+           "category": "Food & Dining",
+           "merchant": "N/A"
+          },
+          "error": null
+         }
+        ],
+        "balances": {
+         "Cash": 4700.0,
+         "Bank": 21000.0
+        },
+        "new_transactions": 2,
+        "provider_requests": 0,
+        "provider_errors": 0,
+        "latency_ms": 31.2,
+        "chat_history": [
+         "got 1000 bonus and spent 300 on lunch",
+         "✅ 2 entries · −₹300 · +₹1,000\n• +₹1,000 · Bonus\n• −₹300 · Food & Dining\nBank ₹21,000 · Cash ₹4,700"
+        ]
+       },
+       "checks": [
+        {
+         "check": "path",
+         "ok": true,
+         "detail": "expected 'rules', got 'rules'"
+        },
+        {
+         "check": "calls",
+         "ok": true,
+         "detail": "expected tools ['log_income', 'log_expense'], got ['log_income', 'log_expense']"
+        },
+        {
+         "check": "arg:log_income.amount",
+         "ok": true,
+         "detail": "expected 1000, got 1000.0",
+         "field": "amount"
+        },
+        {
+         "check": "arg:log_income.category",
+         "ok": true,
+         "detail": "expected Bonus, got Bonus",
+         "field": "category"
+        },
+        {
+         "check": "arg:log_income.source_account",
+         "ok": true,
+         "detail": "expected Bank, got Bank",
+         "field": "account"
+        },
+        {
+         "check": "arg:log_expense.amount",
+         "ok": true,
+         "detail": "expected 300, got 300.0",
+         "field": "amount"
+        },
+        {
+         "check": "arg:log_expense.category",
+         "ok": true,
+         "detail": "expected Food & Dining, got Food & Dining",
+         "field": "category"
+        },
+        {
+         "check": "arg:log_expense.account_name",
+         "ok": true,
+         "detail": "expected Cash, got Cash",
+         "field": "account"
+        },
+        {
+         "check": "tools_forbidden",
+         "ok": true,
+         "detail": "forbidden tools called: []"
+        },
+        {
+         "check": "needs_confirmation",
+         "ok": true,
+         "detail": "expected False, got False"
+        },
+        {
+         "check": "balance:Cash",
+         "ok": true,
+         "detail": "expected 4700.0, got 4700.0"
+        },
+        {
+         "check": "balance:Bank",
+         "ok": true,
+         "detail": "expected 21000.0, got 21000.0"
+        },
+        {
+         "check": "new_transactions",
+         "ok": true,
+         "detail": "expected 2, got 2"
+        },
+        {
+         "check": "reply.must_include_any",
+         "ok": true,
+         "detail": "none of ['1,000', '1000'] in reply"
+        },
+        {
+         "check": "reply.must_not_include",
+         "ok": true,
+         "detail": "reply contains []"
+        },
+        {
+         "check": "reply.max_words",
+         "ok": true,
+         "detail": "22 > 90"
+        }
+       ]
+      }
+     ],
+     "checks": [
+      {
+       "check": "used_ai_unexpectedly",
+       "ok": true,
+       "detail": "0 provider request attempt(s) in a rules case (allowed 0)"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "R-15",
+   "tier": "rules",
+   "group": "multi_item",
+   "priority": 1,
+   "status": "passed",
+   "passed": true,
+   "passed_any": true,
+   "provider_requests": 0,
+   "runs": [
+    {
+     "passed": true,
+     "provider_requests": 0,
+     "turns": [
+      {
+       "user": "spent 200 on chai and 80 on auto yesterday",
+       "expect": {
+        "path": "rules",
+        "calls": [
+         {
+          "tool": "log_expense",
+          "args": {
+           "amount": 200,
+           "category": "Food & Dining",
+           "date": null
+          }
+         },
+         {
+          "tool": "log_expense",
+          "args": {
+           "amount": 80,
+           "category": "Transport",
+           "date": "$TODAY-1"
+          }
+         }
+        ],
+        "tools_forbidden": [
+         "transfer_funds"
+        ],
+        "needs_confirmation": false,
+        "ledger_after": {
+         "balances": {
+          "Cash": 4720.0,
+          "Bank": 20000.0
+         },
+         "new_transactions": 2
+        },
+        "reply": {
+         "must_include_any": [
+          "80"
+         ],
+         "must_not_include": [
+          "Traceback"
+         ],
+         "max_words": 90
+        }
+       },
+       "observed": {
+        "user": "spent 200 on chai and 80 on auto yesterday",
+        "reply_text": "✅ 2 entries · −₹280\n• −₹200 · Food & Dining\n• −₹80 · Transport · 11 Oct\nCash ₹4,720",
+        "path": "rules",
+        "needs_confirmation": false,
+        "calls": [
+         {
+          "tool": "log_expense",
+          "args": {
+           "amount": 200.0,
+           "category": "Food & Dining",
+           "account_name": "Cash",
+           "description": "spent 200 on chai",
+           "user_id": "eval-R-15-1-f72614"
+          },
+          "result": {
+           "status": "success",
+           "transaction_id": "745d9266-99a5-4955-a1ad-efc7f79b5dab",
+           "amount": 200.0,
+           "type": "expense",
+           "account": "Cash",
+           "new_balance": 4800.0,
+           "category": "Food & Dining",
+           "merchant": "N/A"
+          },
+          "error": null
+         },
+         {
+          "tool": "log_expense",
+          "args": {
+           "amount": 80.0,
+           "category": "Transport",
+           "account_name": "Cash",
+           "description": "80 on auto yesterday",
+           "date": "2026-10-11",
+           "user_id": "eval-R-15-1-f72614"
+          },
+          "result": {
+           "status": "success",
+           "transaction_id": "fe314082-8d36-476b-8b1d-22a491b5fa5c",
+           "amount": 80.0,
+           "type": "expense",
+           "account": "Cash",
+           "new_balance": 4720.0,
+           "category": "Transport",
+           "merchant": "N/A"
+          },
+          "error": null
+         }
+        ],
+        "balances": {
+         "Cash": 4720.0,
+         "Bank": 20000.0
+        },
+        "new_transactions": 2,
+        "provider_requests": 0,
+        "provider_errors": 0,
+        "latency_ms": 47.3,
+        "chat_history": [
+         "spent 200 on chai and 80 on auto yesterday",
+         "✅ 2 entries · −₹280\n• −₹200 · Food & Dining\n• −₹80 · Transport · 11 Oct\nCash ₹4,720"
+        ]
+       },
+       "checks": [
+        {
+         "check": "path",
+         "ok": true,
+         "detail": "expected 'rules', got 'rules'"
+        },
+        {
+         "check": "calls",
+         "ok": true,
+         "detail": "expected tools ['log_expense', 'log_expense'], got ['log_expense', 'log_expense']"
+        },
+        {
+         "check": "arg:log_expense.amount",
+         "ok": true,
+         "detail": "expected 200, got 200.0",
+         "field": "amount"
+        },
+        {
+         "check": "arg:log_expense.category",
+         "ok": true,
+         "detail": "expected Food & Dining, got Food & Dining",
+         "field": "category"
+        },
+        {
+         "check": "arg:log_expense.date",
+         "ok": true,
+         "detail": "expected null, got null",
+         "field": "date"
+        },
+        {
+         "check": "arg:log_expense.amount",
+         "ok": true,
+         "detail": "expected 80, got 80.0",
+         "field": "amount"
+        },
+        {
+         "check": "arg:log_expense.category",
+         "ok": true,
+         "detail": "expected Transport, got Transport",
+         "field": "category"
+        },
+        {
+         "check": "arg:log_expense.date",
+         "ok": true,
+         "detail": "expected $TODAY-1, got 2026-10-11",
+         "field": "date"
+        },
+        {
+         "check": "tools_forbidden",
+         "ok": true,
+         "detail": "forbidden tools called: []"
+        },
+        {
+         "check": "needs_confirmation",
+         "ok": true,
+         "detail": "expected False, got False"
+        },
+        {
+         "check": "balance:Cash",
+         "ok": true,
+         "detail": "expected 4720.0, got 4720.0"
+        },
+        {
+         "check": "balance:Bank",
+         "ok": true,
+         "detail": "expected 20000.0, got 20000.0"
+        },
+        {
+         "check": "new_transactions",
+         "ok": true,
+         "detail": "expected 2, got 2"
+        },
+        {
+         "check": "reply.must_include_any",
+         "ok": true,
+         "detail": "none of ['80'] in reply"
+        },
+        {
+         "check": "reply.must_not_include",
+         "ok": true,
+         "detail": "reply contains []"
+        },
+        {
+         "check": "reply.max_words",
+         "ok": true,
+         "detail": "20 > 90"
+        }
+       ]
+      }
+     ],
+     "checks": [
+      {
+       "check": "used_ai_unexpectedly",
+       "ok": true,
+       "detail": "0 provider request attempt(s) in a rules case (allowed 0)"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "R-16",
+   "tier": "rules",
+   "group": "multi_item",
+   "priority": 1,
+   "status": "passed",
+   "passed": true,
+   "passed_any": true,
+   "provider_requests": 0,
+   "runs": [
+    {
+     "passed": true,
+     "provider_requests": 0,
+     "turns": [
+      {
+       "user": "rent 15k, groceries 2k yesterday",
+       "expect": {
+        "path": "rules",
+        "calls": [
+         {
+          "tool": "log_expense",
+          "args": {
+           "amount": 15000,
+           "category": "Rent",
+           "date": null
+          }
+         },
+         {
+          "tool": "log_expense",
+          "args": {
+           "amount": 2000,
+           "category": "Groceries",
+           "date": "$TODAY-1"
+          }
+         }
+        ],
+        "tools_forbidden": [
+         "transfer_funds"
+        ],
+        "needs_confirmation": false,
+        "ledger_after": {
+         "balances": {
+          "Cash": 13000.0,
+          "Bank": 20000.0
+         },
+         "new_transactions": 2
+        },
+        "reply": {
+         "must_include_any": [
+          "15,000",
+          "15000"
+         ],
+         "must_not_include": [
+          "Traceback"
+         ],
+         "max_words": 90
+        }
+       },
+       "observed": {
+        "user": "rent 15k, groceries 2k yesterday",
+        "reply_text": "✅ 2 entries · −₹17,000\n• −₹15,000 · Rent\n• −₹2,000 · Groceries · 11 Oct\nCash ₹13,000",
+        "path": "rules",
+        "needs_confirmation": false,
+        "calls": [
+         {
+          "tool": "log_expense",
+          "args": {
+           "amount": 15000.0,
+           "category": "Rent",
+           "account_name": "Cash",
+           "description": "rent 15k",
+           "user_id": "eval-R-16-1-5f1695"
+          },
+          "result": {
+           "status": "success",
+           "transaction_id": "5e31514d-18a4-4827-b7b9-8ed01454eccf",
+           "amount": 15000.0,
+           "type": "expense",
+           "account": "Cash",
+           "new_balance": 15000.0,
+           "category": "Rent",
+           "merchant": "N/A"
+          },
+          "error": null
+         },
+         {
+          "tool": "log_expense",
+          "args": {
+           "amount": 2000.0,
+           "category": "Groceries",
+           "account_name": "Cash",
+           "description": "groceries 2k yesterday",
+           "date": "2026-10-11",
+           "user_id": "eval-R-16-1-5f1695"
+          },
+          "result": {
+           "status": "success",
+           "transaction_id": "6fa2af2a-af62-48a4-bd54-a5bd139d9843",
+           "amount": 2000.0,
+           "type": "expense",
+           "account": "Cash",
+           "new_balance": 13000.0,
+           "category": "Groceries",
+           "merchant": "N/A"
+          },
+          "error": null
+         }
+        ],
+        "balances": {
+         "Cash": 13000.0,
+         "Bank": 20000.0
+        },
+        "new_transactions": 2,
+        "provider_requests": 0,
+        "provider_errors": 0,
+        "latency_ms": 37.2,
+        "chat_history": [
+         "rent 15k, groceries 2k yesterday",
+         "✅ 2 entries · −₹17,000\n• −₹15,000 · Rent\n• −₹2,000 · Groceries · 11 Oct\nCash ₹13,000"
+        ]
+       },
+       "checks": [
+        {
+         "check": "path",
+         "ok": true,
+         "detail": "expected 'rules', got 'rules'"
+        },
+        {
+         "check": "calls",
+         "ok": true,
+         "detail": "expected tools ['log_expense', 'log_expense'], got ['log_expense', 'log_expense']"
+        },
+        {
+         "check": "arg:log_expense.amount",
+         "ok": true,
+         "detail": "expected 15000, got 15000.0",
+         "field": "amount"
+        },
+        {
+         "check": "arg:log_expense.category",
+         "ok": true,
+         "detail": "expected Rent, got Rent",
+         "field": "category"
+        },
+        {
+         "check": "arg:log_expense.date",
+         "ok": true,
+         "detail": "expected null, got null",
+         "field": "date"
+        },
+        {
+         "check": "arg:log_expense.amount",
+         "ok": true,
+         "detail": "expected 2000, got 2000.0",
+         "field": "amount"
+        },
+        {
+         "check": "arg:log_expense.category",
+         "ok": true,
+         "detail": "expected Groceries, got Groceries",
+         "field": "category"
+        },
+        {
+         "check": "arg:log_expense.date",
+         "ok": true,
+         "detail": "expected $TODAY-1, got 2026-10-11",
+         "field": "date"
+        },
+        {
+         "check": "tools_forbidden",
+         "ok": true,
+         "detail": "forbidden tools called: []"
+        },
+        {
+         "check": "needs_confirmation",
+         "ok": true,
+         "detail": "expected False, got False"
+        },
+        {
+         "check": "balance:Cash",
+         "ok": true,
+         "detail": "expected 13000.0, got 13000.0"
+        },
+        {
+         "check": "balance:Bank",
+         "ok": true,
+         "detail": "expected 20000.0, got 20000.0"
+        },
+        {
+         "check": "new_transactions",
+         "ok": true,
+         "detail": "expected 2, got 2"
+        },
+        {
+         "check": "reply.must_include_any",
+         "ok": true,
+         "detail": "none of ['15,000', '15000'] in reply"
+        },
+        {
+         "check": "reply.must_not_include",
+         "ok": true,
+         "detail": "reply contains []"
+        },
+        {
+         "check": "reply.max_words",
+         "ok": true,
+         "detail": "18 > 90"
+        }
+       ]
+      }
+     ],
+     "checks": [
+      {
+       "check": "used_ai_unexpectedly",
+       "ok": true,
+       "detail": "0 provider request attempt(s) in a rules case (allowed 0)"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "R-17",
+   "tier": "rules",
+   "group": "transfer",
+   "priority": 1,
+   "status": "passed",
+   "passed": true,
+   "passed_any": true,
+   "provider_requests": 0,
+   "runs": [
+    {
+     "passed": true,
+     "provider_requests": 0,
+     "turns": [
+      {
+       "user": "move 2000 from bank to cash",
+       "expect": {
+        "path": "rules",
+        "calls": [
+         {
+          "tool": "transfer_funds",
+          "args": {
+           "from_account": "Bank",
+           "to_account": "Cash",
+           "amount": 2000
+          }
+         }
+        ],
+        "tools_forbidden": [
+         "log_expense",
+         "log_income"
+        ],
+        "needs_confirmation": false,
+        "ledger_after": {
+         "balances": {
+          "Cash": 3000.0,
+          "Bank": 18000.0
+         },
+         "new_transactions": 1
+        },
+        "reply": {
+         "must_include_any": [
+          "2,000",
+          "2000"
+         ],
+         "must_not_include": [
+          "Traceback"
+         ],
+         "max_words": 60
+        }
+       },
+       "observed": {
+        "user": "move 2000 from bank to cash",
+        "reply_text": "⇄ ₹2,000 · Bank → Cash\nBank ₹18,000 · Cash ₹3,000",
+        "path": "rules",
+        "needs_confirmation": false,
+        "calls": [
+         {
+          "tool": "transfer_funds",
+          "args": {
+           "from_account": "Bank",
+           "to_account": "Cash",
+           "amount": 2000.0,
+           "user_id": "eval-R-17-1-cab68e"
+          },
+          "result": {
+           "status": "success",
+           "transaction_id": "0916e9cb-ee7e-4de3-bdb1-d3f20cb3ecac",
+           "from_account": "Bank",
+           "from_balance": 18000.0,
+           "to_account": "Cash",
+           "to_balance": 3000.0,
+           "transferred": 2000.0
+          },
+          "error": null
+         }
+        ],
+        "balances": {
+         "Cash": 3000.0,
+         "Bank": 18000.0
+        },
+        "new_transactions": 1,
+        "provider_requests": 0,
+        "provider_errors": 0,
+        "latency_ms": 31.2,
+        "chat_history": [
+         "move 2000 from bank to cash",
+         "⇄ ₹2,000 · Bank → Cash\nBank ₹18,000 · Cash ₹3,000"
+        ]
+       },
+       "checks": [
+        {
+         "check": "path",
+         "ok": true,
+         "detail": "expected 'rules', got 'rules'"
+        },
+        {
+         "check": "calls",
+         "ok": true,
+         "detail": "expected tools ['transfer_funds'], got ['transfer_funds']"
+        },
+        {
+         "check": "arg:transfer_funds.from_account",
+         "ok": true,
+         "detail": "expected Bank, got Bank",
+         "field": "account"
+        },
+        {
+         "check": "arg:transfer_funds.to_account",
+         "ok": true,
+         "detail": "expected Cash, got Cash",
+         "field": "account"
+        },
+        {
+         "check": "arg:transfer_funds.amount",
+         "ok": true,
+         "detail": "expected 2000, got 2000.0",
+         "field": "amount"
+        },
+        {
+         "check": "tools_forbidden",
+         "ok": true,
+         "detail": "forbidden tools called: []"
+        },
+        {
+         "check": "needs_confirmation",
+         "ok": true,
+         "detail": "expected False, got False"
+        },
+        {
+         "check": "balance:Cash",
+         "ok": true,
+         "detail": "expected 3000.0, got 3000.0"
+        },
+        {
+         "check": "balance:Bank",
+         "ok": true,
+         "detail": "expected 18000.0, got 18000.0"
+        },
+        {
+         "check": "new_transactions",
+         "ok": true,
+         "detail": "expected 1, got 1"
+        },
+        {
+         "check": "reply.must_include_any",
+         "ok": true,
+         "detail": "none of ['2,000', '2000'] in reply"
+        },
+        {
+         "check": "reply.must_not_include",
+         "ok": true,
+         "detail": "reply contains []"
+        },
+        {
+         "check": "reply.max_words",
+         "ok": true,
+         "detail": "11 > 60"
+        }
+       ]
+      }
+     ],
+     "checks": [
+      {
+       "check": "used_ai_unexpectedly",
+       "ok": true,
+       "detail": "0 provider request attempt(s) in a rules case (allowed 0)"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "R-18",
+   "tier": "rules",
+   "group": "transfer",
+   "priority": 1,
+   "status": "passed",
+   "passed": true,
+   "passed_any": true,
+   "provider_requests": 0,
+   "runs": [
+    {
+     "passed": true,
+     "provider_requests": 0,
+     "turns": [
+      {
+       "user": "transfer 6000 from bank to cash",
+       "expect": {
+        "path": "rules",
+        "needs_confirmation": true,
+        "tools_forbidden": [
+         "log_expense",
+         "log_income"
+        ],
+        "ledger_after": {
+         "balances": {
+          "Cash": 1000.0,
+          "Bank": 20000.0
+         },
+         "new_transactions": 0
+        },
+        "reply": {
+         "must_include_any": [
+          "6,000"
+         ],
+         "must_not_include": [
+          "Traceback"
+         ],
+         "max_words": 40
+        }
+       },
+       "observed": {
+        "user": "transfer 6000 from bank to cash",
+        "reply_text": "⚠️ Transfer ₹6,000.00 from Bank to Cash?\nTap Yes to go ahead, or Cancel.",
+        "path": "rules",
+        "needs_confirmation": true,
+        "calls": [],
+        "balances": {
+         "Cash": 1000.0,
+         "Bank": 20000.0
+        },
+        "new_transactions": 0,
+        "provider_requests": 0,
+        "provider_errors": 0,
+        "latency_ms": 14.9,
+        "chat_history": [
+         "transfer 6000 from bank to cash",
+         "⚠️ Transfer ₹6,000.00 from Bank to Cash?\nTap Yes to go ahead, or Cancel."
+        ]
+       },
+       "checks": [
+        {
+         "check": "path",
+         "ok": true,
+         "detail": "expected 'rules', got 'rules'"
+        },
+        {
+         "check": "tools_forbidden",
+         "ok": true,
+         "detail": "forbidden tools called: []"
+        },
+        {
+         "check": "needs_confirmation",
+         "ok": true,
+         "detail": "expected True, got True"
+        },
+        {
+         "check": "balance:Cash",
+         "ok": true,
+         "detail": "expected 1000.0, got 1000.0"
+        },
+        {
+         "check": "balance:Bank",
+         "ok": true,
+         "detail": "expected 20000.0, got 20000.0"
+        },
+        {
+         "check": "new_transactions",
+         "ok": true,
+         "detail": "expected 0, got 0"
+        },
+        {
+         "check": "reply.must_include_any",
+         "ok": true,
+         "detail": "none of ['6,000'] in reply"
+        },
+        {
+         "check": "reply.must_not_include",
+         "ok": true,
+         "detail": "reply contains []"
+        },
+        {
+         "check": "reply.max_words",
+         "ok": true,
+         "detail": "14 > 40"
+        }
+       ]
+      },
+      {
+       "user": "yes",
+       "expect": {
+        "path": "confirmation",
+        "needs_confirmation": false,
+        "calls": [
+         {
+          "tool": "transfer_funds",
+          "args": {
+           "from_account": "Bank",
+           "to_account": "Cash",
+           "amount": 6000
+          }
+         }
+        ],
+        "ledger_after": {
+         "balances": {
+          "Cash": 7000.0,
+          "Bank": 14000.0
+         },
+         "new_transactions": 1
+        },
+        "reply": {
+         "must_include_any": [
+          "6,000",
+          "6000"
+         ],
+         "must_not_include": [
+          "Traceback"
+         ],
+         "max_words": 60
+        }
+       },
+       "observed": {
+        "user": "yes",
+        "reply_text": "⇄ ₹6,000 · Bank → Cash\nBank ₹14,000 · Cash ₹7,000",
+        "path": "confirmation",
+        "needs_confirmation": false,
+        "calls": [
+         {
+          "tool": "transfer_funds",
+          "args": {
+           "from_account": "Bank",
+           "to_account": "Cash",
+           "amount": 6000.0,
+           "user_id": "eval-R-18-1-423231"
+          },
+          "result": {
+           "status": "success",
+           "transaction_id": "3307b990-5a81-4550-8918-8b42ba0d8699",
+           "from_account": "Bank",
+           "from_balance": 14000.0,
+           "to_account": "Cash",
+           "to_balance": 7000.0,
+           "transferred": 6000.0
+          },
+          "error": null
+         }
+        ],
+        "balances": {
+         "Cash": 7000.0,
+         "Bank": 14000.0
+        },
+        "new_transactions": 1,
+        "provider_requests": 0,
+        "provider_errors": 0,
+        "latency_ms": 27.8,
+        "chat_history": [
+         "transfer 6000 from bank to cash",
+         "⚠️ Transfer ₹6,000.00 from Bank to Cash?\nTap Yes to go ahead, or Cancel.",
+         "yes",
+         "⇄ ₹6,000 · Bank → Cash\nBank ₹14,000 · Cash ₹7,000"
+        ]
+       },
+       "checks": [
+        {
+         "check": "path",
+         "ok": true,
+         "detail": "expected 'confirmation', got 'confirmation'"
+        },
+        {
+         "check": "calls",
+         "ok": true,
+         "detail": "expected tools ['transfer_funds'], got ['transfer_funds']"
+        },
+        {
+         "check": "arg:transfer_funds.from_account",
+         "ok": true,
+         "detail": "expected Bank, got Bank",
+         "field": "account"
+        },
+        {
+         "check": "arg:transfer_funds.to_account",
+         "ok": true,
+         "detail": "expected Cash, got Cash",
+         "field": "account"
+        },
+        {
+         "check": "arg:transfer_funds.amount",
+         "ok": true,
+         "detail": "expected 6000, got 6000.0",
+         "field": "amount"
+        },
+        {
+         "check": "needs_confirmation",
+         "ok": true,
+         "detail": "expected False, got False"
+        },
+        {
+         "check": "balance:Cash",
+         "ok": true,
+         "detail": "expected 7000.0, got 7000.0"
+        },
+        {
+         "check": "balance:Bank",
+         "ok": true,
+         "detail": "expected 14000.0, got 14000.0"
+        },
+        {
+         "check": "new_transactions",
+         "ok": true,
+         "detail": "expected 1, got 1"
+        },
+        {
+         "check": "reply.must_include_any",
+         "ok": true,
+         "detail": "none of ['6,000', '6000'] in reply"
+        },
+        {
+         "check": "reply.must_not_include",
+         "ok": true,
+         "detail": "reply contains []"
+        },
+        {
+         "check": "reply.max_words",
+         "ok": true,
+         "detail": "11 > 60"
+        }
+       ]
+      }
+     ],
+     "checks": [
+      {
+       "check": "used_ai_unexpectedly",
+       "ok": true,
+       "detail": "0 provider request attempt(s) in a rules case (allowed 0)"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "R-19",
+   "tier": "rules",
+   "group": "transfer",
+   "priority": 1,
+   "status": "passed",
+   "passed": true,
+   "passed_any": true,
+   "provider_requests": 0,
+   "runs": [
+    {
+     "passed": true,
+     "provider_requests": 0,
+     "turns": [
+      {
+       "user": "transfer 6000 from bank to cash",
+       "expect": {
+        "path": "rules",
+        "needs_confirmation": true,
+        "ledger_after": {
+         "balances": {
+          "Cash": 1000.0,
+          "Bank": 20000.0
+         },
+         "new_transactions": 0
+        }
+       },
+       "observed": {
+        "user": "transfer 6000 from bank to cash",
+        "reply_text": "⚠️ Transfer ₹6,000.00 from Bank to Cash?\nTap Yes to go ahead, or Cancel.",
+        "path": "rules",
+        "needs_confirmation": true,
+        "calls": [],
+        "balances": {
+         "Cash": 1000.0,
+         "Bank": 20000.0
+        },
+        "new_transactions": 0,
+        "provider_requests": 0,
+        "provider_errors": 0,
+        "latency_ms": 22.4,
+        "chat_history": [
+         "transfer 6000 from bank to cash",
+         "⚠️ Transfer ₹6,000.00 from Bank to Cash?\nTap Yes to go ahead, or Cancel."
+        ]
+       },
+       "checks": [
+        {
+         "check": "path",
+         "ok": true,
+         "detail": "expected 'rules', got 'rules'"
+        },
+        {
+         "check": "needs_confirmation",
+         "ok": true,
+         "detail": "expected True, got True"
+        },
+        {
+         "check": "balance:Cash",
+         "ok": true,
+         "detail": "expected 1000.0, got 1000.0"
+        },
+        {
+         "check": "balance:Bank",
+         "ok": true,
+         "detail": "expected 20000.0, got 20000.0"
+        },
+        {
+         "check": "new_transactions",
+         "ok": true,
+         "detail": "expected 0, got 0"
+        }
+       ]
+      },
+      {
+       "user": "no",
+       "expect": {
+        "path": "confirmation",
+        "calls": [],
+        "needs_confirmation": false,
+        "ledger_after": {
+         "balances": {
+          "Cash": 1000.0,
+          "Bank": 20000.0
+         },
+         "new_transactions": 0
+        },
+        "reply": {
+         "must_include_any": [
+          "cancelled",
+          "nothing changed"
+         ],
+         "must_not_include": [
+          "Traceback"
+         ],
+         "max_words": 30
+        }
+       },
+       "observed": {
+        "user": "no",
+        "reply_text": "👍 Cancelled. Nothing changed.",
+        "path": "confirmation",
+        "needs_confirmation": false,
+        "calls": [],
+        "balances": {
+         "Cash": 1000.0,
+         "Bank": 20000.0
+        },
+        "new_transactions": 0,
+        "provider_requests": 0,
+        "provider_errors": 0,
+        "latency_ms": 20.6,
+        "chat_history": [
+         "transfer 6000 from bank to cash",
+         "⚠️ Transfer ₹6,000.00 from Bank to Cash?\nTap Yes to go ahead, or Cancel.",
+         "no",
+         "👍 Cancelled. Nothing changed."
+        ]
+       },
+       "checks": [
+        {
+         "check": "path",
+         "ok": true,
+         "detail": "expected 'confirmation', got 'confirmation'"
+        },
+        {
+         "check": "calls",
+         "ok": true,
+         "detail": "expected tools [], got []"
+        },
+        {
+         "check": "needs_confirmation",
+         "ok": true,
+         "detail": "expected False, got False"
+        },
+        {
+         "check": "balance:Cash",
+         "ok": true,
+         "detail": "expected 1000.0, got 1000.0"
+        },
+        {
+         "check": "balance:Bank",
+         "ok": true,
+         "detail": "expected 20000.0, got 20000.0"
+        },
+        {
+         "check": "new_transactions",
+         "ok": true,
+         "detail": "expected 0, got 0"
+        },
+        {
+         "check": "reply.must_include_any",
+         "ok": true,
+         "detail": "none of ['cancelled', 'nothing changed'] in reply"
+        },
+        {
+         "check": "reply.must_not_include",
+         "ok": true,
+         "detail": "reply contains []"
+        },
+        {
+         "check": "reply.max_words",
+         "ok": true,
+         "detail": "4 > 30"
+        }
+       ]
+      }
+     ],
+     "checks": [
+      {
+       "check": "used_ai_unexpectedly",
+       "ok": true,
+       "detail": "0 provider request attempt(s) in a rules case (allowed 0)"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "R-20",
+   "tier": "rules",
+   "group": "transfer",
+   "priority": 1,
+   "status": "passed",
+   "passed": true,
+   "passed_any": true,
+   "provider_requests": 0,
+   "runs": [
+    {
+     "passed": true,
+     "provider_requests": 0,
+     "turns": [
+      {
+       "user": "move 7500 from cash to bank",
+       "expect": {
+        "path": "rules",
+        "needs_confirmation": true,
+        "ledger_after": {
+         "balances": {
+          "Cash": 10000.0,
+          "Bank": 5000.0
+         },
+         "new_transactions": 0
+        },
+        "reply": {
+         "must_include_any": [
+          "7,500"
+         ],
+         "must_not_include": [
+          "Traceback"
+         ],
+         "max_words": 40
+        }
+       },
+       "observed": {
+        "user": "move 7500 from cash to bank",
+        "reply_text": "⚠️ Transfer ₹7,500.00 from Cash to Bank?\nTap Yes to go ahead, or Cancel.",
+        "path": "rules",
+        "needs_confirmation": true,
+        "calls": [],
+        "balances": {
+         "Cash": 10000.0,
+         "Bank": 5000.0
+        },
+        "new_transactions": 0,
+        "provider_requests": 0,
+        "provider_errors": 0,
+        "latency_ms": 28.1,
+        "chat_history": [
+         "move 7500 from cash to bank",
+         "⚠️ Transfer ₹7,500.00 from Cash to Bank?\nTap Yes to go ahead, or Cancel."
+        ]
+       },
+       "checks": [
+        {
+         "check": "path",
+         "ok": true,
+         "detail": "expected 'rules', got 'rules'"
+        },
+        {
+         "check": "needs_confirmation",
+         "ok": true,
+         "detail": "expected True, got True"
+        },
+        {
+         "check": "balance:Cash",
+         "ok": true,
+         "detail": "expected 10000.0, got 10000.0"
+        },
+        {
+         "check": "balance:Bank",
+         "ok": true,
+         "detail": "expected 5000.0, got 5000.0"
+        },
+        {
+         "check": "new_transactions",
+         "ok": true,
+         "detail": "expected 0, got 0"
+        },
+        {
+         "check": "reply.must_include_any",
+         "ok": true,
+         "detail": "none of ['7,500'] in reply"
+        },
+        {
+         "check": "reply.must_not_include",
+         "ok": true,
+         "detail": "reply contains []"
+        },
+        {
+         "check": "reply.max_words",
+         "ok": true,
+         "detail": "14 > 40"
+        }
+       ]
+      },
+      {
+       "user": "cancel",
+       "expect": {
+        "path": "confirmation",
+        "calls": [],
+        "needs_confirmation": false,
+        "ledger_after": {
+         "balances": {
+          "Cash": 10000.0,
+          "Bank": 5000.0
+         },
+         "new_transactions": 0
+        },
+        "reply": {
+         "must_include_any": [
+          "cancelled",
+          "nothing changed"
+         ],
+         "must_not_include": [
+          "Traceback"
+         ],
+         "max_words": 30
+        }
+       },
+       "observed": {
+        "user": "cancel",
+        "reply_text": "👍 Cancelled. Nothing changed.",
+        "path": "confirmation",
+        "needs_confirmation": false,
+        "calls": [],
+        "balances": {
+         "Cash": 10000.0,
+         "Bank": 5000.0
+        },
+        "new_transactions": 0,
+        "provider_requests": 0,
+        "provider_errors": 0,
+        "latency_ms": 16.2,
+        "chat_history": [
+         "move 7500 from cash to bank",
+         "⚠️ Transfer ₹7,500.00 from Cash to Bank?\nTap Yes to go ahead, or Cancel.",
+         "cancel",
+         "👍 Cancelled. Nothing changed."
+        ]
+       },
+       "checks": [
+        {
+         "check": "path",
+         "ok": true,
+         "detail": "expected 'confirmation', got 'confirmation'"
+        },
+        {
+         "check": "calls",
+         "ok": true,
+         "detail": "expected tools [], got []"
+        },
+        {
+         "check": "needs_confirmation",
+         "ok": true,
+         "detail": "expected False, got False"
+        },
+        {
+         "check": "balance:Cash",
+         "ok": true,
+         "detail": "expected 10000.0, got 10000.0"
+        },
+        {
+         "check": "balance:Bank",
+         "ok": true,
+         "detail": "expected 5000.0, got 5000.0"
+        },
+        {
+         "check": "new_transactions",
+         "ok": true,
+         "detail": "expected 0, got 0"
+        },
+        {
+         "check": "reply.must_include_any",
+         "ok": true,
+         "detail": "none of ['cancelled', 'nothing changed'] in reply"
+        },
+        {
+         "check": "reply.must_not_include",
+         "ok": true,
+         "detail": "reply contains []"
+        },
+        {
+         "check": "reply.max_words",
+         "ok": true,
+         "detail": "4 > 30"
+        }
+       ]
+      }
+     ],
+     "checks": [
+      {
+       "check": "used_ai_unexpectedly",
+       "ok": true,
+       "detail": "0 provider request attempt(s) in a rules case (allowed 0)"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "R-21",
+   "tier": "rules",
+   "group": "transfer",
+   "priority": 1,
+   "status": "passed",
+   "passed": true,
+   "passed_any": true,
+   "provider_requests": 0,
+   "runs": [
+    {
+     "passed": true,
+     "provider_requests": 0,
+     "turns": [
+      {
+       "user": "moved 500 from cash to bank",
+       "expect": {
+        "path": "rules",
+        "needs_confirmation": false,
+        "calls": [
+         {
+          "tool": "transfer_funds",
+          "args": {
+           "from_account": "Cash",
+           "to_account": "Bank",
+           "amount": 500
+          }
+         }
+        ],
+        "ledger_after": {
+         "balances": {
+          "Cash": 500.0,
+          "Bank": 20500.0
+         },
+         "new_transactions": 1
+        }
+       },
+       "observed": {
+        "user": "moved 500 from cash to bank",
+        "reply_text": "⇄ ₹500 · Cash → Bank\nCash ₹500 · Bank ₹20,500",
+        "path": "rules",
+        "needs_confirmation": false,
+        "calls": [
+         {
+          "tool": "transfer_funds",
+          "args": {
+           "from_account": "Cash",
+           "to_account": "Bank",
+           "amount": 500.0,
+           "user_id": "eval-R-21-1-86dd53"
+          },
+          "result": {
+           "status": "success",
+           "transaction_id": "95cc8065-3140-441a-8821-1e486fef12d7",
+           "from_account": "Cash",
+           "from_balance": 500.0,
+           "to_account": "Bank",
+           "to_balance": 20500.0,
+           "transferred": 500.0
+          },
+          "error": null
+         }
+        ],
+        "balances": {
+         "Cash": 500.0,
+         "Bank": 20500.0
+        },
+        "new_transactions": 1,
+        "provider_requests": 0,
+        "provider_errors": 0,
+        "latency_ms": 39.1,
+        "chat_history": [
+         "moved 500 from cash to bank",
+         "⇄ ₹500 · Cash → Bank\nCash ₹500 · Bank ₹20,500"
+        ]
+       },
+       "checks": [
+        {
+         "check": "path",
+         "ok": true,
+         "detail": "expected 'rules', got 'rules'"
+        },
+        {
+         "check": "calls",
+         "ok": true,
+         "detail": "expected tools ['transfer_funds'], got ['transfer_funds']"
+        },
+        {
+         "check": "arg:transfer_funds.from_account",
+         "ok": true,
+         "detail": "expected Cash, got Cash",
+         "field": "account"
+        },
+        {
+         "check": "arg:transfer_funds.to_account",
+         "ok": true,
+         "detail": "expected Bank, got Bank",
+         "field": "account"
+        },
+        {
+         "check": "arg:transfer_funds.amount",
+         "ok": true,
+         "detail": "expected 500, got 500.0",
+         "field": "amount"
+        },
+        {
+         "check": "needs_confirmation",
+         "ok": true,
+         "detail": "expected False, got False"
+        },
+        {
+         "check": "balance:Cash",
+         "ok": true,
+         "detail": "expected 500.0, got 500.0"
+        },
+        {
+         "check": "balance:Bank",
+         "ok": true,
+         "detail": "expected 20500.0, got 20500.0"
+        },
+        {
+         "check": "new_transactions",
+         "ok": true,
+         "detail": "expected 1, got 1"
+        }
+       ]
+      },
+      {
+       "user": "yes",
+       "expect": {
+        "calls": [],
+        "needs_confirmation": false,
+        "ledger_after": {
+         "balances": {
+          "Cash": 500.0,
+          "Bank": 20500.0
+         },
+         "new_transactions": 1
+        },
+        "reply": {
+         "must_include_any": [
+          "nothing is waiting"
+         ],
+         "must_not_include": [
+          "Traceback"
+         ],
+         "max_words": 30
+        }
+       },
+       "observed": {
+        "user": "yes",
+        "reply_text": "Nothing is waiting for an answer. Try /menu.",
+        "path": "other",
+        "needs_confirmation": false,
+        "calls": [],
+        "balances": {
+         "Cash": 500.0,
+         "Bank": 20500.0
+        },
+        "new_transactions": 1,
+        "provider_requests": 0,
+        "provider_errors": 0,
+        "latency_ms": 0.1,
+        "chat_history": [
+         "moved 500 from cash to bank",
+         "⇄ ₹500 · Cash → Bank\nCash ₹500 · Bank ₹20,500"
+        ]
+       },
+       "checks": [
+        {
+         "check": "calls",
+         "ok": true,
+         "detail": "expected tools [], got []"
+        },
+        {
+         "check": "needs_confirmation",
+         "ok": true,
+         "detail": "expected False, got False"
+        },
+        {
+         "check": "balance:Cash",
+         "ok": true,
+         "detail": "expected 500.0, got 500.0"
+        },
+        {
+         "check": "balance:Bank",
+         "ok": true,
+         "detail": "expected 20500.0, got 20500.0"
+        },
+        {
+         "check": "new_transactions",
+         "ok": true,
+         "detail": "expected 1, got 1"
+        },
+        {
+         "check": "reply.must_include_any",
+         "ok": true,
+         "detail": "none of ['nothing is waiting'] in reply"
+        },
+        {
+         "check": "reply.must_not_include",
+         "ok": true,
+         "detail": "reply contains []"
+        },
+        {
+         "check": "reply.max_words",
+         "ok": true,
+         "detail": "8 > 30"
+        }
+       ]
+      }
+     ],
+     "checks": [
+      {
+       "check": "used_ai_unexpectedly",
+       "ok": true,
+       "detail": "0 provider request attempt(s) in a rules case (allowed 0)"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "R-22",
+   "tier": "rules",
+   "group": "question",
+   "priority": 1,
+   "status": "passed",
+   "passed": true,
+   "passed_any": true,
+   "provider_requests": 0,
+   "runs": [
+    {
+     "passed": true,
+     "provider_requests": 0,
+     "turns": [
+      {
+       "user": "did I spend 500 on food?",
+       "expect": {
+        "path": [
+         "offline",
+         "other"
+        ],
+        "calls": [],
+        "tools_forbidden": [
+         "log_expense",
+         "log_income",
+         "transfer_funds"
+        ],
+        "needs_confirmation": false,
+        "ledger_after": {
+         "balances": {
+          "Cash": 1000.0,
+          "Bank": 20000.0
+         },
+         "new_transactions": 0
+        },
+        "reply": {
+         "must_include_any": [
+          "didn't record",
+          "question"
+         ],
+         "must_not_include": [
+          "Traceback"
+         ],
+         "max_words": 80
+        }
+       },
+       "observed": {
+        "user": "did I spend 500 on food?",
+        "reply_text": "That sounds like a question, so I didn't record anything.\nTo answer questions like this I need an AI key: /setkey\nTo log something, say it plainly: Spent 640 on dinner.",
+        "path": "offline",
+        "needs_confirmation": false,
+        "calls": [],
+        "balances": {
+         "Cash": 1000.0,
+         "Bank": 20000.0
+        },
+        "new_transactions": 0,
+        "provider_requests": 0,
+        "provider_errors": 0,
+        "latency_ms": 37.3,
+        "chat_history": [
+         "did I spend 500 on food?",
+         "That sounds like a question, so I didn't record anything.\nTo answer questions like this I need an AI key: /setkey\nTo log something, say it plainly: Spent 640 on dinner."
+        ]
+       },
+       "checks": [
+        {
+         "check": "path",
+         "ok": true,
+         "detail": "expected ['offline', 'other'], got 'offline'"
+        },
+        {
+         "check": "calls",
+         "ok": true,
+         "detail": "expected tools [], got []"
+        },
+        {
+         "check": "tools_forbidden",
+         "ok": true,
+         "detail": "forbidden tools called: []"
+        },
+        {
+         "check": "needs_confirmation",
+         "ok": true,
+         "detail": "expected False, got False"
+        },
+        {
+         "check": "balance:Cash",
+         "ok": true,
+         "detail": "expected 1000.0, got 1000.0"
+        },
+        {
+         "check": "balance:Bank",
+         "ok": true,
+         "detail": "expected 20000.0, got 20000.0"
+        },
+        {
+         "check": "new_transactions",
+         "ok": true,
+         "detail": "expected 0, got 0"
+        },
+        {
+         "check": "reply.must_include_any",
+         "ok": true,
+         "detail": "none of [\"didn't record\", 'question'] in reply"
+        },
+        {
+         "check": "reply.must_not_include",
+         "ok": true,
+         "detail": "reply contains []"
+        },
+        {
+         "check": "reply.max_words",
+         "ok": true,
+         "detail": "31 > 80"
+        }
+       ]
+      }
+     ],
+     "checks": [
+      {
+       "check": "used_ai_unexpectedly",
+       "ok": true,
+       "detail": "0 provider request attempt(s) in a rules case (allowed 0)"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "R-23",
+   "tier": "rules",
+   "group": "question",
+   "priority": 1,
+   "status": "passed",
+   "passed": true,
+   "passed_any": true,
+   "provider_requests": 0,
+   "runs": [
+    {
+     "passed": true,
+     "provider_requests": 0,
+     "turns": [
+      {
+       "user": "is 640 too much for dinner",
+       "expect": {
+        "path": [
+         "offline",
+         "other"
+        ],
+        "calls": [],
+        "tools_forbidden": [
+         "log_expense",
+         "log_income",
+         "transfer_funds"
+        ],
+        "needs_confirmation": false,
+        "ledger_after": {
+         "balances": {
+          "Cash": 1000.0,
+          "Bank": 20000.0
+         },
+         "new_transactions": 0
+        },
+        "reply": {
+         "must_include_any": [
+          "didn't record",
+          "question"
+         ],
+         "must_not_include": [
+          "Traceback"
+         ],
+         "max_words": 80
+        }
+       },
+       "observed": {
+        "user": "is 640 too much for dinner",
+        "reply_text": "That sounds like a question, so I didn't record anything.\nTo answer questions like this I need an AI key: /setkey\nTo log something, say it plainly: Spent 640 on dinner.",
+        "path": "offline",
+        "needs_confirmation": false,
+        "calls": [],
+        "balances": {
+         "Cash": 1000.0,
+         "Bank": 20000.0
+        },
+        "new_transactions": 0,
+        "provider_requests": 0,
+        "provider_errors": 0,
+        "latency_ms": 28.9,
+        "chat_history": [
+         "is 640 too much for dinner",
+         "That sounds like a question, so I didn't record anything.\nTo answer questions like this I need an AI key: /setkey\nTo log something, say it plainly: Spent 640 on dinner."
+        ]
+       },
+       "checks": [
+        {
+         "check": "path",
+         "ok": true,
+         "detail": "expected ['offline', 'other'], got 'offline'"
+        },
+        {
+         "check": "calls",
+         "ok": true,
+         "detail": "expected tools [], got []"
+        },
+        {
+         "check": "tools_forbidden",
+         "ok": true,
+         "detail": "forbidden tools called: []"
+        },
+        {
+         "check": "needs_confirmation",
+         "ok": true,
+         "detail": "expected False, got False"
+        },
+        {
+         "check": "balance:Cash",
+         "ok": true,
+         "detail": "expected 1000.0, got 1000.0"
+        },
+        {
+         "check": "balance:Bank",
+         "ok": true,
+         "detail": "expected 20000.0, got 20000.0"
+        },
+        {
+         "check": "new_transactions",
+         "ok": true,
+         "detail": "expected 0, got 0"
+        },
+        {
+         "check": "reply.must_include_any",
+         "ok": true,
+         "detail": "none of [\"didn't record\", 'question'] in reply"
+        },
+        {
+         "check": "reply.must_not_include",
+         "ok": true,
+         "detail": "reply contains []"
+        },
+        {
+         "check": "reply.max_words",
+         "ok": true,
+         "detail": "31 > 80"
+        }
+       ]
+      }
+     ],
+     "checks": [
+      {
+       "check": "used_ai_unexpectedly",
+       "ok": true,
+       "detail": "0 provider request attempt(s) in a rules case (allowed 0)"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "R-24",
+   "tier": "rules",
+   "group": "question",
+   "priority": 1,
+   "status": "passed",
+   "passed": true,
+   "passed_any": true,
+   "provider_requests": 0,
+   "runs": [
+    {
+     "passed": true,
+     "provider_requests": 0,
+     "turns": [
+      {
+       "user": "should i buy a 2000 jacket",
+       "expect": {
+        "path": [
+         "offline",
+         "orchestrator",
+         "other"
+        ],
+        "calls": [],
+        "tools_forbidden": [
+         "log_expense",
+         "log_income",
+         "transfer_funds"
+        ],
+        "needs_confirmation": false,
+        "ledger_after": {
+         "balances": {
+          "Cash": 1000.0,
+          "Bank": 20000.0
+         },
+         "new_transactions": 0
+        },
+        "reply": {
+         "must_include_any": [
+          "didn't record",
+          "question"
+         ],
+         "must_not_include": [
+          "Traceback"
+         ],
+         "max_words": 80
+        }
+       },
+       "observed": {
+        "user": "should i buy a 2000 jacket",
+        "reply_text": "That sounds like a question, so I didn't record anything.\nTo answer questions like this I need an AI key: /setkey\nTo log something, say it plainly: Spent 640 on dinner.",
+        "path": "offline",
+        "needs_confirmation": false,
+        "calls": [],
+        "balances": {
+         "Cash": 1000.0,
+         "Bank": 20000.0
+        },
+        "new_transactions": 0,
+        "provider_requests": 0,
+        "provider_errors": 0,
+        "latency_ms": 39.3,
+        "chat_history": [
+         "should i buy a 2000 jacket",
+         "That sounds like a question, so I didn't record anything.\nTo answer questions like this I need an AI key: /setkey\nTo log something, say it plainly: Spent 640 on dinner."
+        ]
+       },
+       "checks": [
+        {
+         "check": "path",
+         "ok": true,
+         "detail": "expected ['offline', 'orchestrator', 'other'], got 'offline'"
+        },
+        {
+         "check": "calls",
+         "ok": true,
+         "detail": "expected tools [], got []"
+        },
+        {
+         "check": "tools_forbidden",
+         "ok": true,
+         "detail": "forbidden tools called: []"
+        },
+        {
+         "check": "needs_confirmation",
+         "ok": true,
+         "detail": "expected False, got False"
+        },
+        {
+         "check": "balance:Cash",
+         "ok": true,
+         "detail": "expected 1000.0, got 1000.0"
+        },
+        {
+         "check": "balance:Bank",
+         "ok": true,
+         "detail": "expected 20000.0, got 20000.0"
+        },
+        {
+         "check": "new_transactions",
+         "ok": true,
+         "detail": "expected 0, got 0"
+        },
+        {
+         "check": "reply.must_include_any",
+         "ok": true,
+         "detail": "none of [\"didn't record\", 'question'] in reply"
+        },
+        {
+         "check": "reply.must_not_include",
+         "ok": true,
+         "detail": "reply contains []"
+        },
+        {
+         "check": "reply.max_words",
+         "ok": true,
+         "detail": "31 > 80"
+        }
+       ]
+      }
+     ],
+     "checks": [
+      {
+       "check": "used_ai_unexpectedly",
+       "ok": true,
+       "detail": "0 provider request attempt(s) in a rules case (allowed 0)"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "R-25",
+   "tier": "rules",
+   "group": "question",
+   "priority": 1,
+   "status": "passed",
+   "passed": true,
+   "passed_any": true,
+   "provider_requests": 0,
+   "runs": [
+    {
+     "passed": true,
+     "provider_requests": 0,
+     "turns": [
+      {
+       "user": "how much did i spend on food this month",
+       "expect": {
+        "path": "screen",
+        "tools_forbidden": [
+         "log_expense",
+         "log_income",
+         "transfer_funds"
+        ],
+        "needs_confirmation": false,
+        "ledger_after": {
+         "balances": {
+          "Cash": 1000.0,
+          "Bank": 20000.0
+         },
+         "new_transactions": 0
+        },
+        "reply": {
+         "must_not_include": [
+          "Traceback"
+         ],
+         "max_words": 80
+        }
+       },
+       "observed": {
+        "user": "how much did i spend on food this month",
+        "reply_text": "📊 This month\nNothing logged in this period yet.\nTry: Spent 450 on dinner via Bank\n\nI couldn't match “food” to a category, account or merchant.",
+        "path": "screen",
+        "needs_confirmation": false,
+        "calls": [],
+        "balances": {
+         "Cash": 1000.0,
+         "Bank": 20000.0
+        },
+        "new_transactions": 0,
+        "provider_requests": 0,
+        "provider_errors": 0,
+        "latency_ms": 47.0,
+        "chat_history": []
+       },
+       "checks": [
+        {
+         "check": "path",
+         "ok": true,
+         "detail": "expected 'screen', got 'screen'"
+        },
+        {
+         "check": "tools_forbidden",
+         "ok": true,
+         "detail": "forbidden tools called: []"
+        },
+        {
+         "check": "needs_confirmation",
+         "ok": true,
+         "detail": "expected False, got False"
+        },
+        {
+         "check": "balance:Cash",
+         "ok": true,
+         "detail": "expected 1000.0, got 1000.0"
+        },
+        {
+         "check": "balance:Bank",
+         "ok": true,
+         "detail": "expected 20000.0, got 20000.0"
+        },
+        {
+         "check": "new_transactions",
+         "ok": true,
+         "detail": "expected 0, got 0"
+        },
+        {
+         "check": "reply.must_not_include",
+         "ok": true,
+         "detail": "reply contains []"
+        },
+        {
+         "check": "reply.max_words",
+         "ok": true,
+         "detail": "26 > 80"
+        }
+       ]
+      }
+     ],
+     "checks": [
+      {
+       "check": "used_ai_unexpectedly",
+       "ok": true,
+       "detail": "0 provider request attempt(s) in a rules case (allowed 0)"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "R-26",
+   "tier": "rules",
+   "group": "messy",
+   "priority": 1,
+   "status": "passed",
+   "passed": true,
+   "passed_any": true,
+   "provider_requests": 0,
+   "runs": [
+    {
+     "passed": true,
+     "provider_requests": 0,
+     "turns": [
+      {
+       "user": "chai pe 50 kharcha",
+       "expect": {
+        "path": "rules",
+        "calls": [
+         {
+          "tool": "log_expense",
+          "args": {
+           "amount": 50,
+           "category": "Food & Dining",
+           "account_name": "Cash"
+          }
+         }
+        ],
+        "tools_forbidden": [
+         "transfer_funds"
+        ],
+        "needs_confirmation": false,
+        "ledger_after": {
+         "balances": {
+          "Cash": 950.0,
+          "Bank": 20000.0
+         },
+         "new_transactions": 1
+        },
+        "reply": {
+         "must_include_any": [
+          "50"
+         ],
+         "must_not_include": [
+          "Traceback"
+         ],
+         "max_words": 60
+        }
+       },
+       "observed": {
+        "user": "chai pe 50 kharcha",
+        "reply_text": "💸 −₹50 · Food & Dining\nCash ₹950",
+        "path": "rules",
+        "needs_confirmation": false,
+        "calls": [
+         {
+          "tool": "log_expense",
+          "args": {
+           "amount": 50.0,
+           "category": "Food & Dining",
+           "account_name": "Cash",
+           "description": "chai pe 50 kharcha",
+           "user_id": "eval-R-26-1-b8a8a3"
+          },
+          "result": {
+           "status": "success",
+           "transaction_id": "9f920762-8db5-4617-b78d-c4db52d275a0",
+           "amount": 50.0,
+           "type": "expense",
+           "account": "Cash",
+           "new_balance": 950.0,
+           "category": "Food & Dining",
+           "merchant": "N/A"
+          },
+          "error": null
+         }
+        ],
+        "balances": {
+         "Cash": 950.0,
+         "Bank": 20000.0
+        },
+        "new_transactions": 1,
+        "provider_requests": 0,
+        "provider_errors": 0,
+        "latency_ms": 62.0,
+        "chat_history": [
+         "chai pe 50 kharcha",
+         "💸 −₹50 · Food & Dining\nCash ₹950"
+        ]
+       },
+       "checks": [
+        {
+         "check": "path",
+         "ok": true,
+         "detail": "expected 'rules', got 'rules'"
+        },
+        {
+         "check": "calls",
+         "ok": true,
+         "detail": "expected tools ['log_expense'], got ['log_expense']"
+        },
+        {
+         "check": "arg:log_expense.amount",
+         "ok": true,
+         "detail": "expected 50, got 50.0",
+         "field": "amount"
+        },
+        {
+         "check": "arg:log_expense.category",
+         "ok": true,
+         "detail": "expected Food & Dining, got Food & Dining",
+         "field": "category"
+        },
+        {
+         "check": "arg:log_expense.account_name",
+         "ok": true,
+         "detail": "expected Cash, got Cash",
+         "field": "account"
+        },
+        {
+         "check": "tools_forbidden",
+         "ok": true,
+         "detail": "forbidden tools called: []"
+        },
+        {
+         "check": "needs_confirmation",
+         "ok": true,
+         "detail": "expected False, got False"
+        },
+        {
+         "check": "balance:Cash",
+         "ok": true,
+         "detail": "expected 950.0, got 950.0"
+        },
+        {
+         "check": "balance:Bank",
+         "ok": true,
+         "detail": "expected 20000.0, got 20000.0"
+        },
+        {
+         "check": "new_transactions",
+         "ok": true,
+         "detail": "expected 1, got 1"
+        },
+        {
+         "check": "reply.must_include_any",
+         "ok": true,
+         "detail": "none of ['50'] in reply"
+        },
+        {
+         "check": "reply.must_not_include",
+         "ok": true,
+         "detail": "reply contains []"
+        },
+        {
+         "check": "reply.max_words",
+         "ok": true,
+         "detail": "8 > 60"
+        }
+       ]
+      }
+     ],
+     "checks": [
+      {
+       "check": "used_ai_unexpectedly",
+       "ok": true,
+       "detail": "0 provider request attempt(s) in a rules case (allowed 0)"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "R-27",
+   "tier": "rules",
+   "group": "messy",
+   "priority": 1,
+   "status": "failed",
+   "passed": false,
+   "passed_any": false,
+   "provider_requests": 0,
+   "runs": [
+    {
+     "passed": false,
+     "provider_requests": 0,
+     "turns": [
+      {
+       "user": "spnt 120 on lnch",
+       "expect": {
+        "path": "rules",
+        "calls": [
+         {
+          "tool": "log_expense",
+          "args": {
+           "amount": 120,
+           "category": [
+            "Food & Dining"
+           ],
+           "account_name": "Cash"
+          }
+         }
+        ],
+        "tools_forbidden": [
+         "transfer_funds"
+        ],
+        "needs_confirmation": false,
+        "ledger_after": {
+         "balances": {
+          "Cash": 880.0,
+          "Bank": 20000.0
+         },
+         "new_transactions": 1
+        },
+        "reply": {
+         "must_include_any": [
+          "120"
+         ],
+         "must_not_include": [
+          "Traceback"
+         ],
+         "max_words": 60
+        }
+       },
+       "observed": {
+        "user": "spnt 120 on lnch",
+        "reply_text": "💸 −₹120 · Lnch\nCash ₹880",
+        "path": "rules",
+        "needs_confirmation": false,
+        "calls": [
+         {
+          "tool": "log_expense",
+          "args": {
+           "amount": 120.0,
+           "category": "Lnch",
+           "account_name": "Cash",
+           "description": "spnt 120 on lnch",
+           "user_id": "eval-R-27-1-6d2375"
+          },
+          "result": {
+           "status": "success",
+           "transaction_id": "423ae1ff-8f6f-4c9e-a6fb-5ab230f66d96",
+           "amount": 120.0,
+           "type": "expense",
+           "account": "Cash",
+           "new_balance": 880.0,
+           "category": "Lnch",
+           "merchant": "N/A"
+          },
+          "error": null
+         }
+        ],
+        "balances": {
+         "Cash": 880.0,
+         "Bank": 20000.0
+        },
+        "new_transactions": 1,
+        "provider_requests": 0,
+        "provider_errors": 0,
+        "latency_ms": 54.3,
+        "chat_history": [
+         "spnt 120 on lnch",
+         "💸 −₹120 · Lnch\nCash ₹880"
+        ]
+       },
+       "checks": [
+        {
+         "check": "path",
+         "ok": true,
+         "detail": "expected 'rules', got 'rules'"
+        },
+        {
+         "check": "calls",
+         "ok": true,
+         "detail": "expected tools ['log_expense'], got ['log_expense']"
+        },
+        {
+         "check": "arg:log_expense.amount",
+         "ok": true,
+         "detail": "expected 120, got 120.0",
+         "field": "amount"
+        },
+        {
+         "check": "arg:log_expense.category",
+         "ok": false,
+         "detail": "expected [\"Food & Dining\"], got Lnch",
+         "field": "category"
+        },
+        {
+         "check": "arg:log_expense.account_name",
+         "ok": true,
+         "detail": "expected Cash, got Cash",
+         "field": "account"
+        },
+        {
+         "check": "tools_forbidden",
+         "ok": true,
+         "detail": "forbidden tools called: []"
+        },
+        {
+         "check": "needs_confirmation",
+         "ok": true,
+         "detail": "expected False, got False"
+        },
+        {
+         "check": "balance:Cash",
+         "ok": true,
+         "detail": "expected 880.0, got 880.0"
+        },
+        {
+         "check": "balance:Bank",
+         "ok": true,
+         "detail": "expected 20000.0, got 20000.0"
+        },
+        {
+         "check": "new_transactions",
+         "ok": true,
+         "detail": "expected 1, got 1"
+        },
+        {
+         "check": "reply.must_include_any",
+         "ok": true,
+         "detail": "none of ['120'] in reply"
+        },
+        {
+         "check": "reply.must_not_include",
+         "ok": true,
+         "detail": "reply contains []"
+        },
+        {
+         "check": "reply.max_words",
+         "ok": true,
+         "detail": "6 > 60"
+        }
+       ]
+      }
+     ],
+     "checks": [
+      {
+       "check": "used_ai_unexpectedly",
+       "ok": true,
+       "detail": "0 provider request attempt(s) in a rules case (allowed 0)"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "R-28",
+   "tier": "rules",
+   "group": "messy",
+   "priority": 1,
+   "status": "passed",
+   "passed": true,
+   "passed_any": true,
+   "provider_requests": 0,
+   "runs": [
+    {
+     "passed": true,
+     "provider_requests": 0,
+     "turns": [
+      {
+       "user": "Rs. 300 petrol",
+       "expect": {
+        "path": "rules",
+        "calls": [
+         {
+          "tool": "log_expense",
+          "args": {
+           "amount": 300,
+           "category": "Transport",
+           "account_name": "Cash"
+          }
+         }
+        ],
+        "tools_forbidden": [
+         "transfer_funds"
+        ],
+        "needs_confirmation": false,
+        "ledger_after": {
+         "balances": {
+          "Cash": 700.0,
+          "Bank": 20000.0
+         },
+         "new_transactions": 1
+        },
+        "reply": {
+         "must_include_any": [
+          "300"
+         ],
+         "must_not_include": [
+          "Traceback"
+         ],
+         "max_words": 60
+        }
+       },
+       "observed": {
+        "user": "Rs. 300 petrol",
+        "reply_text": "💸 −₹300 · Transport\nCash ₹700",
+        "path": "rules",
+        "needs_confirmation": false,
+        "calls": [
+         {
+          "tool": "log_expense",
+          "args": {
+           "amount": 300.0,
+           "category": "Transport",
+           "account_name": "Cash",
+           "description": "Rs. 300 petrol",
+           "user_id": "eval-R-28-1-6be72f"
+          },
+          "result": {
+           "status": "success",
+           "transaction_id": "732d2915-4f08-4fa7-a50e-c117b6cf4a45",
+           "amount": 300.0,
+           "type": "expense",
+           "account": "Cash",
+           "new_balance": 700.0,
+           "category": "Transport",
+           "merchant": "N/A"
+          },
+          "error": null
+         }
+        ],
+        "balances": {
+         "Cash": 700.0,
+         "Bank": 20000.0
+        },
+        "new_transactions": 1,
+        "provider_requests": 0,
+        "provider_errors": 0,
+        "latency_ms": 48.9,
+        "chat_history": [
+         "Rs. 300 petrol",
+         "💸 −₹300 · Transport\nCash ₹700"
+        ]
+       },
+       "checks": [
+        {
+         "check": "path",
+         "ok": true,
+         "detail": "expected 'rules', got 'rules'"
+        },
+        {
+         "check": "calls",
+         "ok": true,
+         "detail": "expected tools ['log_expense'], got ['log_expense']"
+        },
+        {
+         "check": "arg:log_expense.amount",
+         "ok": true,
+         "detail": "expected 300, got 300.0",
+         "field": "amount"
+        },
+        {
+         "check": "arg:log_expense.category",
+         "ok": true,
+         "detail": "expected Transport, got Transport",
+         "field": "category"
+        },
+        {
+         "check": "arg:log_expense.account_name",
+         "ok": true,
+         "detail": "expected Cash, got Cash",
+         "field": "account"
+        },
+        {
+         "check": "tools_forbidden",
+         "ok": true,
+         "detail": "forbidden tools called: []"
+        },
+        {
+         "check": "needs_confirmation",
+         "ok": true,
+         "detail": "expected False, got False"
+        },
+        {
+         "check": "balance:Cash",
+         "ok": true,
+         "detail": "expected 700.0, got 700.0"
+        },
+        {
+         "check": "balance:Bank",
+         "ok": true,
+         "detail": "expected 20000.0, got 20000.0"
+        },
+        {
+         "check": "new_transactions",
+         "ok": true,
+         "detail": "expected 1, got 1"
+        },
+        {
+         "check": "reply.must_include_any",
+         "ok": true,
+         "detail": "none of ['300'] in reply"
+        },
+        {
+         "check": "reply.must_not_include",
+         "ok": true,
+         "detail": "reply contains []"
+        },
+        {
+         "check": "reply.max_words",
+         "ok": true,
+         "detail": "6 > 60"
+        }
+       ]
+      }
+     ],
+     "checks": [
+      {
+       "check": "used_ai_unexpectedly",
+       "ok": true,
+       "detail": "0 provider request attempt(s) in a rules case (allowed 0)"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "R-29",
+   "tier": "rules",
+   "group": "messy",
+   "priority": 1,
+   "status": "passed",
+   "passed": true,
+   "passed_any": true,
+   "provider_requests": 0,
+   "runs": [
+    {
+     "passed": true,
+     "provider_requests": 0,
+     "turns": [
+      {
+       "user": "₹1,250 electricity bill",
+       "expect": {
+        "path": "rules",
+        "calls": [
+         {
+          "tool": "log_expense",
+          "args": {
+           "amount": 1250,
+           "category": "Bills & Utilities",
+           "account_name": "Cash"
+          }
+         }
+        ],
+        "tools_forbidden": [
+         "transfer_funds"
+        ],
+        "needs_confirmation": false,
+        "ledger_after": {
+         "balances": {
+          "Cash": -250.0,
+          "Bank": 20000.0
+         },
+         "new_transactions": 1
+        },
+        "reply": {
+         "must_include_any": [
+          "1,250",
+          "1250"
+         ],
+         "must_not_include": [
+          "Traceback"
+         ],
+         "max_words": 60
+        }
+       },
+       "observed": {
+        "user": "₹1,250 electricity bill",
+        "reply_text": "💸 −₹1,250 · Bills & Utilities\nCash -₹250",
+        "path": "rules",
+        "needs_confirmation": false,
+        "calls": [
+         {
+          "tool": "log_expense",
+          "args": {
+           "amount": 1250.0,
+           "category": "Bills & Utilities",
+           "account_name": "Cash",
+           "description": "₹1,250 electricity bill",
+           "user_id": "eval-R-29-1-9feb72"
+          },
+          "result": {
+           "status": "success",
+           "transaction_id": "327d53e2-8c54-407e-b650-20efa80f93a4",
+           "amount": 1250.0,
+           "type": "expense",
+           "account": "Cash",
+           "new_balance": -250.0,
+           "category": "Bills & Utilities",
+           "merchant": "N/A"
+          },
+          "error": null
+         }
+        ],
+        "balances": {
+         "Cash": -250.0,
+         "Bank": 20000.0
+        },
+        "new_transactions": 1,
+        "provider_requests": 0,
+        "provider_errors": 0,
+        "latency_ms": 37.7,
+        "chat_history": [
+         "₹1,250 electricity bill",
+         "💸 −₹1,250 · Bills & Utilities\nCash -₹250"
+        ]
+       },
+       "checks": [
+        {
+         "check": "path",
+         "ok": true,
+         "detail": "expected 'rules', got 'rules'"
+        },
+        {
+         "check": "calls",
+         "ok": true,
+         "detail": "expected tools ['log_expense'], got ['log_expense']"
+        },
+        {
+         "check": "arg:log_expense.amount",
+         "ok": true,
+         "detail": "expected 1250, got 1250.0",
+         "field": "amount"
+        },
+        {
+         "check": "arg:log_expense.category",
+         "ok": true,
+         "detail": "expected Bills & Utilities, got Bills & Utilities",
+         "field": "category"
+        },
+        {
+         "check": "arg:log_expense.account_name",
+         "ok": true,
+         "detail": "expected Cash, got Cash",
+         "field": "account"
+        },
+        {
+         "check": "tools_forbidden",
+         "ok": true,
+         "detail": "forbidden tools called: []"
+        },
+        {
+         "check": "needs_confirmation",
+         "ok": true,
+         "detail": "expected False, got False"
+        },
+        {
+         "check": "balance:Cash",
+         "ok": true,
+         "detail": "expected -250.0, got -250.0"
+        },
+        {
+         "check": "balance:Bank",
+         "ok": true,
+         "detail": "expected 20000.0, got 20000.0"
+        },
+        {
+         "check": "new_transactions",
+         "ok": true,
+         "detail": "expected 1, got 1"
+        },
+        {
+         "check": "reply.must_include_any",
+         "ok": true,
+         "detail": "none of ['1,250', '1250'] in reply"
+        },
+        {
+         "check": "reply.must_not_include",
+         "ok": true,
+         "detail": "reply contains []"
+        },
+        {
+         "check": "reply.max_words",
+         "ok": true,
+         "detail": "8 > 60"
+        }
+       ]
+      }
+     ],
+     "checks": [
+      {
+       "check": "used_ai_unexpectedly",
+       "ok": true,
+       "detail": "0 provider request attempt(s) in a rules case (allowed 0)"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "R-30",
+   "tier": "rules",
+   "group": "command_safety",
+   "priority": 1,
+   "status": "passed",
+   "passed": true,
+   "passed_any": true,
+   "provider_requests": 1,
+   "runs": [
+    {
+     "passed": true,
+     "provider_requests": 1,
+     "turns": [
+      {
+       "user": "here is my gemini key [KEY]",
+       "expect": {
+        "tools_forbidden": [
+         "log_expense",
+         "log_income",
+         "transfer_funds"
+        ],
+        "needs_confirmation": false,
+        "ledger_after": {
+         "balances": {
+          "Cash": 1000.0,
+          "Bank": 20000.0
+         },
+         "new_transactions": 0
+        },
+        "reply": {
+         "must_not_include": [
+          "Traceback",
+          "[KEY]"
+         ],
+         "max_words": 120
+        },
+        "chat_history_must_not_include": [
+         "[KEY]"
+        ]
+       },
+       "observed": {
+        "user": "here is my gemini key [KEY]",
+        "reply_text": "❌ Gemini `AIza…defg`: the provider rejected this key. **Not saved.**\n\nNothing was saved. Double-check the key (full key, correct provider) and try again.\n\n🧹 I removed your message so the key doesn't stay in the chat.",
+        "path": "other",
+        "needs_confirmation": false,
+        "calls": [],
+        "balances": {
+         "Cash": 1000.0,
+         "Bank": 20000.0
+        },
+        "new_transactions": 0,
+        "provider_requests": 1,
+        "provider_errors": 0,
+        "latency_ms": 17.1,
+        "chat_history": [
+         "here is my gemini key AIza…defg",
+         "❌ Gemini `AIza…defg`: the provider rejected this key. **Not saved.**\n\nNothing was saved. Double-check the key (full key, correct provider) and try again.\n\n🧹 I removed your message so the key doesn't stay in the chat."
+        ]
+       },
+       "checks": [
+        {
+         "check": "tools_forbidden",
+         "ok": true,
+         "detail": "forbidden tools called: []"
+        },
+        {
+         "check": "needs_confirmation",
+         "ok": true,
+         "detail": "expected False, got False"
+        },
+        {
+         "check": "balance:Cash",
+         "ok": true,
+         "detail": "expected 1000.0, got 1000.0"
+        },
+        {
+         "check": "balance:Bank",
+         "ok": true,
+         "detail": "expected 20000.0, got 20000.0"
+        },
+        {
+         "check": "new_transactions",
+         "ok": true,
+         "detail": "expected 0, got 0"
+        },
+        {
+         "check": "reply.must_not_include",
+         "ok": true,
+         "detail": "reply contains []"
+        },
+        {
+         "check": "reply.max_words",
+         "ok": true,
+         "detail": "36 > 120"
+        },
+        {
+         "check": "chat_history_must_not_include",
+         "ok": true,
+         "detail": "stored in chat history: []"
+        }
+       ]
+      }
+     ],
+     "checks": [
+      {
+       "check": "used_ai_unexpectedly",
+       "ok": true,
+       "detail": "1 provider request attempt(s) in a rules case (allowed 1)"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "R-31",
+   "tier": "rules",
+   "group": "command_safety",
+   "priority": 1,
+   "status": "passed",
+   "passed": true,
+   "passed_any": true,
+   "provider_requests": 0,
+   "runs": [
+    {
+     "passed": true,
+     "provider_requests": 0,
+     "turns": [
+      {
+       "user": "/balance",
+       "expect": {
+        "path": "command",
+        "calls": [],
+        "needs_confirmation": false,
+        "ledger_after": {
+         "balances": {
+          "Cash": 1200.0,
+          "Bank": 20000.0
+         },
+         "new_transactions": 0
+        },
+        "reply": {
+         "must_include_all": [
+          "Cash",
+          "Bank",
+          "1,200",
+          "20,000",
+          "21,200"
+         ],
+         "must_not_include": [
+          "Traceback"
+         ],
+         "max_words": 40
+        }
+       },
+       "observed": {
+        "user": "/balance",
+        "reply_text": "💰 Total  ₹21,200\n\n🏦 Bank  ₹20,000\n💵 Cash  ₹1,200",
+        "path": "command",
+        "needs_confirmation": false,
+        "calls": [],
+        "balances": {
+         "Cash": 1200.0,
+         "Bank": 20000.0
+        },
+        "new_transactions": 0,
+        "provider_requests": 0,
+        "provider_errors": 0,
+        "latency_ms": 3.1,
+        "chat_history": []
+       },
+       "checks": [
+        {
+         "check": "path",
+         "ok": true,
+         "detail": "expected 'command', got 'command'"
+        },
+        {
+         "check": "calls",
+         "ok": true,
+         "detail": "expected tools [], got []"
+        },
+        {
+         "check": "needs_confirmation",
+         "ok": true,
+         "detail": "expected False, got False"
+        },
+        {
+         "check": "balance:Cash",
+         "ok": true,
+         "detail": "expected 1200.0, got 1200.0"
+        },
+        {
+         "check": "balance:Bank",
+         "ok": true,
+         "detail": "expected 20000.0, got 20000.0"
+        },
+        {
+         "check": "new_transactions",
+         "ok": true,
+         "detail": "expected 0, got 0"
+        },
+        {
+         "check": "reply.must_include_all",
+         "ok": true,
+         "detail": "missing []"
+        },
+        {
+         "check": "reply.must_not_include",
+         "ok": true,
+         "detail": "reply contains []"
+        },
+        {
+         "check": "reply.max_words",
+         "ok": true,
+         "detail": "9 > 40"
+        }
+       ]
+      }
+     ],
+     "checks": [
+      {
+       "check": "used_ai_unexpectedly",
+       "ok": true,
+       "detail": "0 provider request attempt(s) in a rules case (allowed 0)"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "R-32",
+   "tier": "rules",
+   "group": "command_safety",
+   "priority": 1,
+   "status": "passed",
+   "passed": true,
+   "passed_any": true,
+   "provider_requests": 0,
+   "runs": [
+    {
+     "passed": true,
+     "provider_requests": 0,
+     "turns": [
+      {
+       "user": "/undo",
+       "expect": {
+        "path": "command",
+        "needs_confirmation": false,
+        "tools_forbidden": [
+         "log_expense",
+         "log_income",
+         "transfer_funds"
+        ],
+        "ledger_after": {
+         "balances": {
+          "Cash": 1000,
+          "Bank": 20000
+         }
+        },
+        "reply": {
+         "must_include_any": [
+          "undid",
+          "undone",
+          "removed"
+         ],
+         "must_not_include": [
+          "Traceback"
+         ],
+         "max_words": 40
+        }
+       },
+       "observed": {
+        "user": "/undo",
+        "reply_text": "↩️ Undone: expense ₹250\nCash is back to ₹1,000",
+        "path": "command",
+        "needs_confirmation": false,
+        "calls": [],
+        "balances": {
+         "Cash": 1000.0,
+         "Bank": 20000.0
+        },
+        "new_transactions": -1,
+        "provider_requests": 0,
+        "provider_errors": 0,
+        "latency_ms": 16.9,
+        "chat_history": []
+       },
+       "checks": [
+        {
+         "check": "path",
+         "ok": true,
+         "detail": "expected 'command', got 'command'"
+        },
+        {
+         "check": "tools_forbidden",
+         "ok": true,
+         "detail": "forbidden tools called: []"
+        },
+        {
+         "check": "needs_confirmation",
+         "ok": true,
+         "detail": "expected False, got False"
+        },
+        {
+         "check": "balance:Cash",
+         "ok": true,
+         "detail": "expected 1000, got 1000.0"
+        },
+        {
+         "check": "balance:Bank",
+         "ok": true,
+         "detail": "expected 20000, got 20000.0"
+        },
+        {
+         "check": "reply.must_include_any",
+         "ok": true,
+         "detail": "none of ['undid', 'undone', 'removed'] in reply"
+        },
+        {
+         "check": "reply.must_not_include",
+         "ok": true,
+         "detail": "reply contains []"
+        },
+        {
+         "check": "reply.max_words",
+         "ok": true,
+         "detail": "9 > 40"
+        }
+       ]
+      }
+     ],
+     "checks": [
+      {
+       "check": "used_ai_unexpectedly",
+       "ok": true,
+       "detail": "0 provider request attempt(s) in a rules case (allowed 0)"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "R-33",
+   "tier": "rules",
+   "group": "command_safety",
+   "priority": 1,
+   "status": "passed",
+   "passed": true,
+   "passed_any": true,
+   "provider_requests": 0,
+   "runs": [
+    {
+     "passed": true,
+     "provider_requests": 0,
+     "turns": [
+      {
+       "user": "asdf qwerty",
+       "expect": {
+        "calls": [],
+        "needs_confirmation": false,
+        "ledger_after": {
+         "balances": {
+          "Cash": 1000.0,
+          "Bank": 20000.0
+         },
+         "new_transactions": 0
+        },
+        "reply": {
+         "must_not_include": [
+          "Traceback"
+         ],
+         "max_words": 120
+        }
+       },
+       "observed": {
+        "user": "asdf qwerty",
+        "reply_text": "I log what you spend and earn.\nTry: Spent 450 on dinner, or Received 50000 salary.\nThen /stats, /balance, /history. More: /help\n\n💡 For free-form questions and advice, add your own AI key: /setkey\n(a free Gemini key takes a minute: aistudio.google.com/apikey)",
+        "path": "offline",
+        "needs_confirmation": false,
+        "calls": [],
+        "balances": {
+         "Cash": 1000.0,
+         "Bank": 20000.0
+        },
+        "new_transactions": 0,
+        "provider_requests": 0,
+        "provider_errors": 0,
+        "latency_ms": 39.3,
+        "chat_history": [
+         "asdf qwerty",
+         "I log what you spend and earn.\nTry: Spent 450 on dinner, or Received 50000 salary.\nThen /stats, /balance, /history. More: /help\n\n💡 For free-form questions and advice, add your own AI key: /setkey\n(a free Gemini key takes a minute: aistudio.google.com/apikey)"
+        ]
+       },
+       "checks": [
+        {
+         "check": "calls",
+         "ok": true,
+         "detail": "expected tools [], got []"
+        },
+        {
+         "check": "needs_confirmation",
+         "ok": true,
+         "detail": "expected False, got False"
+        },
+        {
+         "check": "balance:Cash",
+         "ok": true,
+         "detail": "expected 1000.0, got 1000.0"
+        },
+        {
+         "check": "balance:Bank",
+         "ok": true,
+         "detail": "expected 20000.0, got 20000.0"
+        },
+        {
+         "check": "new_transactions",
+         "ok": true,
+         "detail": "expected 0, got 0"
+        },
+        {
+         "check": "reply.must_not_include",
+         "ok": true,
+         "detail": "reply contains []"
+        },
+        {
+         "check": "reply.max_words",
+         "ok": true,
+         "detail": "42 > 120"
+        }
+       ]
+      }
+     ],
+     "checks": [
+      {
+       "check": "used_ai_unexpectedly",
+       "ok": true,
+       "detail": "0 provider request attempt(s) in a rules case (allowed 0)"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "R-34",
+   "tier": "rules",
+   "group": "command_safety",
+   "priority": 1,
+   "status": "passed",
+   "passed": true,
+   "passed_any": true,
+   "provider_requests": 0,
+   "runs": [
+    {
+     "passed": true,
+     "provider_requests": 0,
+     "turns": [
+      {
+       "user": "yes",
+       "expect": {
+        "calls": [],
+        "needs_confirmation": false,
+        "ledger_after": {
+         "balances": {
+          "Cash": 1000.0,
+          "Bank": 20000.0
+         },
+         "new_transactions": 0
+        },
+        "reply": {
+         "must_include_any": [
+          "nothing is waiting"
+         ],
+         "must_not_include": [
+          "Traceback"
+         ],
+         "max_words": 30
+        }
+       },
+       "observed": {
+        "user": "yes",
+        "reply_text": "Nothing is waiting for an answer. Try /menu.",
+        "path": "other",
+        "needs_confirmation": false,
+        "calls": [],
+        "balances": {
+         "Cash": 1000.0,
+         "Bank": 20000.0
+        },
+        "new_transactions": 0,
+        "provider_requests": 0,
+        "provider_errors": 0,
+        "latency_ms": 0.1,
+        "chat_history": []
+       },
+       "checks": [
+        {
+         "check": "calls",
+         "ok": true,
+         "detail": "expected tools [], got []"
+        },
+        {
+         "check": "needs_confirmation",
+         "ok": true,
+         "detail": "expected False, got False"
+        },
+        {
+         "check": "balance:Cash",
+         "ok": true,
+         "detail": "expected 1000.0, got 1000.0"
+        },
+        {
+         "check": "balance:Bank",
+         "ok": true,
+         "detail": "expected 20000.0, got 20000.0"
+        },
+        {
+         "check": "new_transactions",
+         "ok": true,
+         "detail": "expected 0, got 0"
+        },
+        {
+         "check": "reply.must_include_any",
+         "ok": true,
+         "detail": "none of ['nothing is waiting'] in reply"
+        },
+        {
+         "check": "reply.must_not_include",
+         "ok": true,
+         "detail": "reply contains []"
+        },
+        {
+         "check": "reply.max_words",
+         "ok": true,
+         "detail": "8 > 30"
+        }
+       ]
+      }
+     ],
+     "checks": [
+      {
+       "check": "used_ai_unexpectedly",
+       "ok": true,
+       "detail": "0 provider request attempt(s) in a rules case (allowed 0)"
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}
