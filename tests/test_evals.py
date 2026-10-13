@@ -101,7 +101,7 @@ class RulesRunTests(unittest.TestCase):
         golden = work / "g.jsonl"
         cases = [
             {"id": "T-1", "tier": "rules", "group": "expense", "seed": {"accounts": {"Cash": 1000}},
-             "turns": [{"user": "spent 200 on chai", "expect": {
+             "turns": [{"user": "spent 200 on chai from cash", "expect": {
                  "path": "rules", "calls": [{"tool": "log_expense", "args": {"amount": 200}}],
                  "ledger_after": {"balances": {"Cash": 800}, "new_transactions": 1}}}]},
             {"id": "T-2", "tier": "rules", "group": "transfer",

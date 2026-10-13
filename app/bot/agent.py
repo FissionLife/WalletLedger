@@ -805,10 +805,15 @@ async def _nlu_analysis(chat_id: str, message: str) -> dict[str, Any] | None:
 
     # Check whether all expense entries are missing an explicit account.
     # If so, hold them as a pending account_selection rather than defaulting to Cash.
+    # Exception: if the message also contains a transfer, the transfer-confirmation flow
+    # takes priority — we don't interrupt with an account question.
     expense_entries = [e for e in entries if e.kind == "expense"]
     non_expense_entries = [e for e in entries if e.kind != "expense"]
-    has_implicit_expenses = expense_entries and all(
-        not e.account_explicit for e in expense_entries
+    has_transfer = any(e.kind == "transfer" for e in entries)
+    has_implicit_expenses = (
+        expense_entries
+        and all(not e.account_explicit for e in expense_entries)
+        and not has_transfer  # transfers take priority; don't layer on account prompts
     )
 
     calls: list[dict[str, Any]] = []
