@@ -44,6 +44,7 @@ class Entry:
     merchant: str | None = None
     note: str = ""
     when: str | None = None  # ISO date, only when the user named a day
+    account_explicit: bool = False  # True only when the user explicitly named the account
 
 
 @dataclass
@@ -514,6 +515,7 @@ def _parse_clause(raw: str, ctx: Context, inherit_kind: str | None) -> Entry | N
         return None
 
     account = _account_phrase(text, kind, ctx)
+    account_explicit = account is not None  # user explicitly named an account
 
     merchant = None
     for known in sorted(ctx.merchants, key=len, reverse=True):
@@ -566,7 +568,17 @@ def _parse_clause(raw: str, ctx: Context, inherit_kind: str | None) -> Entry | N
     account = account or (
         ctx.default_income_account if kind == "income" else ctx.default_expense_account
     )
-    return Entry(kind, amount, account, None, category, merchant, note=raw.strip(), when=when)
+    return Entry(
+        kind,
+        amount,
+        account,
+        None,
+        category,
+        merchant,
+        note=raw.strip(),
+        when=when,
+        account_explicit=account_explicit,
+    )
 
 
 # --------------------------------------------------------------------------------- whole message
