@@ -119,6 +119,57 @@ def confirmation_reason(tool_name: str | None, args: Any) -> str | None:
     return None
 
 
+def _budget_overage_reason(chat_id: str, call: dict[str, Any]) -> str | None:
+    """A confirmation sentence if this expense would push its category over budget, else None.
+
+    Looks up the category's monthly budget and spend so far; only an expense that crosses 100%
+    (and isn't already over) asks first. History-only entries and non-expenses never ask.
+    """
+    if call.get("tool_name") != "log_expense":
+        return None
+    args = call.get("tool_args") or {}
+    if args.get("affects_balance") is False:
+        return None
+    try:
+        amount = float(str(args.get("amount", 0)).replace(",", ""))
+    except TypeError, ValueError:
+        return None
+    category = args.get("category")
+    if not category or amount <= 0 or str(category).lower() == "uncategorized":
+        return None
+    canon = nlu.canonical_category(str(category))
+    from app.services import analytics
+
+    try:
+        with SessionLocal() as db:
+            user = db.get(User, str(chat_id)) or db.scalar(
+                select(User).where(User.telegram_chat_id == str(chat_id))
+            )
+            if user is None:
+                return None
+            row = next(
+                (
+                    b
+                    for b in analytics.budget_status(db, user.id)
+                    if b["category"].lower() == canon.lower()
+                ),
+                None,
+            )
+    except Exception:
+        return None
+    if not row:
+        return None
+    already_over = row["spent"] > row["budget"]
+    if already_over or row["spent"] + amount <= row["budget"]:
+        return None  # already over (don't nag twice) or still within budget
+    over_by = row["spent"] + amount - row["budget"]
+    return (
+        f"Log {fmt.inr(amount)} on {row['category']} — this exceeds your "
+        f"{fmt.inr(row['budget'])} budget by {fmt.inr(over_by)} "
+        f"({fmt.inr(row['left'])} left)"
+    )
+
+
 def _utc_now() -> datetime:
     """Helper to return current timezone-aware UTC datetime."""
     return datetime.now(UTC)
@@ -594,6 +645,7 @@ class AgentState(TypedDict, total=False):
     error: str | None
     persona_mode: str | None
     offline_reason: str | None
+    pay_alternative: dict[str, Any] | None  # another account that could cover a blocked spend
     preamble: str | None  # shown before a confirmation question (what was already recorded)
 
 
@@ -968,7 +1020,14 @@ async def llm_reasoning_node(state: AgentState) -> dict[str, Any]:
             tool_calls.append({"tool_name": t_name, "tool_args": t_args})
 
         # Anything that needs a human Yes (big transfers, AI edits) waits, together with the rest of the message
-        reasons = [(tc, confirmation_reason(tc["tool_name"], tc["tool_args"])) for tc in tool_calls]
+        reasons = [
+            (
+                tc,
+                confirmation_reason(tc["tool_name"], tc["tool_args"])
+                or _budget_overage_reason(chat_id, tc),
+            )
+            for tc in tool_calls
+        ]
         waiting = [(tc, why) for tc, why in reasons if why]
         if waiting:
             others = len(tool_calls) - len(waiting)
@@ -1089,11 +1148,57 @@ async def tool_executor_node(state: AgentState) -> dict[str, Any]:
                 first_error = str(e)
 
     first_result = results[0]["result"] if results else None
+    alt = _pay_alternative(state.get("chat_id", ""), results)
     return {
         "tool_results": results,
         "tool_result": first_result,
         "error": first_error,
+        **({"pay_alternative": alt} if alt else {}),
     }
+
+
+def _pay_alternative(chat_id: str, results: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """Shape the buttons for a blocked spend. Returns None when no spend was blocked.
+
+    - A single expense blocked for lack of balance, with another pipe that could cover it:
+      ``{"account", "balance", "args"}`` for a one-tap "pay from there instead" button
+      next to a Cancel button.
+    - A single expense blocked but no other pipe can cover it: ``{"cancel_only": True}`` so
+      the reply still shows a Cancel button (nothing persists; the user just dismisses).
+    """
+    failed = [
+        r
+        for r in results
+        if r.get("error")
+        and "not enough balance" in str(r.get("error")).lower()
+        and r.get("tool_name") == "log_expense"
+    ]
+    if len(failed) != 1 or any(r.get("result") for r in results):
+        return None  # only offer it for a single clean "I used X" that overdrew
+    r = failed[0]
+    amount = r.get("tool_args", {}).get("amount")
+    tried = str(r.get("tool_args", {}).get("account_name") or "").strip().lower()
+    if not isinstance(amount, (int, float)):
+        return {"cancel_only": True}
+    with SessionLocal() as db:
+        user = db.get(User, str(chat_id)) or db.scalar(
+            select(User).where(User.telegram_chat_id == str(chat_id))
+        )
+        if user is None:
+            return {"cancel_only": True}
+        from app.models import Account
+
+        best = None
+        for a in db.scalars(select(Account).where(Account.user_id == user.id)):
+            if a.name.strip().lower() == tried or a.balance < amount:
+                continue
+            if best is None or a.balance > best.balance:
+                best = a
+        if best is None:
+            return {"cancel_only": True}
+        args = dict(r.get("tool_args") or {})
+        args["account_name"] = best.name
+        return {"account": best.name, "balance": round(best.balance, 2), "args": args}
 
 
 OFFLINE_NOTE = "\n\n_(The AI is busy right now, so I used basic rules.)_"
@@ -1111,9 +1216,53 @@ async def response_synthesizer_node(state: AgentState) -> dict[str, Any]:
         or replies.compact(state)
         or _multi_tool_or_template_response(state)
     )
+    budget_note = await asyncio.to_thread(_budget_note_for, state)
+    if budget_note:
+        text = f"{text}\n{budget_note}"
     if state.get("offline_reason"):
         text += OFFLINE_NOTE
     return {"response_text": text}
+
+
+def _budget_note_for(state: AgentState) -> str | None:
+    """One line about the budget of a category just spent on: used so far, left, and an alert at 80%+.
+
+    Only for freshly logged expenses whose category has a budget. Returns None otherwise.
+    """
+    results = state.get("tool_results") or []
+    spent_cats = {
+        (r.get("result") or {}).get("category")
+        for r in results
+        if r.get("tool_name") == "log_expense" and r.get("result") and not r.get("error")
+    }
+    spent_cats.discard(None)
+    spent_cats.discard("Uncategorized")
+    if not spent_cats:
+        return None
+    from app.services import analytics
+
+    chat_id = state.get("chat_id", "")
+    with SessionLocal() as db:
+        user = db.get(User, str(chat_id)) or db.scalar(
+            select(User).where(User.telegram_chat_id == str(chat_id))
+        )
+        if user is None:
+            return None
+        rows = {b["category"].lower(): b for b in analytics.budget_status(db, user.id)}
+    lines = []
+    for cat in spent_cats:
+        b = rows.get(str(cat).lower())
+        if not b:
+            continue
+        used, limit, left, pct = b["spent"], b["budget"], b["left"], b["percent"]
+        head = f"🎯 {b['category']} budget: {fmt.inr(used)} of {fmt.inr(limit)} used"
+        if pct > 100:
+            lines.append(f"🚨 {head} — over by {fmt.inr(used - limit)}")
+        elif pct >= 80:
+            lines.append(f"⚠️ {head} — nearly over, {fmt.inr(left)} left ({pct:.0f}%)")
+        else:
+            lines.append(f"{head} · {fmt.inr(left)} left")
+    return "\n".join(lines) if lines else None
 
 
 async def _persona_response(state: AgentState) -> str | None:
@@ -1534,6 +1683,7 @@ class Outcome:
     transaction_ids: list[str] = field(default_factory=list)
     needs_confirmation: bool = False
     pending_id: str | None = None  # which question the Yes/Cancel buttons answer
+    pay_alternative: dict[str, Any] | None = None  # {account, balance, args}: offer another account
 
 
 async def process_user_interaction(
@@ -1585,6 +1735,7 @@ async def process_user_interaction_ex(
             tx_ids,
             bool(final_state.get("requires_confirmation")),
             action.get("id") if final_state.get("requires_confirmation") else None,
+            final_state.get("pay_alternative"),
         )
     except Exception as e:
         logger.error(f"Error executing LLM Agent StateGraph: {e}", exc_info=True)

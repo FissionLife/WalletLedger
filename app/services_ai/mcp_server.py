@@ -18,8 +18,8 @@ from sqlalchemy.orm import Session
 
 from app.db import SessionLocal
 from app.models import Account, ApiKey, Category, Merchant, Transaction, User
-from app.services.ledger import _adjust_balance as adjust_balance
 from app.services.ledger import (
+    InsufficientBalanceError,
     get_account_balances,
     get_or_create_account,
     get_or_create_category,
@@ -30,6 +30,7 @@ from app.services.ledger import (
     validate_amount,
     validate_when,
 )
+from app.services.ledger import _adjust_balance as adjust_balance
 
 
 def _with_db(fn: Callable[..., dict[str, Any]], **kwargs: Any) -> dict[str, Any]:
@@ -75,6 +76,10 @@ def log_expense(
         user = _resolve_user(db, values.pop("user_id"))
         values["user_id"] = user.id
         values["amount"] = _positive_amount(values["amount"])
+        if values.get("category_name"):  # "food"/"meals" -> the canonical "Food & Dining"
+            from app.bot.nlu import canonical_category
+
+            values["category_name"] = canonical_category(values["category_name"])
         if not values.get("account_name"):  # none named: the user's default, else Cash
             values["account_name"] = user.default_account or "Cash"
         return record_transaction(db, tx_type="expense", **values)
@@ -319,6 +324,17 @@ def edit_transaction(
         # Reverse the old posting, then apply the corrected posting.
         if old_account:
             adjust_balance(db, old_account.id, old_amount if old_type == "expense" else -old_amount)
+        if new_account and new_type == "expense":
+            # After the reversal above lands, block only if this would overdraw a funded account.
+            db.flush()
+            db.refresh(new_account)
+            from app.services.ledger import _ensure_can_cover
+
+            try:
+                _ensure_can_cover(db, new_account, new_amount)
+            except InsufficientBalanceError:
+                db.rollback()
+                raise
         if new_account:
             adjust_balance(db, new_account.id, -new_amount if new_type == "expense" else new_amount)
         tx.account_id, tx.transaction_type, tx.amount = (
@@ -368,8 +384,11 @@ def set_category_budget(
         raise ValueError("monthly_budget must be greater than zero or null")
 
     def run(db: Session, user_id: str) -> dict[str, Any]:
+        from app.bot.nlu import canonical_category
+
         uid = _resolve_user(db, user_id).id
-        cat = resolve_category(db, uid, category.strip(), "expense")  # same matching as /budget
+        # "food"/"meals" -> the canonical "Food & Dining" the expenses file under (same as /budget)
+        cat = resolve_category(db, uid, canonical_category(category.strip()), "expense")
         cat.budget_limit = float(monthly_budget) if monthly_budget is not None else None
         db.commit()
         return {"status": "success", "category": cat.name, "monthly_budget": cat.budget_limit}

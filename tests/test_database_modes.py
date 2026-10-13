@@ -75,6 +75,7 @@ class SqliteHardeningTests(unittest.TestCase):
         db.init_db()
         with db.SessionLocal() as s:
             user = ledger.get_or_create_user(s, "cascade-1")
+            ledger.record_transaction(s, user.id, 1000, "Cash", "Salary", tx_type="income")
             ledger.record_transaction(s, user.id, 10, "Cash", "Food")
             uid = user.id
             s.delete(s.get(User, uid))

@@ -53,6 +53,9 @@ class ToolModeTests(unittest.TestCase):
                 self.assertEqual(await tool_client.start(), "direct")
                 self.assertFalse(tool_client.is_connected())
                 await tool_client.call_tool(
+                    "log_income", user_id=self.user, amount=1000, source_account="Cash"
+                )
+                await tool_client.call_tool(
                     "log_expense", user_id=self.user, amount=40, category="Food"
                 )
                 bundle = await tool_client.call_tool("financial_advice_bundle", user_id=self.user)

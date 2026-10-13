@@ -192,12 +192,15 @@ class SharedBackendTests(unittest.TestCase):
     def test_a_person_sees_one_ledger_through_any_bot(self):
         chat = "777001"
         run = asyncio.run
+        with SessionLocal() as db:
+            uid = ledger.get_or_create_user(db, chat).id
+            ledger.record_transaction(db, uid, 1200, "Cash", "Seed", tx_type="income")
         run(bot_main.handle_text(chat, "Spent 100 on chai via Cash"))  # "through bot 1"
         reply = run(bot_main.handle_text(chat, "/balance"))  # "through bot 2": same chat id
         self.assertIn("100", reply)
         with SessionLocal() as db:
             uid = ledger.get_or_create_user(db, chat).id
-            self.assertEqual(ledger.recent_transactions(db, uid, 5)[1], 1)
+            self.assertEqual(ledger.recent_transactions(db, uid, 5)[1], 2)
 
     def test_different_people_stay_separate(self):
         asyncio.run(bot_main.handle_text("777002", "Spent 55 on tea via Cash"))

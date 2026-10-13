@@ -382,6 +382,9 @@ class OrchestratorTests(unittest.TestCase):
             )
 
     def test_ai_failure_after_writing_keeps_the_result(self):
+        with SessionLocal() as db:
+            uid = ledger.get_or_create_user(db, self.chat).id
+            ledger.record_transaction(db, uid, 1000, "Cash", "Seed", tx_type="income")
         calls = iter(
             [fake_reply(calls=[fake_call("log_expense", {"amount": 77, "category": "Food"})])]
         )

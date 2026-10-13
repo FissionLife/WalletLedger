@@ -251,6 +251,9 @@ class OrchestratorFixTests(unittest.TestCase):
     def setUp(self):
         self.chat = chat()
         run(bot.handle_incoming(self.chat, "Received 30000 in Bank"))
+        with SessionLocal() as db:
+            uid = ledger.get_or_create_user(db, self.chat).id
+            ledger.record_transaction(db, uid, 10000, "Cash", "Seed", tx_type="income")
 
     def test_a_write_with_an_empty_final_answer_is_not_run_twice(self):
         ai = scripted(
@@ -271,7 +274,7 @@ class OrchestratorFixTests(unittest.TestCase):
                 agent._orchestrate(self.chat, "log 200 lunch and show balances please", [])
             )
         self.assertIsNotNone(result)
-        self.assertEqual(balance(self.chat, "Cash"), -200.0)  # once, not twice
+        self.assertEqual(balance(self.chat, "Cash"), 9800.0)  # once, not twice
 
     def test_two_big_transfers_both_wait_and_the_recorded_part_is_mentioned(self):
         ai = scripted(
@@ -333,6 +336,9 @@ class ButtonTests(unittest.TestCase):
 
     def test_history_undo_button_names_the_entry_so_a_double_tap_is_harmless(self):
         chat_id = chat()
+        with SessionLocal() as db:
+            uid = ledger.get_or_create_user(db, chat_id).id
+            ledger.record_transaction(db, uid, 10000, "Cash", "Seed", tx_type="income")
         run(bot.handle_incoming(chat_id, "Spent 100 on chai via Cash"))
         run(bot.handle_incoming(chat_id, "Spent 200 on auto via Cash"))
         history = run(bot.handle_incoming(chat_id, "/history"))
@@ -340,7 +346,7 @@ class ButtonTests(unittest.TestCase):
         self.assertNotEqual(undo, "undo:last")
         run(handle_callback(chat_id, undo))
         run(handle_callback(chat_id, undo))  # second tap on the same message
-        self.assertEqual(balance(chat_id, "Cash"), -100.0)  # only the auto was undone
+        self.assertEqual(balance(chat_id, "Cash"), 9900.0)  # only the auto was undone
 
     def test_an_expired_import_button_says_so(self):
         reply = run(bot.answer_pending_import(chat(), "confirmed"))

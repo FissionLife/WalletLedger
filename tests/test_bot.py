@@ -312,13 +312,14 @@ class TestSettingsAndLedger(unittest.TestCase):
 
         event.listen(engine, "before_cursor_execute", capture)
         try:
-            from app.services.ledger import transfer_between_pipes
+            from app.services.ledger import record_transaction, transfer_between_pipes
 
             db = SessionLocal()
             try:
                 user = User(telegram_chat_id=chat_id)
                 db.add(user)
                 db.commit()
+                record_transaction(db, user.id, 1000, "Bank", tx_type="income")
                 transfer_between_pipes(db, user.id, "Bank", "Cash", 10)
             finally:
                 db.close()

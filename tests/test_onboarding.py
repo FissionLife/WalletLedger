@@ -82,8 +82,11 @@ class NewUserTests(unittest.TestCase):
         say(self.chat, "/start")
         say(self.chat, "cash")
         say(self.chat, "skip")
+        with SessionLocal() as db:
+            uid = ledger.get_or_create_user(db, self.chat).id
+            ledger.record_transaction(db, uid, 1000, "Cash", "Seed", tx_type="income")
         say(self.chat, "chai 20")
-        self.assertEqual(balances(self.chat)["Cash"], -20)
+        self.assertEqual(balances(self.chat)["Cash"], 980)
         self.assertEqual(balances(self.chat)["Bank"], 0)
 
     def test_a_first_message_that_is_an_entry_is_logged_after_the_answer(self):
@@ -91,15 +94,15 @@ class NewUserTests(unittest.TestCase):
         self.assertIn("where do you usually pay from", r.text)
         self.assertEqual(balances(self.chat).get("Bank", 0), 0)  # nothing yet
         r = tap(self.chat, "ob:acct:bank")
-        self.assertIn("−₹450", r.text)
-        self.assertEqual(balances(self.chat)["Bank"], -450)
+        self.assertIn("not enough balance", r.text.lower())
+        self.assertEqual(balances(self.chat)["Bank"], 0)
 
     def test_ignoring_the_question_is_never_a_dead_end(self):
         say(self.chat, "spent 450 on dinner")
         r = say(self.chat, "also got salary 50000")  # not an answer
-        self.assertIn("−₹450", r.text)
+        self.assertIn("not enough balance", r.text.lower())
         self.assertIn("+₹50,000", r.text)
-        self.assertEqual(balances(self.chat)["Bank"], 49550)
+        self.assertEqual(balances(self.chat)["Bank"], 50000)
         # and the next message is plain chat again, not another question
         self.assertNotIn("where do you usually pay", say(self.chat, "coffee 100").text)
 
@@ -117,8 +120,11 @@ class NewUserTests(unittest.TestCase):
         say(self.chat, "bank")
         say(self.chat, "skip")
         self.assertIn("Cash", say(self.chat, "use cash by default").text)
+        with SessionLocal() as db:
+            uid = ledger.get_or_create_user(db, self.chat).id
+            ledger.record_transaction(db, uid, 1000, "Cash", "Seed", tx_type="income")
         say(self.chat, "chai 20")
-        self.assertEqual(balances(self.chat)["Cash"], -20)
+        self.assertEqual(balances(self.chat)["Cash"], 980)
 
     def test_a_stale_button_does_not_crash(self):
         self.assertTrue(tap(self.chat, "ob:acct:nonsense").notice)
@@ -158,32 +164,44 @@ class EverydayChatTests(unittest.TestCase):
         )
 
     def test_correcting_an_entry_by_name_and_by_position(self):
+        with SessionLocal() as db:
+            uid = ledger.get_or_create_user(db, self.chat).id
+            ledger.record_transaction(db, uid, 100000, "Bank", "Seed", tx_type="income")
         say(self.chat, "coffee 120")
         say(self.chat, "paid 450 for dinner")
         r = say(self.chat, "oops the dinner was actually 540 not 450")
         self.assertIn("450 → ", r.text.replace("₹", "").replace("−", ""))
-        self.assertEqual(balances(self.chat)["Bank"], -660)
+        self.assertEqual(balances(self.chat)["Bank"], 100000 - 660)
         say(self.chat, "change the last one to 600")
-        self.assertEqual(balances(self.chat)["Bank"], -720)
+        self.assertEqual(balances(self.chat)["Bank"], 100000 - 720)
 
     def test_a_plain_statement_is_a_new_entry_not_a_correction(self):
+        with SessionLocal() as db:
+            uid = ledger.get_or_create_user(db, self.chat).id
+            ledger.record_transaction(db, uid, 100000, "Bank", "Seed", tx_type="income")
         say(self.chat, "paid 450 for dinner")
         say(self.chat, "dinner was 400")
-        self.assertEqual(balances(self.chat)["Bank"], -850)
+        self.assertEqual(balances(self.chat)["Bank"], 100000 - 850)
 
     def test_a_correction_with_nothing_to_correct_is_not_logged_twice(self):
         r = say(self.chat, "delete the pizza")
         self.assertIn("couldn't find", r.text)
 
     def test_deleting_an_entry_by_name(self):
+        with SessionLocal() as db:
+            uid = ledger.get_or_create_user(db, self.chat).id
+            ledger.record_transaction(db, uid, 100000, "Bank", "Seed", tx_type="income")
         say(self.chat, "coffee 120")
         say(self.chat, "uber 250")
         say(self.chat, "delete the coffee")
-        self.assertEqual(balances(self.chat)["Bank"], -250)
+        self.assertEqual(balances(self.chat)["Bank"], 100000 - 250)
 
     def test_minus_sign_is_an_expense(self):
+        with SessionLocal() as db:
+            uid = ledger.get_or_create_user(db, self.chat).id
+            ledger.record_transaction(db, uid, 1000, "Bank", "Seed", tx_type="income")
         say(self.chat, "-60 chai")
-        self.assertEqual(balances(self.chat)["Bank"], -60)
+        self.assertEqual(balances(self.chat)["Bank"], 940)
 
     def test_greetings_and_thanks_get_a_human_reply(self):
         self.assertIn("Hey", say(self.chat, "hi").text)

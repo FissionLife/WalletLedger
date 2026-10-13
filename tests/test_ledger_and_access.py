@@ -49,9 +49,10 @@ class LedgerTests(unittest.TestCase):
             with self.assertRaises(ledger.LedgerError):
                 ledger.record_transaction(self.db, self.user.id, bad, "Cash")
         self.assertEqual(self.total(), 0)
-        # the session is still usable after the rejections
+        # the session is still usable after the rejections (fund first; strict wallet blocks overdraw)
+        ledger.record_transaction(self.db, self.user.id, 100, "Cash", tx_type="income")
         ledger.record_transaction(self.db, self.user.id, 10, "Cash")
-        self.assertEqual(self.total(), -10)
+        self.assertEqual(self.total(), 90)
 
     def test_invalid_type_and_same_account_transfer(self):
         with self.assertRaises(ledger.LedgerError):
@@ -73,6 +74,7 @@ class LedgerTests(unittest.TestCase):
         self.assertEqual(ledger.get_spending_summary(self.db, self.user.id)["total_expenses"], 0)
 
     def test_summary_reports_real_categories(self):
+        ledger.record_transaction(self.db, self.user.id, 1000, "Cash", tx_type="income")  # fund it
         ledger.record_transaction(self.db, self.user.id, 100, "Cash", "Food", "Swiggy")
         ledger.record_transaction(self.db, self.user.id, 300, "Cash", "Shopping", "Amazon")
         ledger.record_transaction(self.db, self.user.id, 50, "Cash")
@@ -84,6 +86,7 @@ class LedgerTests(unittest.TestCase):
 
     def test_users_are_isolated(self):
         other = ledger.get_or_create_user(self.db, f"ledger-{next(_ids)}")
+        ledger.record_transaction(self.db, other.id, 1500, "Cash", tx_type="income")  # fund it
         ledger.record_transaction(self.db, other.id, 999, "Cash", "Food")
         self.assertEqual(ledger.get_spending_summary(self.db, self.user.id)["total_expenses"], 0)
 

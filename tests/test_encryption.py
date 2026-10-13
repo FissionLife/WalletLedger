@@ -126,6 +126,10 @@ class ColumnEncryptionTests(EncryptedDbCase):
         self.assertEqual(self.read_message(msg_id), "my salary is 90000")
 
         with self.Session() as db:
+            ledger.get_or_create_account(db, uid, "Cash")
+            db.execute(text("UPDATE accounts SET balance = 1000 WHERE user_id = :u"), {"u": uid})
+            db.commit()
+        with self.Session() as db:
             ledger.record_transaction(db, uid, 120, "Cash", "Food", "Cafe", description="birthday")
         stored = self.raw("SELECT description FROM transactions")
         self.assertTrue(stored.startswith("enc1:"))
@@ -139,6 +143,10 @@ class ColumnEncryptionTests(EncryptedDbCase):
 
     def test_null_description_stays_null(self):
         uid = self.add_user()
+        with self.Session() as db:
+            ledger.get_or_create_account(db, uid, "Cash")
+            db.execute(text("UPDATE accounts SET balance = 1000 WHERE user_id = :u"), {"u": uid})
+            db.commit()
         with self.Session() as db:
             ledger.record_transaction(db, uid, 5, "Cash", "Food")
         self.assertIsNone(self.raw("SELECT description FROM transactions"))
@@ -305,6 +313,22 @@ class AppIntegrationTests(EncryptedDbCase):
 
     def test_mcp_search_and_edit_work_on_encrypted_descriptions(self):
         with patch.object(mcp_server, "SessionLocal", self.Session):
+            # Pre-fund Cash so the three live expenses don't hit the strict-balance guard.
+            with self.Session() as _db:
+                from app.models import User as _User
+
+                _u = _db.query(_User).filter_by(telegram_chat_id="42").one_or_none()
+                if _u is None:
+                    _u = _User(telegram_chat_id="42")
+                    _db.add(_u)
+                    _db.commit()
+                from app.services.ledger import get_or_create_account
+
+                get_or_create_account(_db, _u.id, "Cash")
+                _db.execute(
+                    text("UPDATE accounts SET balance = 1000 WHERE user_id = :u"), {"u": _u.id}
+                )
+                _db.commit()
             first = mcp_server.log_expense("42", 100, "Food", merchant="Cafe", description="Lunch")
             mcp_server.log_expense("42", 50, "Travel", merchant="Uber", description="airport")
             mcp_server.log_expense("42", 30, "Food", merchant="Bakery", description="lunch snack")
