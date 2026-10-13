@@ -451,7 +451,7 @@ SYSTEM_AGENT_PROMPT = """You are WalletLedger's Financial AI Agent Brain modeled
 Your job is to understand natural language user messages, analyze finances, and invoke appropriate tools dynamically.
 
 Key Guidelines:
-1. Account Pipes: Map colloquial payment accounts to clean pipe names (e.g. 'Bank', 'Cash', 'UPI Wallet'). Default to 'Cash' for everyday out-of-pocket expenses unless specified, and 'Bank' for income/transfers.
+1. Account Pipes: Map colloquial payment accounts to clean pipe names (e.g. 'Bank', 'Cash', 'UPI Wallet'). If the user clearly specifies the payment medium (e.g. 'via bank', 'from cash', 'through UPI'), use that. If the payment account is NOT mentioned, do NOT assume or guess an account — instead, omit the `account_name` field from the `log_expense` call and do NOT call any tool; instead reply asking the user which account they paid from (e.g. "Which account did you pay from? Your accounts: Bank, Cash"). Use 'Bank' for income/transfers.
 2. Categories: Infer accurate, standard expense or income categories based on context (e.g. Food, Groceries, Transport, Shopping, Utilities, Subscriptions, Health, Personal Care, Entertainment, Gifts, Salary, Freelance, Stipend, Cashback).
 3. Multi-Item & Batch Transactions:
    When the user provides a list of expenses (e.g. '190=poornima pizza Dosa\\n80=Neeraj Dosa\\n115.62=petrol...'), multiple purchases, or an income together with expenses ('got stipend 15000 and spent 190 on dosa, 80 on coffee'), YOU MUST CALL THE RELEVANT TOOL FOR EACH INDIVIDUAL ITEM (call `log_income` for the stipend, and call `log_expense` for EVERY single expense item). Do not truncate, merge, or ignore any item.
@@ -479,6 +479,7 @@ class PendingAction(TypedDict, total=False):
     tool_calls: list[dict[str, Any]]  # everything from the same message, run together on Yes
     description: str
     created_at: str
+    kind: str  # "transfer_confirm" | "account_selection"
 
 
 @dataclass
@@ -739,12 +740,77 @@ def _nlu_context(chat_id: str) -> nlu.Context:
         )
 
 
+
+
+def _account_selection_prompt(chat_id: str) -> str:
+    """Build a message asking the user which account they paid from."""
+    ctx = _nlu_context(chat_id)
+    account_list = ", ".join(ctx.accounts) if ctx.accounts else "Bank, Cash"
+    return (
+        "💳 Which account did you pay from?\n"
+        f"Your accounts: {account_list}\n\n"
+        "Just reply with the account name (e.g., \"Bank\" or \"Cash\")"
+    )
+
+
+def _resolve_account_from_reply(message: str, chat_id: str) -> str | None:
+    """Try to resolve the user's reply to a known account name. Returns None if unrecognised."""
+    ctx = _nlu_context(chat_id)
+    msg_lower = message.strip().lower()
+    for name in ctx.accounts:
+        if name.lower() in msg_lower or msg_lower in name.lower():
+            return name
+    # Also accept generic keywords even if not yet in the user's accounts
+    generic_map = {
+        "bank": "Bank",
+        "cash": "Cash",
+        "upi": "UPI Wallet",
+        "wallet": "UPI Wallet",
+        "card": "Credit Card",
+        "credit": "Credit Card",
+        "debit": "Bank",
+    }
+    for keyword, fallback in generic_map.items():
+        if keyword in msg_lower:
+            # prefer a matching real account name
+            for name in ctx.accounts:
+                if keyword in name.lower():
+                    return name
+            return fallback
+    return None
+
+
+def _inject_account_into_calls(
+    tool_calls: list[dict[str, Any]], account: str
+) -> list[dict[str, Any]]:
+    """Return tool_calls with account_name filled in for every log_expense call missing one."""
+    result = []
+    for tc in tool_calls:
+        if tc.get("tool_name") == "log_expense":
+            args = dict(tc["tool_args"])
+            if not args.get("account_name"):
+                args["account_name"] = account
+            result.append({"tool_name": tc["tool_name"], "tool_args": args})
+        else:
+            result.append(tc)
+    return result
+
+
 async def _nlu_analysis(chat_id: str, message: str) -> dict[str, Any] | None:
     """Clear messages ("Spent 200 on chai, 80 on auto") are handled by rules: instant, no AI call."""
     ctx = await asyncio.to_thread(_nlu_context, chat_id)
     entries = nlu.parse_entries(message, ctx)
     if not entries:
         return None
+
+    # Check whether all expense entries are missing an explicit account.
+    # If so, hold them as a pending account_selection rather than defaulting to Cash.
+    expense_entries = [e for e in entries if e.kind == "expense"]
+    non_expense_entries = [e for e in entries if e.kind != "expense"]
+    has_implicit_expenses = expense_entries and all(
+        not e.account_explicit for e in expense_entries
+    )
+
     calls: list[dict[str, Any]] = []
     for e in entries:
         if e.kind == "transfer":
@@ -765,11 +831,12 @@ async def _nlu_analysis(chat_id: str, message: str) -> dict[str, Any] | None:
                 }
             )
         else:
+            # Build expense call; omit account_name so _inject_account_into_calls can fill it later
             args = {
                 "amount": e.amount,
                 "category": e.category or "Uncategorized",
                 "merchant": e.merchant,
-                "account_name": e.account,
+                "account_name": e.account if e.account_explicit else None,
                 "description": e.note,
                 "date": e.when,
             }
@@ -779,6 +846,24 @@ async def _nlu_analysis(chat_id: str, message: str) -> dict[str, Any] | None:
                     "tool_args": {k: v for k, v in args.items() if v is not None},
                 }
             )
+
+    if has_implicit_expenses:
+        # Suspend all expense calls; ask the user which account they paid from.
+        # Non-expense calls (income, transfers) from the same message are included so they
+        # are all executed together once the user answers.
+        pending_action: PendingAction = {
+            "tool_calls": calls,
+            "tool_name": "log_expense",
+            "description": "Expense account selection pending",
+            "created_at": _utc_now().isoformat(),
+            "kind": "account_selection",
+        }
+        session_store.set_pending(chat_id, pending_action)
+        return {
+            "type": "account_selection",
+            "prompt": await asyncio.to_thread(_account_selection_prompt, chat_id),
+        }
+
     return {"type": "tool_calls", "tool_calls": calls}
 
 
@@ -842,6 +927,39 @@ async def llm_reasoning_node(state: AgentState) -> dict[str, Any]:
     # 1. Human-in-the-loop: a yes/no answer to a pending action never goes to the AI.
     pending = session_store.get_pending(chat_id)
     if pending:
+        # 1a. Account selection reply — user is answering "which account did you pay from?"
+        if pending.get("kind") == "account_selection":
+            resolved = await asyncio.to_thread(_resolve_account_from_reply, user_message, chat_id)
+            if resolved:
+                # Inject the resolved account into every log_expense call that lacks one
+                raw_pending_calls = pending.get("tool_calls") or []
+                injected = _inject_account_into_calls(raw_pending_calls, resolved)
+                # Stamp user_id on each call
+                tool_calls_with_uid: list[dict[str, Any]] = []
+                for tc in injected:
+                    t_args = dict(tc.get("tool_args") or {})
+                    t_args["user_id"] = chat_id
+                    tool_calls_with_uid.append({"tool_name": tc["tool_name"], "tool_args": t_args})
+                session_store.clear_pending(chat_id)
+                first_name = tool_calls_with_uid[0]["tool_name"] if tool_calls_with_uid else None
+                first_args = tool_calls_with_uid[0]["tool_args"] if tool_calls_with_uid else None
+                return {
+                    "tool_calls": tool_calls_with_uid,
+                    "tool_name": first_name,
+                    "tool_args": first_args,
+                    "requires_confirmation": False,
+                }
+            # Unrecognised reply → re-prompt (keep pending alive)
+            prompt = await asyncio.to_thread(_account_selection_prompt, chat_id)
+            return {
+                "response_text": f"❓ I didn't recognise that account. {prompt}",
+                "tool_name": None,
+                "tool_args": None,
+                "tool_calls": None,
+                "requires_confirmation": False,
+            }
+
+        # 1b. Transfer confirmation — yes/no reply
         decision = classify_reply(user_message)
         if decision:
             return {
@@ -852,6 +970,7 @@ async def llm_reasoning_node(state: AgentState) -> dict[str, Any]:
         # Unrelated message: drop the pending action and handle the new message normally.
         session_store.clear_pending(chat_id)
         logger.info("Chat %s sent a new request; cancelled pending action.", chat_id)
+
 
     # 2. API keys pasted in chat (Gemini AIza / AQ., OpenAI, Claude, Groq; several at once).
     if extract_api_keys(user_message):
@@ -889,6 +1008,16 @@ async def llm_reasoning_node(state: AgentState) -> dict[str, Any]:
     offline = (
         {"offline_reason": analysis["offline_reason"]} if analysis.get("offline_reason") else {}
     )
+
+    # NLU set a pending account_selection and returned a prompt — surface it to the user.
+    if analysis.get("type") == "account_selection":
+        return {
+            "response_text": analysis["prompt"],
+            "tool_name": None,
+            "tool_args": None,
+            "tool_calls": None,
+            "requires_confirmation": False,
+        }
 
     if analysis.get("type") == "tool_calls" or analysis.get("tool_calls"):
         raw_calls = analysis.get("tool_calls") or []
