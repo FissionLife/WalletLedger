@@ -48,6 +48,38 @@ def balance_of(uid, name):
         return acc.balance if acc else None
 
 
+class BlockedSpendButtonsTests(unittest.TestCase):
+    def test_use_other_pipe_button_appears_when_an_alt_can_cover(self):
+        import asyncio
+
+        from app.bot import main as bot_main
+
+        chat, uid = new_user()
+        fund(chat, "Bank", 8500)
+        # Cash is 0, Bank has enough: "420 paid via cash" should offer Bank
+        reply = asyncio.run(bot_main.handle_incoming(chat, "paid 420 via cash"))
+        # error text + two buttons on the alt row (switch + cancel)
+        self.assertIn("not enough balance", reply.text.lower())
+        flat = [b for row in reply.rows for b in row]
+        datas = [b.data for b in flat]
+        self.assertTrue(any(d and d.startswith("pay:") for d in datas), datas)
+        self.assertIn("go:home", datas)  # Cancel
+
+    def test_cancel_only_when_no_other_pipe_has_funds(self):
+        import asyncio
+
+        from app.bot import main as bot_main
+
+        chat, uid = new_user()
+        # No pipe funded at all: just a Cancel button, no pay:
+        reply = asyncio.run(bot_main.handle_incoming(chat, "paid 420 via cash"))
+        self.assertIn("not enough balance", reply.text.lower())
+        flat = [b for row in reply.rows for b in row]
+        datas = [b.data for b in flat]
+        self.assertIn("go:home", datas)
+        self.assertFalse(any(d and d.startswith("pay:") for d in datas), datas)
+
+
 class OverdrawGuardTests(unittest.TestCase):
     def test_funded_account_cannot_go_negative_on_a_live_spend(self):
         chat, uid = new_user()
@@ -71,11 +103,15 @@ class OverdrawGuardTests(unittest.TestCase):
             )
         self.assertIn("not enough balance", str(ctx.exception).lower())
 
-    def test_never_funded_account_stays_a_pure_ledger(self):
-        # No opening balance ever: expenses still log and the balance goes negative, as before.
+    def test_a_never_funded_pipe_also_cannot_go_negative(self):
+        # Strict wallet: every pipe is protected. A brand-new ₹0 Cash account can't be spent from.
         chat, uid = new_user()
-        execute_tool("log_expense", user_id=chat, amount=300, category="Food", account_name="Cash")
-        self.assertEqual(balance_of(uid, "Cash"), -300)
+        with self.assertRaises(Exception) as ctx:
+            execute_tool(
+                "log_expense", user_id=chat, amount=300, category="Food", account_name="Cash"
+            )
+        self.assertIn("not enough balance", str(ctx.exception).lower())
+        self.assertEqual(balance_of(uid, "Cash"), 0)  # nothing deducted
 
     def test_transfer_out_cannot_overdraw_a_funded_source(self):
         chat, uid = new_user()

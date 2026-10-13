@@ -135,10 +135,23 @@ def pay_retry(key: str) -> dict | None:
 
 
 def pay_alt_row(account: str, balance: float, args: dict) -> list[Btn]:
+    """Buttons shown when a spend was blocked for insufficient funds.
+
+    Two buttons: switch to another pipe that can cover the amount, or dismiss. Nothing is
+    kept pending; the Cancel button just closes the keyboard back to home.
+    """
     from app.bot import fmt
 
     key = remember_pay_retry(args)
-    return [Btn(f"💳 Use {account} instead ({fmt.inr(balance)})", f"pay:{key}")]
+    return [
+        Btn(f"🏦 Use {account} instead ({fmt.inr(balance)})", f"pay:{key}"),
+        Btn("❌ Cancel", "go:home"),
+    ]
+
+
+def cancel_row() -> list[Btn]:
+    """Just a Cancel button, for a blocked spend with no other pipe that could cover it."""
+    return [Btn("❌ Cancel", "go:home")]
 
 
 def undo_row(tx_ids: list[str]) -> list[Btn]:

@@ -230,7 +230,10 @@ def _reply_for(outcome) -> Reply:
         rows = [ui.undo_row(outcome.transaction_ids)]
     alt = getattr(outcome, "pay_alternative", None)
     if alt:
-        rows.append(ui.pay_alt_row(alt["account"], alt["balance"], alt["args"]))
+        if alt.get("cancel_only"):
+            rows.append(ui.cancel_row())
+        else:
+            rows.append(ui.pay_alt_row(alt["account"], alt["balance"], alt["args"]))
     return Reply(outcome.text, rows=rows)
 
 

@@ -64,7 +64,8 @@ class BalanceTests(unittest.TestCase):
     def test_simultaneous_entries_are_all_counted(self):
         chat = new_chat()
         with SessionLocal() as db:
-            ledger.get_or_create_user(db, chat)
+            uid = ledger.get_or_create_user(db, chat).id
+            ledger.record_transaction(db, uid, 10000, "Cash", "Seed", tx_type="income")
 
         def add():
             with SessionLocal() as db:
@@ -76,8 +77,8 @@ class BalanceTests(unittest.TestCase):
             t.start()
         for t in threads:
             t.join()
-        self.assertEqual(count_transactions(chat), 20)
-        self.assertEqual(balance(chat), -200.0)
+        self.assertEqual(count_transactions(chat), 21)
+        self.assertEqual(balance(chat), 9800.0)
 
     def test_undo_puts_the_balance_back(self):
         chat = new_chat()
@@ -103,6 +104,7 @@ class UndoOrderTests(unittest.TestCase):
         chat = new_chat()
         with SessionLocal() as db:
             uid = ledger.get_or_create_user(db, chat).id
+            ledger.record_transaction(db, uid, 10000, "Bank", "Seed", tx_type="income")
             ledger.record_transaction(db, uid, 500, "Bank", "Rent", tx_type="expense")
             chai = ledger.record_transaction(
                 db,
@@ -116,12 +118,15 @@ class UndoOrderTests(unittest.TestCase):
             self.assertEqual(ledger.last_entered_transaction_id(db, uid), chai["transaction_id"])
         reply = run(bot.handle_text(chat, "/undo"))
         self.assertIn("₹20", reply)
-        self.assertEqual(balance(chat, "Bank"), -500.0)
+        self.assertEqual(balance(chat, "Bank"), 9500.0)
 
     def test_a_big_batch_gets_a_working_undo_button(self):
         chat = new_chat()
         with SessionLocal() as db:
             uid = ledger.get_or_create_user(db, chat).id
+            cash = ledger.get_or_create_account(db, uid, "Cash")
+            cash.balance = 10000
+            db.commit()
             ids = [
                 ledger.record_transaction(db, uid, 10 + i, "Cash", "Food", tx_type="expense")[
                     "transaction_id"
@@ -169,6 +174,10 @@ class OfflineHonestyTests(unittest.TestCase):
 
     def test_a_big_transfer_does_not_swallow_the_other_items(self):
         chat = new_chat()
+        with SessionLocal() as db:
+            uid = ledger.get_or_create_user(db, chat).id
+            ledger.record_transaction(db, uid, 20000, "Bank", "Seed", tx_type="income")
+            ledger.record_transaction(db, uid, 1000, "Cash", "Seed", tx_type="income")
         ask = run(
             bot.handle_incoming(chat, "Spent 200 on chai and transferred 6000 from Bank to Cash")
         )
@@ -176,7 +185,7 @@ class OfflineHonestyTests(unittest.TestCase):
         self.assertIn("1 other", ask.text)
         done = run(bot.handle_text(chat, "yes"))
         self.assertIn("₹200", done)
-        self.assertEqual(count_transactions(chat), 2)
+        self.assertEqual(count_transactions(chat), 4)
 
 
 class RuleReaderTests(unittest.TestCase):
@@ -201,6 +210,7 @@ class ToolValidationTests(unittest.TestCase):
         self.chat = new_chat()
         with SessionLocal() as db:
             uid = ledger.get_or_create_user(db, self.chat).id
+            ledger.record_transaction(db, uid, 10000, "Bank", "Seed", tx_type="income")
             self.tx = ledger.record_transaction(db, uid, 100, "Bank", "Food", tx_type="expense")
 
     def edit(self, **kw):
@@ -218,7 +228,7 @@ class ToolValidationTests(unittest.TestCase):
 
     def test_a_good_edit_still_moves_the_balance(self):
         self.edit(amount=40)
-        self.assertEqual(balance(self.chat, "Bank"), -40.0)
+        self.assertEqual(balance(self.chat, "Bank"), 9960.0)
 
 
 class AnalyticsFixTests(unittest.TestCase):
@@ -245,6 +255,7 @@ class AnalyticsFixTests(unittest.TestCase):
         chat = new_chat()
         with SessionLocal() as db:
             uid = ledger.get_or_create_user(db, chat).id
+            ledger.record_transaction(db, uid, 10000, "Bank", "Seed", tx_type="income")
             ledger.record_transaction(db, uid, 900, "Bank", "Food & Dining", tx_type="expense")
         reply = run(bot.handle_text(chat, "/budget food 1000"))
         self.assertIn("Food & Dining", reply)
@@ -265,6 +276,7 @@ class DashboardFixTests(unittest.TestCase):
     def test_csv_export_neutralises_formulas(self):
         with SessionLocal() as db:
             uid = ledger.get_or_create_user(db, self.chat).id
+            ledger.record_transaction(db, uid, 100, "Bank", "Salary", tx_type="income")
             ledger.record_transaction(
                 db,
                 uid,

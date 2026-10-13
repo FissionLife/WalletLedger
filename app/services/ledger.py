@@ -2,7 +2,7 @@ import re
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import delete, func, or_, select, update
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session, joinedload
 
 from app import clock
@@ -222,35 +222,16 @@ def get_or_create_merchant(
     return merchant
 
 
-def _account_ever_funded(db: Session, account: Account) -> bool:
-    """True if the account has ever held money: positive balance now, or any credit in its history.
-
-    A credit is income into it or a transfer into it. A never-funded account (balance stayed 0,
-    only expenses) is a pure ledger and is exempt from the overdraw block.
-    """
-    if account.balance > 0:
-        return True
-    credited = db.scalar(
-        select(func.count())
-        .select_from(Transaction)
-        .where(
-            Transaction.user_id == account.user_id,
-            or_(
-                (Transaction.account_id == account.id) & (Transaction.transaction_type == "income"),
-                Transaction.to_account_id == account.id,
-            ),
-        )
-    )
-    return bool(credited)
-
-
 def _ensure_can_cover(db: Session, account: Account, amount: float) -> None:
-    """Block a live spend that would overdraw a FUNDED account below zero.
+    """Block a live spend that would push the account below zero.
 
-    Never-funded accounts (pure ledger, balance never credited) are exempt. Called while the
-    account row is locked, so the balance read here is the real current balance.
+    Strict wallet: every pipe is protected, including never-funded ones at zero. Called while
+    the account row is locked, so the balance read here is the real current balance that the
+    following _adjust_balance will change. ``db`` is unused but kept so the two call sites and
+    the edit_transaction path stay symmetrical.
     """
-    if round(account.balance - amount, 2) < 0 and _account_ever_funded(db, account):
+    del db  # kept for signature symmetry
+    if round(account.balance - amount, 2) < 0:
         raise InsufficientBalanceError(account.name, account.balance, amount)
 
 

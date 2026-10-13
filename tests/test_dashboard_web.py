@@ -125,9 +125,11 @@ class PageAndAuthTests(Base):
     def test_users_only_see_their_own_data(self):
         other = f"web-{next(_ids)}"
         with SessionLocal() as db:
+            other_uid = ledger.get_or_create_user(db, other).id
+            ledger.record_transaction(db, other_uid, 10000, "Bank", "Salary", tx_type="income")
             ledger.record_transaction(
                 db,
-                ledger.get_or_create_user(db, other).id,
+                other_uid,
                 777,
                 "Bank",
                 "Secret",

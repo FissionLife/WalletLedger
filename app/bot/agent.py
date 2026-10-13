@@ -1158,9 +1158,13 @@ async def tool_executor_node(state: AgentState) -> dict[str, Any]:
 
 
 def _pay_alternative(chat_id: str, results: list[dict[str, Any]]) -> dict[str, Any] | None:
-    """If exactly one expense failed for lack of balance, find another account that can cover it.
+    """Shape the buttons for a blocked spend. Returns None when no spend was blocked.
 
-    Returns {account, balance, args} for a one-tap "pay from there instead" button, or None.
+    - A single expense blocked for lack of balance, with another pipe that could cover it:
+      ``{"account", "balance", "args"}`` for a one-tap "pay from there instead" button
+      next to a Cancel button.
+    - A single expense blocked but no other pipe can cover it: ``{"cancel_only": True}`` so
+      the reply still shows a Cancel button (nothing persists; the user just dismisses).
     """
     failed = [
         r
@@ -1175,13 +1179,13 @@ def _pay_alternative(chat_id: str, results: list[dict[str, Any]]) -> dict[str, A
     amount = r.get("tool_args", {}).get("amount")
     tried = str(r.get("tool_args", {}).get("account_name") or "").strip().lower()
     if not isinstance(amount, (int, float)):
-        return None
+        return {"cancel_only": True}
     with SessionLocal() as db:
         user = db.get(User, str(chat_id)) or db.scalar(
             select(User).where(User.telegram_chat_id == str(chat_id))
         )
         if user is None:
-            return None
+            return {"cancel_only": True}
         from app.models import Account
 
         best = None
@@ -1191,7 +1195,7 @@ def _pay_alternative(chat_id: str, results: list[dict[str, Any]]) -> dict[str, A
             if best is None or a.balance > best.balance:
                 best = a
         if best is None:
-            return None
+            return {"cancel_only": True}
         args = dict(r.get("tool_args") or {})
         args["account_name"] = best.name
         return {"account": best.name, "balance": round(best.balance, 2), "args": args}

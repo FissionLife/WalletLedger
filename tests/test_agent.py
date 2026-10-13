@@ -242,6 +242,7 @@ class TestPersonas(AgentTestCase):
         self.assertIn("Reduce Money Mode", reply)
 
     def test_ledger_confirmations_stay_templates(self):
+        execute_tool("log_income", user_id=self.chat_id, amount=10000, source_account="Cash")
         self.add_key()
         expense = tool_response("log_expense", {"amount": 200, "category": "Food"})
         with patch.object(litellm, "acompletion", AsyncMock(return_value=expense)) as mock:
@@ -299,6 +300,7 @@ class TestMultiTransactionAndBatchIngestion(AgentTestCase):
     """Test multi-item list parsing, mixed income+expenses, and multi-tool LLM execution."""
 
     def test_multi_line_expense_list(self):
+        execute_tool("log_income", user_id=self.chat_id, amount=10000, source_account="Cash")
         message = (
             "190=poornima pizza Dosa\n"
             "80=Neeraj Dosa\n"
@@ -346,6 +348,7 @@ class TestMultiTransactionAndBatchIngestion(AgentTestCase):
         self.assertIn("Spending Breakdown", reply)
 
     def test_multi_tool_calling_from_llm(self):
+        execute_tool("log_income", user_id=self.chat_id, amount=10000, source_account="Cash")
         self.add_key()
         calls = [
             SimpleNamespace(
