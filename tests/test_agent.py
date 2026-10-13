@@ -387,7 +387,6 @@ class TestMultiTransactionAndBatchIngestion(AgentTestCase):
         self.assertIn("Poornima", reply)
 
 
-
 class TestAccountSelection(AgentTestCase):
     """Fix: when user logs expense without mentioning an account, ask which account they paid from."""
 
@@ -407,12 +406,16 @@ class TestAccountSelection(AgentTestCase):
         chat(self.chat_id, "Bank")
         balances = self.balances()
         self.assertAlmostEqual(
-            balances.get("Bank", 0), 50000 - 8000, delta=1,
+            balances.get("Bank", 0),
+            50000 - 8000,
+            delta=1,
             msg=f"Expected Bank=42000 after 8k expense, got {balances}",
         )
         # Cash must remain at 0 (not negatively charged)
         self.assertAlmostEqual(
-            balances.get("Cash", 0), 0, delta=1,
+            balances.get("Cash", 0),
+            0,
+            delta=1,
             msg=f"Cash must not be debited, got {balances}",
         )
 
@@ -423,7 +426,9 @@ class TestAccountSelection(AgentTestCase):
         self.assertNotIn("which account", reply.lower(), f"Should not prompt: {reply}")
         balances = self.balances()
         self.assertAlmostEqual(
-            balances.get("Bank", 0), 50000 - 500, delta=1,
+            balances.get("Bank", 0),
+            50000 - 500,
+            delta=1,
             msg=f"Expected Bank=49500, got {balances}",
         )
 
@@ -437,7 +442,13 @@ class TestAccountSelection(AgentTestCase):
 
     def test_cash_expense_runs_immediately_when_explicit(self):
         """'Spent 200 on chai from cash' must not prompt — cash is explicit."""
-        execute_tool("transfer_funds", user_id=self.chat_id, from_account="Bank", to_account="Cash", amount=1000)
+        execute_tool(
+            "transfer_funds",
+            user_id=self.chat_id,
+            from_account="Bank",
+            to_account="Cash",
+            amount=1000,
+        )
         reply = chat(self.chat_id, "spent 200 on chai from cash")
         self.assertNotIn("which account", reply.lower())
         balances = self.balances()

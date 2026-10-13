@@ -740,8 +740,6 @@ def _nlu_context(chat_id: str) -> nlu.Context:
         )
 
 
-
-
 def _account_selection_prompt(chat_id: str) -> str:
     """Build a message asking the user which account they paid from."""
     ctx = _nlu_context(chat_id)
@@ -749,7 +747,7 @@ def _account_selection_prompt(chat_id: str) -> str:
     return (
         "💳 Which account did you pay from?\n"
         f"Your accounts: {account_list}\n\n"
-        "Just reply with the account name (e.g., \"Bank\" or \"Cash\")"
+        'Just reply with the account name (e.g., "Bank" or "Cash")'
     )
 
 
@@ -974,7 +972,6 @@ async def llm_reasoning_node(state: AgentState) -> dict[str, Any]:
         # Unrelated message: drop the pending action and handle the new message normally.
         session_store.clear_pending(chat_id)
         logger.info("Chat %s sent a new request; cancelled pending action.", chat_id)
-
 
     # 2. API keys pasted in chat (Gemini AIza / AQ., OpenAI, Claude, Groq; several at once).
     if extract_api_keys(user_message):

@@ -484,8 +484,15 @@ def _parse_clause(raw: str, ctx: Context, inherit_kind: str | None) -> Entry | N
         ctx.default_income_account if kind == "income" else ctx.default_expense_account
     )
     return Entry(
-        kind, amount, account, None, category, merchant,
-        note=raw.strip(), when=when, account_explicit=account_explicit,
+        kind,
+        amount,
+        account,
+        None,
+        category,
+        merchant,
+        note=raw.strip(),
+        when=when,
+        account_explicit=account_explicit,
     )
 
 
