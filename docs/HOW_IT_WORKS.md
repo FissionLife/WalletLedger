@@ -39,6 +39,12 @@ You (Telegram) ──► the bot ──► the "brain" ──► the ledger (dat
 5. **The bot replies** in two lines, with an **↩️ Undo** button:
    `💸 −₹450 · Food & Dining` / `Bank ₹84,550`.
 
+**First contact.** A new user is asked one question with buttons (Bank, Cash, UPI, Card): where do you
+usually pay from? That becomes the default account for anything that names none ("chai 20"), and the bot
+then offers to record what is in it now. Nothing blocks: ignore the question and the bot picks Bank and
+carries on. Change it any time ("use cash by default"), or fix a balance in words ("bank balance is 25000").
+Corrections work in words too: "oops the dinner was actually 540", "delete the coffee".
+
 Big transfers (₹5,000 and up) ask "are you sure?" first, so a typo can't move a fortune.
 A message that is a **question** ("is 640 too much for dinner?") is never logged as spending.
 
