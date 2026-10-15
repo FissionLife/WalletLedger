@@ -19,7 +19,7 @@ from unittest.mock import patch
 import litellm
 from sqlalchemy import func, select
 
-from app.bot import agent, nlu
+from app.bot import agent
 from app.bot import main as bot_main
 from app.config import settings
 from app.db import SessionLocal, init_db
@@ -76,6 +76,15 @@ class Recorder:
             if (result is not None) != when_none:
                 self.paths.append(label)
             return result
+
+        return wrapper
+
+    def wrap_label(self, original, label: str):
+        """Record ``label`` whenever ``original`` is called, even if it raises."""
+
+        async def wrapper(*a, **kw):
+            self.paths.append(label)
+            return await original(*a, **kw)
 
         return wrapper
 
@@ -170,22 +179,21 @@ def _state(chat_id: str) -> dict[str, Any]:
 
 # ---------------------------------------------------------------------------------- one turn
 def _path(rec: Recorder, text: str, pending_before: bool, entered_agent: bool) -> str:
-    if pending_before and agent.classify_reply(text):
+    """confirmation (a waiting Yes/No was answered), agent (the LLM agent ran), command, other."""
+    if pending_before and "confirmation" in rec.paths:
         return "confirmation"
-    for label in ("orchestrator", "persona", "llm", "rules"):
-        if label in rec.paths:
-            return label
-    if not entered_agent:
-        if text.strip().startswith("/"):
-            return "command"
-        if nlu.detect_screen(text) is not None:
-            return "screen"
+    if entered_agent and "agent" in rec.paths:
+        return "agent"
+    if not entered_agent and text.strip().startswith("/"):
+        return "command"
     return "other"
 
 
 async def _turn(rec: Recorder, chat_id: str, text: str, baseline: int) -> dict[str, Any]:
     rec.reset_turn()
-    pending_before = agent.session_store.get_pending(chat_id) is not None
+    pending_before = (
+        await agent.has_pending(chat_id) or bot_main._get_pending_import(chat_id) is not None
+    )
     entered = {"agent": False}
     original_entry = bot_main.process_user_interaction_ex
 
@@ -198,9 +206,7 @@ async def _turn(rec: Recorder, chat_id: str, text: str, baseline: int) -> dict[s
         reply = await bot_main.handle_incoming(chat_id, text)
     latency = (time.perf_counter() - started) * 1000
     path = _path(rec, text, pending_before, entered["agent"])
-    if path == "llm" and not rec.live and rec.replay is None:
-        path = "offline"  # the AI step ran with no key: the offline rules answered
-    if path == "other" and (reply.text or "").startswith("🧠"):
+    if path in ("agent", "other") and (reply.text or "").startswith("🧠"):
         path = "persona"
     state = await asyncio.to_thread(_state, chat_id)
     return {
@@ -279,9 +285,16 @@ async def _run_all(args, scrub) -> tuple[list[dict], Recorder]:
     try:
         with (
             patch.object(tool_client, "call_tool", rec.wrap_tool(tool_client.call_tool)),
-            patch.object(agent, "_nlu_analysis", rec.wrap_path(agent._nlu_analysis, "rules")),
-            patch.object(agent, "_run_llm_analysis", rec.wrap_path(agent._run_llm_analysis, "llm")),
-            patch.object(agent, "_orchestrate", rec.wrap_path(agent._orchestrate, "orchestrator")),
+            # every AI call goes through ai_gateway.complete (also with no key: it then raises)
+            patch.object(ai_gateway, "complete", rec.wrap_label(ai_gateway.complete, "agent")),
+            patch.object(
+                agent, "resume_pending", rec.wrap_path(agent.resume_pending, "confirmation")
+            ),
+            patch.object(
+                bot_main,
+                "answer_pending_import",
+                rec.wrap_path(bot_main.answer_pending_import, "confirmation"),
+            ),
             patch.object(litellm, "acompletion", rec.wrap_completion(litellm.acompletion)),
         ):
             for case in _load(args.golden, args.tier, args.case):

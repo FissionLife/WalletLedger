@@ -308,12 +308,12 @@ class FormattingTests(unittest.TestCase):
         self.assertEqual(fmt.short(-0.2), "₹0")
 
     def test_amounts_for_budgets_understand_k_and_lakh(self):
-        from app.bot import nlu
+        from app.bot import textutil
 
-        self.assertEqual(nlu.parse_amount("6k"), 6000.0)
-        self.assertEqual(nlu.parse_amount("2l"), 200000.0)
-        self.assertEqual(nlu.parse_amount("₹6,000"), 6000.0)
-        self.assertIsNone(nlu.parse_amount("food"))
+        self.assertEqual(textutil.parse_amount("6k"), 6000.0)
+        self.assertEqual(textutil.parse_amount("2l"), 200000.0)
+        self.assertEqual(textutil.parse_amount("₹6,000"), 6000.0)
+        self.assertIsNone(textutil.parse_amount("food"))
 
     def test_stats_arguments_may_put_the_period_anywhere(self):
         from app.bot import views

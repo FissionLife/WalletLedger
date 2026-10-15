@@ -13,7 +13,7 @@ from typing import Any
 
 from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.db import SessionLocal
@@ -27,6 +27,7 @@ from app.services.ledger import (
     record_transaction,
     resolve_category,
     transfer_between_pipes,
+    undo_transaction,
     validate_amount,
     validate_when,
 )
@@ -77,7 +78,7 @@ def log_expense(
         values["user_id"] = user.id
         values["amount"] = _positive_amount(values["amount"])
         if values.get("category_name"):  # "food"/"meals" -> the canonical "Food & Dining"
-            from app.bot.nlu import canonical_category
+            from app.bot.categories import canonical_category
 
             values["category_name"] = canonical_category(values["category_name"])
         if not values.get("account_name"):  # none named: the user's default, else Cash
@@ -384,7 +385,7 @@ def set_category_budget(
         raise ValueError("monthly_budget must be greater than zero or null")
 
     def run(db: Session, user_id: str) -> dict[str, Any]:
-        from app.bot.nlu import canonical_category
+        from app.bot.categories import canonical_category
 
         uid = _resolve_user(db, user_id).id
         # "food"/"meals" -> the canonical "Food & Dining" the expenses file under (same as /budget)
@@ -392,6 +393,78 @@ def set_category_budget(
         cat.budget_limit = float(monthly_budget) if monthly_budget is not None else None
         db.commit()
         return {"status": "success", "category": cat.name, "monthly_budget": cat.budget_limit}
+
+    return _with_db(run, user_id=user_id)
+
+
+def delete_transaction(user_id: str, transaction_id: str) -> dict[str, Any]:
+    """Delete one of the user's transactions (full id or first 8+ characters) and restore balances."""
+
+    def run(db: Session, user_id: str) -> dict[str, Any]:
+        uid = _resolve_user(db, user_id).id
+        return {**undo_transaction(db, uid, transaction_id), "status": "success"}
+
+    return _with_db(run, user_id=user_id)
+
+
+def set_default_account(user_id: str, account_name: str) -> dict[str, Any]:
+    """Make `account_name` the account used when an entry names none (created if new)."""
+    if not (account_name or "").strip():
+        raise ValueError("account_name is required")
+
+    def run(db: Session, user_id: str) -> dict[str, Any]:
+        user = _resolve_user(db, user_id)
+        account = get_or_create_account(db, user.id, account_name.strip())
+        user.default_account = account.name
+        db.commit()
+        return {"status": "success", "default_account": account.name}
+
+    return _with_db(run, user_id=user_id)
+
+
+OPENING_BALANCE_CATEGORY = "Opening Balance"
+BALANCE_ADJUSTMENT_CATEGORY = "Balance Adjustment"
+
+
+def set_account_balance(user_id: str, account_name: str, balance: float) -> dict[str, Any]:
+    """Make an account hold exactly `balance`: the difference is recorded as an opening balance
+    (account has no entries yet) or a balance adjustment (income or expense)."""
+    if not (account_name or "").strip():
+        raise ValueError("account_name is required")
+    target = float(balance)
+    if target != target or target in (float("inf"), float("-inf")):
+        raise ValueError("balance must be a real number")
+    if target < 0:
+        raise ValueError("balance must be zero or more")
+
+    def run(db: Session, user_id: str) -> dict[str, Any]:
+        user = _resolve_user(db, user_id)
+        account = get_or_create_account(db, user.id, account_name.strip())
+        name = account.name
+        before = round(account.balance, 2)
+        diff = round(target - before, 2)
+        result_base = {"status": "success", "account": name, "previous_balance": before}
+        if abs(diff) < 0.005:
+            db.commit()
+            return {**result_base, "new_balance": before, "transaction_id": None}
+        has_entries = db.scalar(
+            select(func.count())
+            .select_from(Transaction)
+            .where(Transaction.user_id == user.id, Transaction.account_id == account.id)
+        )
+        if diff > 0:
+            category = BALANCE_ADJUSTMENT_CATEGORY if has_entries else OPENING_BALANCE_CATEGORY
+            tx_type, amount = "income", diff
+        else:
+            category, tx_type, amount = BALANCE_ADJUSTMENT_CATEGORY, "expense", -diff
+        result = record_transaction(
+            db, user.id, amount, name, category, None, tx_type, "Balance set by you", "manual"
+        )
+        return {
+            **result_base,
+            "new_balance": result["new_balance"],
+            "transaction_id": result["transaction_id"],
+        }
 
     return _with_db(run, user_id=user_id)
 
@@ -568,6 +641,9 @@ TOOL_REGISTRY: dict[str, Callable[..., dict[str, Any]]] = {
     "search_transactions": search_transactions,
     "edit_transaction": edit_transaction,
     "set_category_budget": set_category_budget,
+    "delete_transaction": delete_transaction,
+    "set_default_account": set_default_account,
+    "set_account_balance": set_account_balance,
 }
 
 mcp = MCPServer(

@@ -1,4 +1,8 @@
-"""Regression tests for the chat-logic audit: reading messages, confirmations, buttons, keys. Offline."""
+"""Regression tests for the chat-logic audit: confirmations, buttons, keys, startup. Offline.
+
+Free text is read by the LLM agent, so every chat-driven test scripts the decision with
+``FakeLLM`` (tests/fake_llm.py) and asserts the ledger/reply/button outcome.
+"""
 
 import os
 
@@ -15,17 +19,21 @@ for _var in ("GEMINI_API_KEYS", "GEMINI_API_KEY", "OPENAI_API_KEYS", "GROQ_API_K
 
 import asyncio  # noqa: E402
 import itertools  # noqa: E402
-import json  # noqa: E402
 import unittest  # noqa: E402
 from types import SimpleNamespace  # noqa: E402
 from unittest.mock import patch  # noqa: E402
 
-from app.bot import agent, nlu, ui  # noqa: E402
+from app.bot import agent, ui  # noqa: E402
 from app.bot import main as bot  # noqa: E402
 from app.bot.callbacks import handle_callback  # noqa: E402
 from app.db import SessionLocal, init_db  # noqa: E402
 from app.services import ledger  # noqa: E402
 from app.services_ai import ai_gateway as gw  # noqa: E402
+
+try:
+    from tests.fake_llm import FakeLLM, tool
+except ImportError:  # discover -s tests (no -t .) puts tests/ on sys.path directly
+    from fake_llm import FakeLLM, tool
 
 init_db()
 _ids = itertools.count(1)
@@ -48,104 +56,13 @@ def balance(chat_id, account):
     return None
 
 
-def entries(text, accounts=("Bank", "Cash", "HDFC Bank")):
-    ctx = nlu.Context(
-        accounts=list(accounts), default_expense_account="Cash", default_income_account="Bank"
-    )
-    return [(e.kind, e.amount) for e in nlu.parse_entries(text, ctx)]
-
-
-class MessageReadingTests(unittest.TestCase):
-    def test_a_purchase_is_not_income_just_because_it_starts_with_got(self):
-        self.assertEqual(entries("got petrol 500"), [("expense", 500.0)])
-        self.assertEqual(entries("got new shoes 2000"), [("expense", 2000.0)])
-        self.assertEqual(entries("got 5000 from dad"), [("income", 5000.0)])
-
-    def test_income_never_leaks_into_the_next_item_on_a_line(self):
-        self.assertEqual(
-            entries("salary 50000, bonus 5000, rent 15000, food 6000"),
-            [("income", 50000.0), ("income", 5000.0), ("expense", 15000.0), ("expense", 6000.0)],
-        )
-
-    def test_money_coming_in_is_income(self):
-        for text, amount in (
-            ("ravi paid me 500", 500.0),
-            ("mom gave me 1000", 1000.0),
-            ("sold old phone for 8000", 8000.0),
-            ("gift from mom 1000", 1000.0),
-            ("deposited 5000 in bank", 5000.0),
-        ):
-            self.assertEqual(entries(text), [("income", amount)], text)
-
-    def test_plans_negations_and_facts_are_not_logged(self):
-        for text in (
-            "remind me to pay 500 tomorrow",
-            "I will spend 500 tomorrow",
-            "didn't spend 500",
-            "never spent 500 on this",
-            "my salary is 80000",
-            "ravi owes me 500",
-            "order #12345",
-        ):
-            self.assertEqual(entries(text), [], text)
-
-    def test_statements_that_start_like_questions_are_logged(self):
-        self.assertEqual(entries("Was at Dmart, paid 1500 for groceries"), [("expense", 1500.0)])
-        self.assertEqual(entries("What a day! spent 200 on chai"), [("expense", 200.0)])
-        self.assertEqual(entries("Can't believe I spent 800 on pizza"), [("expense", 800.0)])
-        self.assertTrue(nlu.is_question("Should I buy a 3000 jacket"))
-        self.assertTrue(nlu.is_question("what if I spend 500 less on food"))
-
-    def test_people_and_machines_are_not_accounts(self):
-        ctx = nlu.Context(
-            accounts=["Bank", "Cash"], default_expense_account="Cash", default_income_account="Bank"
-        )
-        atm = nlu.parse_entries("withdrew 2000 from atm", ctx)[0]
-        self.assertEqual((atm.kind, atm.account, atm.to_account), ("transfer", "Bank", "Cash"))
-        loan = nlu.parse_entries("borrowed 500 from ravi", ctx)[0]
-        self.assertEqual(loan.account, "Cash")
-        self.assertEqual(nlu.parse_entries("moved 500 to cash", ctx)[0].account, "Bank")
-
-    def test_the_longest_account_name_wins(self):
-        ctx = nlu.Context(
-            accounts=["Bank", "HDFC Bank", "Cash"],
-            default_expense_account="Cash",
-            default_income_account="Bank",
-        )
-        entry = nlu.parse_entries("moved 3000 from hdfc bank to cash", ctx)[0]
-        self.assertEqual(entry.account, "HDFC Bank")
-
-    def test_junk_categories_are_not_invented(self):
-        ctx = nlu.Context(
-            accounts=["Bank", "Cash"], default_expense_account="Cash", default_income_account="Bank"
-        )
-        for text in ("paid 400 to plumber by upi", "paid 300 to ravi"):
-            category = nlu.parse_entries(text, ctx)[0].category
-            self.assertNotEqual(category, "Food & Dining", text)
-            self.assertNotIn(category, ("Plumber", "Ravi", "Paid"), text)
-        self.assertEqual(nlu.parse_entries("spnt 120 on lnch", ctx)[0].category, "Food & Dining")
-
-    def test_dates_are_read_or_refused_never_guessed(self):
-        ctx = nlu.Context(
-            accounts=["Bank", "Cash"], default_expense_account="Cash", default_income_account="Bank"
-        )
-        self.assertEqual(
-            nlu.parse_entries("spent 500 on 12 October 2025", ctx)[0].when, "2025-10-12"
-        )
-        self.assertEqual(len(nlu.parse_entries("spent 500 on 12 October 2025", ctx)), 1)
-        self.assertEqual(nlu.parse_entries("chai 20 on 05.10.2026", ctx)[0].when, "2026-10-05")
-        self.assertEqual(nlu.parse_entries("spent 200 on 2026/10/05", ctx)[0].when, "2026-10-05")
-        self.assertEqual(
-            nlu.parse_entries("chai 20 last week", ctx), []
-        )  # asks instead of logging today
-        self.assertEqual(nlu.parse_entries("chai 20 tomorrow", ctx), [])
-
-    def test_totals_and_indian_amount_styles(self):
-        self.assertEqual(
-            entries("chai 20\nauto 50\nTotal 70"), [("expense", 20.0), ("expense", 50.0)]
-        )
-        self.assertEqual(entries("paid 1200rs rent"), [("expense", 1200.0)])
-        self.assertEqual(entries("500/- chai"), [("expense", 500.0)])
+def seed(chat_id, account="Bank", amount=30000.0):
+    """Fund an account directly (also marks the user as set up, so onboarding stays out of the way)."""
+    with SessionLocal() as db:
+        user = ledger.get_or_create_user(db, chat_id)
+        ledger.record_transaction(db, user.id, amount, account, "Seed", tx_type="income")
+        user.default_account = account
+        db.commit()
 
 
 class KeyDetectionTests(unittest.TestCase):
@@ -163,22 +80,34 @@ class KeyDetectionTests(unittest.TestCase):
 
 
 class ConfirmationTests(unittest.TestCase):
-    def say(self, chat_id, text):
-        return run(bot.handle_incoming(chat_id, text))
+    def say(self, chat_id, text, *answers):
+        with FakeLLM(*answers):
+            return run(bot.handle_incoming(chat_id, text))
 
     def setUp(self):
         self.chat = chat()
-        self.say(self.chat, "Received 30000 in Bank")
+        seed(self.chat)
 
     def pending(self):
-        return self.say(self.chat, "transfer 7000 from bank to cash")
+        """Ask for a transfer big enough to need a Yes; returns the Reply with its buttons."""
+        return self.say(
+            self.chat,
+            "transfer 7000 from bank to cash",
+            tool("transfer_funds", from_account="Bank", to_account="Cash", amount=7000),
+        )
 
-    def test_more_ways_to_say_yes_and_no(self):
-        for text in ("haan", "ok do it", "yes pls", "👍", "kar do", "Yes!"):
-            self.assertEqual(agent.classify_reply(text), "confirmed", text)
-        for text in ("nahi", "cancel it", "👎", "never mind", "No."):
-            self.assertEqual(agent.classify_reply(text), "cancelled", text)
-        self.assertIsNone(agent.classify_reply("balance"))
+    def test_a_typed_yes_confirms_the_waiting_transfer(self):
+        self.pending()
+        reply = self.say(self.chat, "haan kar do", "confirm")  # the LLM reads the yes
+        self.assertIn("7,000", reply.text)
+        self.assertEqual(balance(self.chat, "Cash"), 7000.0)
+
+    def test_a_typed_no_cancels_and_moves_nothing(self):
+        self.pending()
+        reply = self.say(self.chat, "nahi, rehne do", "cancel")
+        self.assertIn("Cancelled", reply.text)
+        self.assertEqual(balance(self.chat, "Cash"), 0.0)
+        self.assertFalse(run(agent.has_pending(self.chat)))
 
     def test_buttons_carry_the_id_of_their_question(self):
         reply = self.pending()
@@ -187,7 +116,11 @@ class ConfirmationTests(unittest.TestCase):
 
     def test_an_old_yes_button_cannot_confirm_a_newer_question(self):
         old = [b.data for row in self.pending().rows for b in row][0]
-        self.pending()  # a newer question replaces the old one
+        self.say(  # a newer, different question replaces the old one
+            self.chat,
+            "transfer 6000 from bank to cash",
+            tool("transfer_funds", from_account="Bank", to_account="Cash", amount=6000),
+        )
         stale = run(handle_callback(self.chat, old))
         self.assertIn("no longer waiting", stale.text)
         self.assertEqual(balance(self.chat, "Cash"), 0.0)
@@ -198,22 +131,38 @@ class ConfirmationTests(unittest.TestCase):
         self.assertIn("7,000", done.text)
         self.assertEqual(balance(self.chat, "Cash"), 7000.0)
 
+    def test_the_cancel_button_moves_nothing(self):
+        data = [b.data for row in self.pending().rows for b in row][1]
+        done = run(handle_callback(self.chat, data))
+        self.assertIn("Cancelled", done.text)
+        self.assertEqual(balance(self.chat, "Cash"), 0.0)
+
     def test_a_command_in_between_cancels_the_question(self):
         self.pending()
         self.say(self.chat, "/balance")
-        reply = self.say(self.chat, "yes")
-        self.assertIn("Nothing is waiting", reply.text)
+        self.assertFalse(run(agent.has_pending(self.chat)))
+        reply = self.say(self.chat, "yes", "Nothing is waiting for an answer.")
+        self.assertNotIn("7,000", reply.text)
         self.assertEqual(balance(self.chat, "Cash"), 0.0)
 
     def test_commands_split_on_any_whitespace(self):
         reply = self.say(self.chat, "/history\t1")
         self.assertNotIn("don't know", reply.text)
 
-    def test_ai_edits_wait_for_a_yes(self):
+    def test_risky_tool_calls_wait_for_a_yes(self):
         reason = agent.confirmation_reason(
             "edit_transaction", {"transaction_id": "abcdef123456", "amount": 5}
         )
         self.assertIn("Change entry abcdef12", reason)
+        self.assertIn(
+            "Delete entry abcdef12",
+            agent.confirmation_reason("delete_transaction", {"transaction_id": "abcdef123456"}),
+        )
+        self.assertIsNotNone(
+            agent.confirmation_reason(
+                "set_account_balance", {"account_name": "Cash", "balance": 500}
+            )
+        )
         self.assertIsNone(agent.confirmation_reason("log_expense", {"amount": 9000}))
         self.assertIsNotNone(
             agent.confirmation_reason(
@@ -221,91 +170,71 @@ class ConfirmationTests(unittest.TestCase):
             )
         )
         self.assertIsNone(agent.confirmation_reason("transfer_funds", "not a dict"))
+        self.assertIsNone(  # below the threshold: runs straight away
+            agent.confirmation_reason(
+                "transfer_funds", {"amount": 4999, "from_account": "A", "to_account": "B"}
+            )
+        )
 
     def test_the_ai_cannot_save_keys(self):
         self.assertNotIn("save_user_api_key", {t["function"]["name"] for t in agent.TOOLS_SCHEMA})
+        self.assertIn("save_user_api_key", agent.HIDDEN_TOOLS)
 
 
-def fake_call(name, args, call_id="c1"):
-    return SimpleNamespace(
-        id=call_id, function=SimpleNamespace(name=name, arguments=json.dumps(args))
-    )
+class PlannerLoopTests(unittest.TestCase):
+    """The planner/guard/executor loop: a write runs once, and risky calls all wait together."""
 
-
-def fake_reply(content="", calls=None):
-    return SimpleNamespace(
-        choices=[SimpleNamespace(message=SimpleNamespace(content=content, tool_calls=calls or []))]
-    )
-
-
-def scripted(*replies):
-    queue = list(replies)
-
-    async def complete(user_id, messages, **kw):
-        return queue.pop(0)
-
-    return complete
-
-
-class OrchestratorFixTests(unittest.TestCase):
     def setUp(self):
         self.chat = chat()
-        run(bot.handle_incoming(self.chat, "Received 30000 in Bank"))
+        seed(self.chat, "Bank", 30000)
         with SessionLocal() as db:
             uid = ledger.get_or_create_user(db, self.chat).id
             ledger.record_transaction(db, uid, 10000, "Cash", "Seed", tx_type="income")
 
     def test_a_write_with_an_empty_final_answer_is_not_run_twice(self):
-        ai = scripted(
-            fake_reply(
-                calls=[
-                    fake_call(
-                        "log_expense",
-                        {"amount": 200, "category": "Food", "account_name": "Cash"},
-                        "a",
-                    ),
-                    fake_call("get_pipe_balances", {}, "b"),
+        with FakeLLM() as llm:
+            llm.add(
+                [
+                    tool("log_expense", amount=200, category="Food & Dining", account_name="Cash"),
+                    tool("get_pipe_balances"),
                 ]
-            ),
-            fake_reply(""),
-        )
-        with patch.object(gw, "complete", ai):
-            result = run(
-                agent._orchestrate(self.chat, "log 200 lunch and show balances please", [])
             )
-        self.assertIsNotNone(result)
+            llm.add("")  # the planner's final answer is empty: the renderer falls back to templates
+            reply = run(bot.handle_incoming(self.chat, "log 200 lunch and show balances please"))
+        self.assertTrue(reply.text.strip())
         self.assertEqual(balance(self.chat, "Cash"), 9800.0)  # once, not twice
 
-    def test_two_big_transfers_both_wait_and_the_recorded_part_is_mentioned(self):
-        ai = scripted(
-            fake_reply(
-                calls=[
-                    fake_call(
-                        "log_expense",
-                        {"amount": 50, "category": "Food", "account_name": "Bank"},
-                        "a",
-                    ),
-                    fake_call(
-                        "transfer_funds",
-                        {"from_account": "Bank", "to_account": "Cash", "amount": 6000},
-                        "b",
-                    ),
-                    fake_call(
-                        "transfer_funds",
-                        {"from_account": "Bank", "to_account": "Savings", "amount": 7000},
-                        "c",
-                    ),
+    def test_two_big_transfers_both_wait_and_nothing_runs_first(self):
+        with FakeLLM() as llm:
+            llm.add(
+                [
+                    tool("log_expense", amount=50, category="Food & Dining", account_name="Bank"),
+                    tool("transfer_funds", from_account="Bank", to_account="Cash", amount=6000),
+                    tool("transfer_funds", from_account="Bank", to_account="Savings", amount=7000),
                 ]
             )
-        )
-        with patch.object(gw, "complete", ai):
-            result = run(agent._orchestrate(self.chat, "move money and note chai", []))
-        self.assertTrue(result["requires_confirmation"])
-        self.assertEqual(len(result["tool_calls"]), 2)
-        self.assertIn("₹50", result["preamble"])
-        self.assertIn("6,000", result["confirmation_action"]["description"])
-        self.assertIn("7,000", result["confirmation_action"]["description"])
-        self.assertEqual(balance(self.chat, "Savings"), None)  # nothing moved yet
+            outcome = run(agent.process_user_interaction_ex(self.chat, "move money and note chai"))
+        self.assertTrue(outcome.needs_confirmation)
+        self.assertIn("6,000", outcome.text)
+        self.assertIn("7,000", outcome.text)
+        # Nothing ran yet, not even the small expense that shares the message.
+        self.assertEqual(balance(self.chat, "Bank"), 30000.0)
+        self.assertEqual(balance(self.chat, "Savings"), None)
+
+    def test_confirming_runs_every_call_from_that_message(self):
+        with FakeLLM() as llm:
+            llm.add(
+                [
+                    tool("log_expense", amount=50, category="Food & Dining", account_name="Bank"),
+                    tool("transfer_funds", from_account="Bank", to_account="Cash", amount=6000),
+                ]
+            )
+            outcome = run(agent.process_user_interaction_ex(self.chat, "chai 50 and move 6000"))
+            self.assertTrue(outcome.needs_confirmation)
+            done = run(agent.resume_pending(self.chat, True, outcome.pending_id))
+        self.assertIsNotNone(done)
+        self.assertEqual(balance(self.chat, "Bank"), 30000.0 - 50 - 6000)
+        self.assertEqual(balance(self.chat, "Cash"), 16000.0)
 
 
 class ButtonTests(unittest.TestCase):
@@ -336,11 +265,13 @@ class ButtonTests(unittest.TestCase):
 
     def test_history_undo_button_names_the_entry_so_a_double_tap_is_harmless(self):
         chat_id = chat()
-        with SessionLocal() as db:
-            uid = ledger.get_or_create_user(db, chat_id).id
-            ledger.record_transaction(db, uid, 10000, "Cash", "Seed", tx_type="income")
-        run(bot.handle_incoming(chat_id, "Spent 100 on chai via Cash"))
-        run(bot.handle_incoming(chat_id, "Spent 200 on auto via Cash"))
+        seed(chat_id, "Cash", 10000)
+        with FakeLLM(
+            tool("log_expense", amount=100, category="Food & Dining", account_name="Cash"),
+            tool("log_expense", amount=200, category="Transport", account_name="Cash"),
+        ):
+            run(bot.handle_incoming(chat_id, "Spent 100 on chai via Cash"))
+            run(bot.handle_incoming(chat_id, "Spent 200 on auto via Cash"))
         history = run(bot.handle_incoming(chat_id, "/history"))
         undo = next(b.data for row in history.rows for b in row if b.data.startswith("undo:"))
         self.assertNotEqual(undo, "undo:last")
@@ -351,6 +282,10 @@ class ButtonTests(unittest.TestCase):
     def test_an_expired_import_button_says_so(self):
         reply = run(bot.answer_pending_import(chat(), "confirmed"))
         self.assertIn("expired", reply.text)
+
+    def test_an_expired_action_button_says_so(self):
+        reply = run(bot.answer_pending_action(chat(), True, "deadbe"))
+        self.assertIn("no longer waiting", reply.text)
 
 
 class StartupTests(unittest.TestCase):

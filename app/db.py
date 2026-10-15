@@ -115,7 +115,7 @@ def _move_aliased_budgets() -> None:
     """
     from sqlalchemy import func, select
 
-    from app.bot.nlu import canonical_category
+    from app.bot.categories import canonical_category
     from app.models import Category
 
     with SessionLocal() as db:

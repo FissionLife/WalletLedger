@@ -1,4 +1,8 @@
-"""The agent evaluation: scoring rules and a small rules-tier run of the real router (no AI)."""
+"""The agent evaluation: scoring rules and a small rules-tier run of the real router (no AI).
+
+With no AI key the agent understands no free text, so the rules tier covers commands, buttons and
+the "add a key" hint; entries, transfers and questions are LLM-tier cases.
+"""
 
 import os
 
@@ -102,18 +106,17 @@ class RulesRunTests(unittest.TestCase):
         cases = [
             {"id": "T-1", "tier": "rules", "group": "expense", "seed": {"accounts": {"Cash": 1000}},
              "turns": [{"user": "spent 200 on chai from cash", "expect": {
-                 "path": "rules", "calls": [{"tool": "log_expense", "args": {"amount": 200}}],
-                 "ledger_after": {"balances": {"Cash": 800}, "new_transactions": 1}}}]},
-            {"id": "T-2", "tier": "rules", "group": "transfer",
-             "seed": {"accounts": {"Bank": 20000, "Cash": 0}},
-             "turns": [{"user": "transfer 6000 from bank to cash",
-                        "expect": {"needs_confirmation": True, "calls": [],
-                                   "ledger_after": {"new_transactions": 0}}},
-                       {"user": "yes", "expect": {"path": "confirmation",
-                        "ledger_after": {"balances": {"Bank": 14000, "Cash": 6000}}}}]},
+                 "path": "agent", "calls": [], "needs_confirmation": False,
+                 "reply": {"must_include_all": ["/setkey"]},
+                 "ledger_after": {"balances": {"Cash": 1000}, "new_transactions": 0}}}]},
+            {"id": "T-2", "tier": "rules", "group": "command",
+             "seed": {"transactions": [{"type": "income", "amount": 20000, "account": "Bank"}]},
+             "turns": [{"user": "/balance", "expect": {"path": "command", "calls": [],
+                        "reply": {"must_include_all": ["₹20,000"]},
+                        "ledger_after": {"balances": {"Bank": 20000}, "new_transactions": 0}}}]},
             {"id": "T-3", "tier": "rules", "group": "question", "seed": {},
              "turns": [{"user": "did I spend 500 on food?",
-                        "expect": {"ledger_after": {"new_transactions": 0}}}]},
+                        "expect": {"path": "agent", "ledger_after": {"new_transactions": 0}}}]},
         ]  # fmt: skip
         golden.write_text("\n".join(json.dumps(c) for c in cases), encoding="utf-8")
         env = {k: v for k, v in os.environ.items() if k != "DATABASE_URL"}

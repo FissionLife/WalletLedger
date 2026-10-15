@@ -41,6 +41,11 @@ from app.models import Base, Transaction, User  # noqa: E402
 from app.services_ai import ai_gateway as gw  # noqa: E402
 from app.services_ai.mcp_server import execute_tool  # noqa: E402
 
+try:
+    from tests.fake_llm import FakeLLM, tool  # noqa: E402
+except ImportError:  # discover -s tests (no -t .) puts tests/ on sys.path directly
+    from fake_llm import FakeLLM, tool  # noqa: E402
+
 AQ_KEY = "AQ.Ab8RN6" + "z" * 40 + "Q1w2"
 
 
@@ -135,8 +140,16 @@ class TestCommands(BotTestCase):
         self.assertFalse(bot.should_delete_message("spent 200 on food"))
 
     def test_other_text_goes_to_agent(self):
-        reply = run(bot.handle_text(self.chat_id, "Received 1000 salary in Bank"))
+        with FakeLLM(tool("log_income", amount=1000, source_account="Bank", category="Salary")):
+            reply = run(bot.handle_text(self.chat_id, "Received 1000 salary in Bank"))
         self.assertIn("+₹1,000", reply)
+        self.assertEqual(self.balances()["Bank"], 1000)
+
+    def test_free_text_without_an_ai_key_records_nothing(self):
+        with FakeLLM(no_key=True):
+            reply = run(bot.handle_text(self.chat_id, "Received 1000 salary in Bank"))
+        self.assertIn("/setkey", reply)
+        self.assertEqual(self.balances().get("Bank", 0), 0)
 
 
 class TestStatementImport(BotTestCase):
@@ -147,7 +160,8 @@ class TestStatementImport(BotTestCase):
         self.assertIn("₹50,000.00 received", reply)
         self.assertEqual(self.balances()["Bank"], 0)
 
-        reply = run(bot.handle_text(self.chat_id, "yes"))
+        with FakeLLM("confirm"):  # the typed yes is classified by the AI
+            reply = run(bot.handle_text(self.chat_id, "yes"))
         self.assertIn("Imported 3 transactions", reply)
         self.assertEqual(
             self.balances()["Bank"], 0
@@ -167,13 +181,15 @@ class TestStatementImport(BotTestCase):
 
     def test_no_cancels_import(self):
         run(bot.handle_document(self.chat_id, "s.pdf", make_pdf(STATEMENT_LINES)))
-        self.assertIn("cancelled", run(bot.handle_text(self.chat_id, "no")))
+        with FakeLLM("cancel"):
+            self.assertIn("cancelled", run(bot.handle_text(self.chat_id, "no")))
         self.assertEqual(self.balances()["Bank"], 0)
 
     def test_expired_import_is_not_applied(self):
         run(bot.handle_document(self.chat_id, "s.pdf", make_pdf(STATEMENT_LINES)))
         bot._pending_imports[self.chat_id].created_at = datetime.utcnow() - timedelta(minutes=11)
-        run(bot.handle_text(self.chat_id, "yes"))
+        with FakeLLM("confirm"):
+            run(bot.handle_text(self.chat_id, "yes"))
         self.assertEqual(self.balances()["Bank"], 0)
 
     def test_bad_files(self):

@@ -247,3 +247,46 @@ def build_system_prompt(
     if extra_instructions:
         parts.append(extra_instructions.strip())
     return "\n\n".join(parts)
+
+
+# The planner prompt for the agent graph (app/bot/agent.py): one LLM reads free text and picks tools.
+PLANNER_RULES = """You run the user's ledger by calling tools. Money only changes through tools.
+
+How to use the tools:
+- Log EACH item as its own call: "chai 30, auto 80" is two log_expense calls. Never merge or skip items.
+- Money spent -> log_expense. Money received (salary, refund, gift received) -> log_income.
+  Moving money between the user's own accounts (bank -> cash, ATM withdrawal) -> transfer_funds,
+  never an expense or income.
+- Omit account_name / source_account when the user did not name an account: the app uses the
+  default account. Only name an account the user mentioned.
+- Use one of these expense categories when it fits: {categories}. Otherwise a short, plain name.
+- "date" only when the user says it happened on another day (YYYY-MM-DD, using today's date below).
+- A question is NEVER spending. "how much did I spend on food?" -> read tools, then answer.
+- If the amount or the meaning is missing or ambiguous ("500", "paid ravi"), log nothing and ask ONE
+  short clarifying question.
+- Corrections ("that chai was 40 not 30", "delete the uber entry"): call search_transactions first,
+  then edit_transaction or delete_transaction with the exact transaction_id it returned.
+- "my bank balance is 25000" / "I have 2000 cash" -> set_account_balance.
+  "use cash by default" -> set_default_account. "food budget 5000" -> set_category_budget.
+- Before judging, advising or answering about the user's money, call read tools
+  (get_financial_snapshot, get_spending_breakdown, get_pipe_balances, ...). Never guess numbers.
+- If a tool returns an error, explain it in one sentence or ask what to do; do not retry blindly.
+- Final reply: short Telegram Markdown, amounts like ₹1,250, no tables, no headings.
+  After logging entries you may reply with just a few words; the app shows the details."""
+
+PLANNER_PERSONA = """The user asked for the {name}. Call financial_advice_bundle (and other read tools
+if useful) first, then answer in this persona's voice:
+{prompt}"""
+
+
+def build_planner_prompt(
+    context: Any = None, mode: str | Mode | None = None, categories: list[str] | None = None
+) -> str:
+    """System prompt for the agent planner: shared rules + tool guidance (+ persona) + live data."""
+    parts = [BASE_RULES, PLANNER_RULES.format(categories=", ".join(categories or []) or "any")]
+    if mode:
+        persona = get_persona(mode)
+        parts.append(PLANNER_PERSONA.format(name=persona.name, prompt=persona.prompt))
+    if context is not None and context != "":
+        parts.append("User's data right now (source of truth):\n" + _format_context(context))
+    return "\n\n".join(parts)
