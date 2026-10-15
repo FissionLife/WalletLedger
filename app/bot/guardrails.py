@@ -32,6 +32,11 @@ OFF_TOPIC_TEXT = (
     "I can only help with your money in WalletLedger: logging spends and income, balances, "
     "budgets, transfers and savings plans. Try /help to see what I can do."
 )
+OFF_TOPIC_NOTE = "ℹ️ I skipped the part of your message that wasn't about money."
+OFF_TOPIC_HITL_PREFIX = (
+    "Your message also had a question I can't help with (not about money), so I skipped it. "
+    "Should I still "
+)
 GROUNDING_FALLBACK_TEXT = (
     "I couldn't back that answer with your real numbers, so I won't guess. "
     "Try /stats or /balance, or ask again more specifically."

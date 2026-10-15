@@ -924,6 +924,8 @@ class AgentState(TypedDict, total=False):
     pay_alternative: dict[str, Any] | None
     ai_failed: bool
     rejected: bool  # the tool guardrail threw every proposed call away this round
+    off_topic_mixed: bool  # the message mixed money requests with an off-topic part
+    off_topic_confirmed: bool  # the user already said Yes to the money part of such a message
 
 
 def _load_context(chat_id: str) -> dict[str, Any]:
@@ -976,6 +978,8 @@ async def ingress_node(state: AgentState) -> dict[str, Any]:
         "pay_alternative": None,
         "ai_failed": False,
         "rejected": False,
+        "off_topic_mixed": False,
+        "off_topic_confirmed": False,
         "persona": None,
     }
     if extract_api_keys(text):
@@ -1035,12 +1039,21 @@ async def planner_node(state: AgentState) -> dict[str, Any]:
         return {"proposed": [], "reply_text": AI_BUSY_TEXT}
 
     tool_calls = list(getattr(message, "tool_calls", None) or [])
-    if any(
-        getattr(tc, "function", None) and tc.function.name == "decline_off_topic"
+    off_topic = [
+        tc
         for tc in tool_calls
-    ):
-        logger.info("Off-topic declined for %s", chat_id)
-        return {"proposed": [], "reply_text": gr.OFF_TOPIC_TEXT}
+        if getattr(tc, "function", None) and tc.function.name == "decline_off_topic"
+    ]
+    mixed = bool(state.get("off_topic_mixed"))
+    if off_topic:
+        tool_calls = [tc for tc in tool_calls if tc not in off_topic]
+        if not tool_calls:
+            logger.info("Off-topic declined for %s", chat_id)
+            if runs or mixed:  # money part already handled: keep its reply, add the note
+                return {"proposed": [], "off_topic_mixed": True}
+            return {"proposed": [], "reply_text": gr.OFF_TOPIC_TEXT}
+        logger.info("Off-topic part skipped for %s; money part kept", chat_id)
+        mixed = True
     if not tool_calls:
         text = (getattr(message, "content", None) or "").strip()
         if not text and runs:
@@ -1076,7 +1089,33 @@ async def planner_node(state: AgentState) -> dict[str, Any]:
             "tool_calls": wire_calls,
         }
     )
-    return {"convo": convo, "proposed": proposed, "step": step + 1, "rejected": False}
+    return {
+        "convo": convo,
+        "proposed": proposed,
+        "step": step + 1,
+        "rejected": False,
+        "off_topic_mixed": mixed,
+    }
+
+
+def _describe_call(call: dict[str, Any]) -> str:
+    """A short human sentence for one write call, used in confirmation questions."""
+    name, args = call["name"], call.get("args") or {}
+    amount = fmt.inr(_amount_of(args))
+    if name == "log_expense":
+        bits = [args.get("category"), args.get("account_name")]
+        return f"log {amount} expense" + (
+            f" ({', '.join(str(b) for b in bits if b)})" if any(bits) else ""
+        )
+    if name == "log_income":
+        bits = [args.get("category"), args.get("source_account")]
+        return f"log {amount} income" + (
+            f" ({', '.join(str(b) for b in bits if b)})" if any(bits) else ""
+        )
+    reason = confirmation_reason(name, args)
+    if reason:
+        return reason[0].lower() + reason[1:]
+    return name.replace("_", " ")
 
 
 def _pending_id(chat_id: str, calls: list[dict[str, Any]]) -> str:
@@ -1124,6 +1163,15 @@ def guard_node(state: AgentState) -> dict[str, Any]:
         if reason:
             reasons.append(reason)
     rejected = bool(state.get("rejected"))
+    mixed_writes = [c for c in calls if c["name"] in WRITE_TOOLS]
+    ask_mixed = (
+        bool(state.get("off_topic_mixed"))
+        and not state.get("off_topic_confirmed")
+        and bool(mixed_writes)
+    )
+    if ask_mixed:
+        # The message also asked something off-topic: show what we understood and ask first.
+        reasons = [gr.OFF_TOPIC_HITL_PREFIX + "; ".join(_describe_call(c) for c in mixed_writes)]
     if not reasons:
         return {
             "declined": False,
@@ -1137,6 +1185,8 @@ def guard_node(state: AgentState) -> dict[str, Any]:
         description += (
             f" (and {others} other entr{'y' if others == 1 else 'ies'} from your message)"
         )
+    if ask_mixed:
+        description = reasons[0]
     answer = interrupt(
         {
             "kind": "confirm",
@@ -1152,6 +1202,7 @@ def guard_node(state: AgentState) -> dict[str, Any]:
             "convo": state.get("convo"),
             "proposed": calls,
             "rejected": rejected,
+            "off_topic_confirmed": bool(state.get("off_topic_confirmed")) or ask_mixed,
         }
     convo = list(state.get("convo") or [])
     for c in calls:
@@ -1270,6 +1321,12 @@ def renderer_node(state: AgentState) -> dict[str, Any]:
                     )["response_text"]
                 text, from_planner = fallback or gr.GROUNDING_FALLBACK_TEXT, False
     text = gr.sanitize_reply(text)
+    if state.get("off_topic_mixed") and not state.get("declined") and gr.OFF_TOPIC_NOTE not in text:
+        text = (
+            f"{text}\n\n{gr.OFF_TOPIC_NOTE}"
+            if text.strip() and text != "Done."
+            else gr.OFF_TOPIC_TEXT
+        )
     persona = state.get("persona")
     if persona and from_planner:
         text = f"🧠 *{get_persona(persona).name}*\n\n{text}"

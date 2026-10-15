@@ -102,7 +102,7 @@ loops back to the planner so it can write the answer.
 | Layer | Where | What it does |
 |---|---|---|
 | Input | `ingress` | Caps length (2,000 chars); masks card (Luhn), Aadhaar, PAN, OTP/CVV/PIN and labelled account numbers before the LLM or chat history sees them. API keys are still short-circuited first. |
-| Scope | `planner` | Prompt "Scope (strict)" rules + a `decline_off_topic` tool. If the LLM calls it, the reply is the fixed `OFF_TOPIC_TEXT` and every other call in that round is dropped. |
+| Scope | `planner` + `guard` | Prompt "Scope (strict)" rules + a `decline_off_topic` tool. Off-topic only: fixed `OFF_TOPIC_TEXT`. Mixed with money writes: the off-topic part is skipped and the guard `interrupt()`s with "Should I still log …?" (HITL) before any write; on Yes the writes run and the reply ends with `OFF_TOPIC_NOTE`. Mixed with reads only: answered, plus the note. |
 | Tool | `guard` (before confirmations) | Known tool only; required args present; numbers are numbers; amounts > 0 and <= ledger max; balances/budgets >= 0; dates YYYY-MM-DD and not in the future; at most 10 writes per message. Rejected calls never run; their errors go back to the planner as tool messages. |
 | Output | `renderer` (LLM-written text only) | Leak check (keys, PII, system-prompt text) -> `LEAK_TEXT`. Every rupee figure must appear in the context, tool args/results or the user's message, or be a sum/difference/product/ratio of two of them; otherwise the reply is replaced by the template built from the real tool results (or `GROUNDING_FALLBACK_TEXT`). Then tables/headings are flattened and length capped. |
 

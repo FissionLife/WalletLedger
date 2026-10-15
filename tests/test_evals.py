@@ -92,8 +92,8 @@ class GoldenFileTests(unittest.TestCase):
         cases = [
             json.loads(line) for line in (ROOT / "evals" / "golden.jsonl").open(encoding="utf-8")
         ]
-        self.assertEqual(len(cases), 56)  # 50 original + 6 guardrail cases (G-01..G-06)
-        self.assertEqual(len({c["id"] for c in cases}), 56)
+        self.assertEqual(len(cases), 57)  # 50 original + 7 guardrail cases (G-01..G-07)
+        self.assertEqual(len({c["id"] for c in cases}), 57)
         self.assertEqual(sum(c["tier"] == "rules" for c in cases), 34)
         for c in cases:
             self.assertTrue(c["turns"], c["id"])
