@@ -46,6 +46,7 @@ from sqlalchemy import select
 
 from app import clock
 from app.bot import fmt, replies
+from app.bot import guardrails as gr
 from app.bot.categories import EXPENSE_CATEGORIES, canonical_category
 from app.bot.keys import save_keys
 from app.db import SessionLocal
@@ -922,6 +923,7 @@ class AgentState(TypedDict, total=False):
     reply_source: str  # "planner" when reply_text is the LLM's own words
     pay_alternative: dict[str, Any] | None
     ai_failed: bool
+    rejected: bool  # the tool guardrail threw every proposed call away this round
 
 
 def _load_context(chat_id: str) -> dict[str, Any]:
@@ -947,6 +949,7 @@ def _load_context(chat_id: str) -> dict[str, Any]:
 
 
 def _history_dicts(chat_id: str, user_text: str) -> list[dict[str, Any]]:
+    user_text = gr.mask_pii(redact_api_keys(user_text or ""))[0]
     history = get_db_conversation_history(chat_id, limit=HISTORY_LIMIT)
     out = [
         {"role": "user" if isinstance(m, HumanMessage) else "assistant", "content": m.content}
@@ -972,10 +975,14 @@ async def ingress_node(state: AgentState) -> dict[str, Any]:
         "reply_source": "",
         "pay_alternative": None,
         "ai_failed": False,
+        "rejected": False,
         "persona": None,
     }
     if extract_api_keys(text):
         return {**reset, "convo": [], "reply_text": await save_keys(chat_id, text)}
+    text, flags = gr.check_input(text)  # input guardrail: length cap + PII masking
+    if flags:
+        logger.info("Input guardrail for %s: %s", chat_id, ", ".join(flags))
     persona = None
     match = PERSONA_COMMAND.match(text)
     if match:
@@ -1012,7 +1019,7 @@ async def planner_node(state: AgentState) -> dict[str, Any]:
         t
         for t in tool_client.available_tools(TOOLS_SCHEMA)
         if t["function"]["name"] not in HIDDEN_TOOLS
-    ]
+    ] + [gr.OFF_TOPIC_TOOL]
     convo = list(state.get("convo") or [])
     try:
         response = await gw.complete(chat_id, convo, tools=schema)
@@ -1028,6 +1035,12 @@ async def planner_node(state: AgentState) -> dict[str, Any]:
         return {"proposed": [], "reply_text": AI_BUSY_TEXT}
 
     tool_calls = list(getattr(message, "tool_calls", None) or [])
+    if any(
+        getattr(tc, "function", None) and tc.function.name == "decline_off_topic"
+        for tc in tool_calls
+    ):
+        logger.info("Off-topic declined for %s", chat_id)
+        return {"proposed": [], "reply_text": gr.OFF_TOPIC_TEXT}
     if not tool_calls:
         text = (getattr(message, "content", None) or "").strip()
         if not text and runs:
@@ -1063,7 +1076,7 @@ async def planner_node(state: AgentState) -> dict[str, Any]:
             "tool_calls": wire_calls,
         }
     )
-    return {"convo": convo, "proposed": proposed, "step": step + 1}
+    return {"convo": convo, "proposed": proposed, "step": step + 1, "rejected": False}
 
 
 def _pending_id(chat_id: str, calls: list[dict[str, Any]]) -> str:
@@ -1080,6 +1093,29 @@ def guard_node(state: AgentState) -> dict[str, Any]:
     """
     chat_id = str(state.get("chat_id", ""))
     calls = state.get("proposed") or []
+    # --- tool guardrail: reject bad calls before anything runs; the planner sees the error ---
+    schema = TOOLS_SCHEMA + [gr.OFF_TOPIC_TOOL]
+    today = clock.today_local()
+    ok_calls, rejects = [], []
+    writes = 0
+    for c in calls:
+        error = gr.check_call(c["name"], c["args"], schema, today)
+        if not error and c["name"] in WRITE_TOOLS:
+            writes += 1
+            if writes > gr.MAX_WRITES_PER_MESSAGE:
+                error = f"too many writes in one message (limit {gr.MAX_WRITES_PER_MESSAGE})"
+        (rejects if error else ok_calls).append((c, error))
+    if rejects:
+        convo = list(state.get("convo") or [])
+        for c, error in rejects:
+            logger.info("Tool guardrail rejected %s for %s: %s", c["name"], chat_id, error)
+            convo.append(
+                {"role": "tool", "tool_call_id": c["id"], "content": gr.as_json({"error": error})}
+            )
+        calls = [c for c, _ in ok_calls]
+        if not calls:  # nothing survived: back to the planner to explain or ask
+            return {"declined": False, "convo": convo, "proposed": [], "rejected": True}
+        state = {**state, "convo": convo, "proposed": calls, "rejected": True}
     reasons = []
     for c in calls:
         reason = confirmation_reason(c["name"], c["args"]) or _budget_overage_reason(
@@ -1087,8 +1123,14 @@ def guard_node(state: AgentState) -> dict[str, Any]:
         )
         if reason:
             reasons.append(reason)
+    rejected = bool(state.get("rejected"))
     if not reasons:
-        return {"declined": False}
+        return {
+            "declined": False,
+            "convo": state.get("convo"),
+            "proposed": calls,
+            "rejected": rejected,
+        }
     description = " and ".join(reasons)
     others = len(calls) - len(reasons)
     if others > 0:
@@ -1105,7 +1147,12 @@ def guard_node(state: AgentState) -> dict[str, Any]:
         }
     )
     if answer == "yes":
-        return {"declined": False}
+        return {
+            "declined": False,
+            "convo": state.get("convo"),
+            "proposed": calls,
+            "rejected": rejected,
+        }
     convo = list(state.get("convo") or [])
     for c in calls:
         convo.append({"role": "tool", "tool_call_id": c["id"], "content": "cancelled by the user"})
@@ -1149,13 +1196,19 @@ def route_after_planner(state: AgentState) -> Literal["guard", "renderer"]:
     return "guard" if state.get("proposed") else "renderer"
 
 
-def route_after_guard(state: AgentState) -> Literal["executor", "renderer"]:
-    return "renderer" if state.get("declined") else "executor"
+def route_after_guard(state: AgentState) -> Literal["executor", "planner", "renderer"]:
+    if state.get("declined"):
+        return "renderer"
+    if state.get("rejected") and not state.get("proposed"):
+        return "planner"  # every call was invalid; the planner sees the errors and retries or asks
+    return "executor"
 
 
 def route_after_executor(state: AgentState) -> Literal["planner", "renderer"]:
     """Read/advice results go back to the planner to be explained; plain writes are templated."""
     runs = state.get("tool_runs") or []
+    if state.get("rejected"):
+        return "planner"  # some calls were rejected by the tool guardrail: let the planner explain
     for r in runs[len(runs) - int(state.get("last_round") or 0) :]:
         if r["tool_name"] not in WRITE_TOOLS:
             return "planner"
@@ -1184,6 +1237,39 @@ def renderer_node(state: AgentState) -> dict[str, Any]:
             {"tool_name": last["tool_name"], "tool_result": last["result"], "error": last["error"]}
         )["response_text"]
     text = text or "Done."
+    if from_planner:  # output guardrail: only LLM-written text can invent figures or leak
+        chat_id = str(state.get("chat_id", ""))
+        found = gr.leaks(text, chat_id)
+        if found:
+            logger.warning("Output guardrail blocked a leak for %s: %s", chat_id, found)
+            text, from_planner = gr.LEAK_TEXT, False
+        else:
+            bad = gr.ungrounded_figures(
+                text,
+                state.get("context"),
+                [{"args": r.get("tool_args"), "result": r.get("result")} for r in runs],
+                state.get("user_text"),
+            )
+            if bad:
+                logger.warning("Output guardrail: ungrounded figures %s for %s", bad, chat_id)
+                fallback = replies.compact({"tool_results": runs}) or "\n\n".join(
+                    s
+                    for r in runs
+                    if isinstance(r.get("result"), dict) and not r.get("error")
+                    for s in [replies.tool_summary(r["tool_name"], r["result"])]
+                    if s
+                )
+                if not fallback and runs and not runs[-1].get("error"):
+                    last = runs[-1]
+                    fallback = _template_response_dict(
+                        {
+                            "tool_name": last["tool_name"],
+                            "tool_result": last["result"],
+                            "error": None,
+                        }
+                    )["response_text"]
+                text, from_planner = fallback or gr.GROUNDING_FALLBACK_TEXT, False
+    text = gr.sanitize_reply(text)
     persona = state.get("persona")
     if persona and from_planner:
         text = f"🧠 *{get_persona(persona).name}*\n\n{text}"
@@ -1380,7 +1466,7 @@ async def process_user_interaction_ex(
     clean_text = (text or "").strip()
     try:
         # Save user message to database (API keys masked, so they never reach chat history)
-        save_db_chat_message(chat_id, "user", redact_api_keys(clean_text))
+        save_db_chat_message(chat_id, "user", gr.mask_pii(redact_api_keys(clean_text))[0])
         if await has_pending(chat_id):
             decision = await classify_decision(chat_id, clean_text)
             if decision in ("confirm", "cancel"):

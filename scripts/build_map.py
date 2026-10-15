@@ -91,6 +91,12 @@ NOTES: dict[str, tuple[str, str]] = {
         "chat",
         "The bot's Telegram profile: command menu, description, menu button. Used by `scripts/setup_bot.py`.",
     ),
+    "app/bot/guardrails.py": (
+        "chat",
+        "Safety checks around the AI agent, with no AI of their own: masks card/Aadhaar/PAN/OTP "
+        "numbers in what users type, rejects bad tool calls (unknown tool, missing or impossible "
+        "amounts, future dates) and checks AI replies for invented rupee figures and leaks.",
+    ),
     "app/bot/categories.py": (
         "brain",
         'The standard expense categories and `canonical_category` ("food" -> Food & Dining), so budgets and spends share one name.',
@@ -285,6 +291,10 @@ NOTES: dict[str, tuple[str, str]] = {
         "The AI agent graph: planner tool calls, interrupt() confirmations, no-key and failure paths.",
     ),
     "tests/fake_llm.py": ("tests", "A scripted stand-in for the LLM so agent tests run offline."),
+    "tests/test_guardrails.py": (
+        "tests",
+        "Input (PII masking), tool (argument checks) and output (invented figures, leaks) guardrails.",
+    ),
     "tests/test_ai_gateway.py": ("tests", "Key order, rotation, live key tests."),
     "tests/test_gateway_contract.py": (
         "tests",
