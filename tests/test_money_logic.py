@@ -240,13 +240,15 @@ class ToolsAgreeWithTheDashboardTests(unittest.TestCase):
             cat = ledger.get_or_create_category(db, uid, "Entertainment")
             cat.budget_limit = 700.0
             db.commit()
-        with frozen(), SessionLocal() as db:
-            rep = analytics.report(db, uid, analytics.parse_period("30d"))
-        runway = execute_tool("skill_emergency_fund_calculator", user_id=chat)
+        # Both sides must see the same "today", or the 90-day runway window differs.
+        with frozen():
+            with SessionLocal() as db:
+                rep = analytics.report(db, uid, analytics.parse_period("30d"))
+            runway = execute_tool("skill_emergency_fund_calculator", user_id=chat)
+            bills = execute_tool("skill_recurring_bill_detector", user_id=chat)["recurring_bills"]
+            spending = execute_tool("get_spending_breakdown", user_id=chat, period="month")
         self.assertEqual(runway["runway_months"], rep["runway"]["months"])
-        bills = execute_tool("skill_recurring_bill_detector", user_id=chat)["recurring_bills"]
         self.assertEqual([b["merchant"] for b in bills], [r["merchant"] for r in rep["recurring"]])
-        spending = execute_tool("get_spending_breakdown", user_id=chat, period="month")
         self.assertIn("Food & Dining", spending["category_breakdown"])
 
 
