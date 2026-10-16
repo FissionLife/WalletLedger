@@ -38,7 +38,7 @@ htmlcov/
 .claude/
 out_charts/
 site/docs/
-*.png
+
 !site/**/*.png
 walletledger.db-shm
 walletledger.db-wal
