@@ -115,12 +115,24 @@ to, to answer you). What this does and does not protect: [SECURITY.md](docs/SECU
 ## For developers
 
 ```bash
+uv tool install graphifyy dev-prune              # one-time per computer
 uv run python -m unittest discover -s tests    # tests (offline, never touch your .env)
 uv run python scripts/setup_bot.py --show      # command menu on Telegram vs this code
 uv run python scripts/setup_bot.py             # publish the menu, description and menu button
 uv run python scripts/seed_demo_data.py --chat-id <your id>   # 90 days of demo data
 uv run python scripts/inspect_statement.py file.pdf --text    # see how a statement PDF is read
+graphify query "How are transactions imported?"   # ask the committed code graph
+graphify update .                                 # refresh the graph after code changes (AST only)
+devp doctor .                                     # check dev-prune's project setup
+devp run . --dry-run                              # preview reclaimable build/cache folders
 ```
+
+Graphify and dev-prune are installed as user-level tools, separate from this project's Python lock.
+After the one-time install, restart the terminal if the commands are not on `PATH`. The current
+Graphify output is committed in `graphify-out/`; agents should query that graph before broadly
+searching source files. Graph refreshes use local AST extraction and do not call an LLM. The local
+extraction cache is ignored and regenerated as needed. `project.devprune.json` contains the shared
+dev-prune settings; each teammate's registration and preferences remain local to their computer.
 
 **New to the code?** Open the [interactive explorer](https://fissionlife.github.io/WalletLedger/explore/) (guided tours, a clickable map, search), or read [docs/PROJECT_MAP.md](docs/PROJECT_MAP.md), a one-page index.
 
