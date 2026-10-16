@@ -23,6 +23,7 @@ from app.bot import ui  # noqa: E402
 from app.bot.callbacks import handle_callback  # noqa: E402
 from app.db import SessionLocal, init_db  # noqa: E402
 from app.services import analytics, ledger  # noqa: E402
+from app.services_ai.mcp_server import execute_tool  # noqa: E402
 
 init_db()
 _ids = itertools.count(1)
@@ -66,6 +67,10 @@ def bank(chat):
         return next((a["balance"] for a in accounts if a["name"] == "Bank"), None)
 
 
+def fund(chat, amount):
+    execute_tool("log_income", user_id=chat, amount=amount, source_account="Bank")
+
+
 def count(chat):
     with SessionLocal() as db:
         return ledger.recent_transactions(db, ledger.get_or_create_user(db, chat).id, 1)[1]
@@ -74,7 +79,7 @@ def count(chat):
 class BalanceChoiceTests(unittest.TestCase):
     def test_history_only_leaves_the_balance_alone_but_reports_count_it(self):
         chat = new_chat()
-        run(bot.handle_text(chat, "Received 10000 in Bank"))
+        fund(chat, 10000)  # today's income: Bank holds 10000
         stage(chat, rows((day(40), "expense", 450.0, "Swiggy", "UPI/Swiggy", "R1")))
         reply = run(bot.answer_pending_import(chat, "history"))
         self.assertIn("did not change", reply.text)
@@ -90,7 +95,7 @@ class BalanceChoiceTests(unittest.TestCase):
 
     def test_apply_changes_the_balance_and_undo_puts_it_back(self):
         chat = new_chat()
-        run(bot.handle_text(chat, "Received 10000 in Bank"))
+        fund(chat, 10000)  # today's income: Bank holds 10000
         stage(chat, rows((day(40), "expense", 450.0, "Swiggy", "UPI/Swiggy", "R1")))
         reply = run(bot.answer_pending_import(chat, "apply"))
         self.assertIn("balance updated", reply.text)
@@ -100,7 +105,7 @@ class BalanceChoiceTests(unittest.TestCase):
 
     def test_undoing_history_does_not_touch_the_balance(self):
         chat = new_chat()
-        run(bot.handle_text(chat, "Received 10000 in Bank"))
+        fund(chat, 10000)  # today's income: Bank holds 10000
         stage(chat, rows((day(40), "expense", 450.0, "Swiggy", "UPI/Swiggy", "R1")))
         run(bot.answer_pending_import(chat, "history"))
         with SessionLocal() as db:

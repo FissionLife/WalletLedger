@@ -14,12 +14,15 @@ until you do.
 
 ## What it is
 A Telegram expense-tracker bot (FastAPI + aiogram + LangGraph + LiteLLM, SQLite or Postgres).
-Rules read clear messages with no AI; the AI is optional and users bring their own key.
+Free-text messages are understood by an LLM agent (LangGraph, see `docs/AGENT_GRAPH.md`); commands
+and buttons need no AI. Users bring their own key (or the server's shared keys).
 
 ## Rules of the codebase
 - Only `app/services/ledger.py` changes balances. Everything else calls it.
-- Clear messages are handled by `app/bot/nlu.py` (rules). Do not send them to the AI.
-- A message that is a question is never logged as spending (`nlu.is_question`).
+- Free text goes to the agent's LLM planner, which picks ledger tools. Do not add regex intent parsers.
+- Risky calls (big transfers, edits, deletes, balance resets, budget overspend) pause with
+  LangGraph `interrupt()` in the guard node; the user answers with Yes/Cancel.
+- A message that is a question is never logged as spending (planner prompt rule, tested).
 - Identity is the Telegram chat id; every query filters by `user_id`.
 - `transactions.description`, `chat_messages.content` and `api_keys.encrypted_key` are encrypted.
   Never use `EncryptedText` columns in WHERE / ORDER BY / GROUP BY.

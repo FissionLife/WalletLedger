@@ -14,7 +14,7 @@ from datetime import datetime, timedelta
 
 from sqlalchemy import func, select
 
-from app.bot import nlu, ui
+from app.bot.textutil import parse_amount
 from app.bot.ui import Btn, Reply
 from app.config import settings
 from app.db import SessionLocal
@@ -173,7 +173,7 @@ async def intercept(chat_id: str, text: str) -> Reply | None:
         return await answered(chat_id, account)
 
     # step == "balance"
-    amount = nlu.parse_amount(text)
+    amount = parse_amount(text)
     if amount is None and re.fullmatch(
         r"\s*(skip|no|none|later|nah|zero|0)\s*[.!]?\s*", text or "", re.I
     ):
@@ -186,7 +186,8 @@ async def intercept(chat_id: str, text: str) -> Reply | None:
 
 
 async def _looks_like_entry(chat_id: str, text: str) -> bool:
-    return bool(nlu.parse_entries(text, nlu.Context()))
+    """Any message with a number is held and logged once setup is done."""
+    return bool(re.search(r"\d", text or ""))
 
 
 async def answered(chat_id: str, account: str) -> Reply:
@@ -283,32 +284,6 @@ def _set_balance_to(
         return name, before, result["new_balance"], result["transaction_id"]
 
 
-async def balance_command(chat_id: str, text: str) -> Reply | None:
-    """ "bank balance is 25000", "I have 5000 in cash" -> set what an account really holds."""
-    found = nlu.parse_set_balance(text)
-    if found is None:
-        return None
-    from asyncio import to_thread
-
-    from app.bot import fmt
-
-    words, amount = found
-    if words and pick_account(words) is None:
-        return None  # "my phone balance is 500": not one of ours
-    if amount < 0 or amount > 1_000_000_000:
-        return None
-    try:
-        name, before, after, tx_id = await to_thread(_set_balance_to, chat_id, words, amount)
-    except ValueError as exc:
-        return Reply(f"I couldn't use that amount ({exc}).")
-    if tx_id is None:
-        return Reply(f"👍 {name} is already {fmt.inr(after)}.")
-    return Reply(
-        f"👍 {name} is now {fmt.inr(after)} (it was {fmt.inr(before)}).",
-        rows=[ui.undo_row([tx_id])],
-    )
-
-
 def _ready(account: str) -> str:
     return (
         "You're all set. Just tell me things like:\n"
@@ -317,28 +292,6 @@ def _ready(account: str) -> str:
         "• paid 450 for dinner via cash\n\n"
         f'I\'ll use {account} unless you say otherwise. Ask me anything, like "how much did I spend this week?"'
     )
-
-
-_DEFAULT_CMD = re.compile(
-    r"^(?:please\s+)?(?:use|set|make|switch to|change to)\s+(?:my\s+)?(?P<a>[a-z ]{2,30}?)\s+(?:as\s+)?(?:my\s+)?(?:the\s+)?default(?:\s+account)?$"
-    r"|^(?:please\s+)?(?:my\s+)?default(?:\s+account)?\s+(?:is|to|=)?\s*(?P<b>[a-z ]{2,30})$",
-    re.I,
-)
-
-
-async def default_command(chat_id: str, text: str) -> Reply | None:
-    """ "use cash by default", "make bank my default account" -> change the default."""
-    m = _DEFAULT_CMD.match((text or "").strip().rstrip(".!"))
-    if not m:
-        return None
-    named = (m.group("a") or m.group("b") or "").strip()
-    account = pick_account(named)
-    if account is None:
-        return Reply('Which account? Say, for example, "use cash by default".')
-    from asyncio import to_thread
-
-    await to_thread(_set_default, chat_id, account)
-    return Reply(f"👍 Anything without an account will go to {account} from now on.")
 
 
 def reset(chat_id: str | None = None) -> None:

@@ -1,45 +1,61 @@
-"""The agent: reads a message, picks ledger tools, asks for confirmation when needed, writes the reply.
+"""The agent: one LLM planner reads the message, picks ledger tools, a guard asks before risky ones.
 
-A small LangGraph flowchart (llm_reasoning -> confirmation -> tool_executor -> response_synthesizer).
-Clear messages are read by the rules in nlu.py with no AI; goals and questions go to the multi-step
-helper in orchestrator.py when the user has an AI key; without one only fixed requests (balance,
-spending, advice) work and anything else gets a short hint, never a guessed expense.
+LangGraph StateGraph (checkpointed per chat, so a confirmation can pause and resume)::
+
+    START -> ingress --(API key pasted)-------------------------------> renderer -> END
+                |
+                v
+             planner --(final text / AI failure / step cap)-----------> renderer
+                |  (tool_calls)
+                v
+              guard   -- interrupt({kind: confirm, id, description}) when a call needs a Yes
+                |        (declined -> renderer with "Cancelled")
+                v
+             executor --(read/advice tool ran, or a recoverable error)-> planner (loop)
+                |
+                +--(only writes / insufficient balance)----------------> renderer
+
+- ingress: key-paste short-circuit, /coach|/budgeter|/summary persona, loads accounts, budgets,
+  today and the last HISTORY_LIMIT chat messages into an OpenAI-format conversation.
+- planner: one ``ai_gateway.complete`` call with the tool schema -> tool_calls or the final text.
+- guard: big transfers, deletes, balance resets, edits and over-budget spends pause the graph with
+  ``interrupt()``; ``resume_pending`` continues it with ``Command(resume="yes"|"no")``.
+- executor: runs the calls through ``tool_client`` (user_id injected), records each result.
+- renderer: planner text, else fixed templates (replies.compact / tool_summary), plus budget note.
+
+Money rules (overdraw, amount > 0, future dates) live in the ledger, never in the prompt.
 Conversation history is saved in the database (encrypted, API keys redacted).
 """
 
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
 import re
-import secrets
-from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any, Literal, TypedDict
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
+from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph import END, START, StateGraph
+from langgraph.types import Command, interrupt
 from sqlalchemy import select
 
-from app.bot import fmt, nlu, orchestrator, replies
+from app import clock
+from app.bot import fmt, replies
+from app.bot import guardrails as gr
+from app.bot.categories import EXPENSE_CATEGORIES, canonical_category
 from app.bot.keys import save_keys
 from app.db import SessionLocal
 from app.models import ChatMessage, User
 from app.services.ledger import get_or_create_user
+from app.services_ai import ai_gateway as gw
 from app.services_ai import tool_client
-from app.services_ai.ai_gateway import (
-    NoAPIKeyError,
-    ask_llm,
-    ask_persona,
-    extract_api_keys,
-    get_user_api_keys,
-    has_server_keys,
-    mask_key,
-    redact_secrets,
-)
-from app.services_ai.prompts import detect_mode, get_persona, resolve_mode
+from app.services_ai.ai_gateway import extract_api_keys, mask_key
+from app.services_ai.prompts import build_planner_prompt, get_persona, resolve_mode
 
 logger = logging.getLogger(__name__)
 
@@ -52,29 +68,35 @@ PENDING_ACTION_TTL = timedelta(minutes=5)
 # Only the most recent N prior messages are sent to the LLM as conversation history.
 HISTORY_LIMIT = 20
 
-CONFIRM_WORDS = {
-    "yes", "y", "yeah", "yep", "yup", "confirm", "confirmed", "proceed", "ok", "okay",
-    "sure", "approve", "approved", "do it", "go ahead", "yes please", "yes go ahead",
-    "yes pls", "yes plz", "yes do it", "ok do it", "okay do it", "yep do it", "please do",
-    "ha", "haan", "han", "haanji", "ji", "kar do", "kardo", "theek hai", "thik hai", "chalo", "sahi hai",
-}  # fmt: skip
-CANCEL_WORDS = {
-    "no", "n", "nope", "nah", "cancel", "abort", "reject", "stop", "don't", "dont",
-    "no thanks", "dont do it", "don't do it", "cancel it", "no dont", "no don't", "stop it",
-    "never mind", "nevermind", "leave it", "nahi", "nahin", "mat karo", "rehne do",
-}  # fmt: skip
-_YES_EMOJI = "👍✅👌🆗"
-_NO_EMOJI = "👎❌✖🚫"
-
-# Tools whose results are turned into a reply by a persona (Coach / Budgeter / Summary).
-PERSONA_TOOLS = {
-    "financial_advice_bundle",
-    "get_spending_breakdown",
-    "skill_budget_alert_check",
-    "skill_recurring_bill_detector",
-    "skill_emergency_fund_calculator",
-}
 PERSONA_COMMAND = re.compile(r"^\s*/(coach|budgeter|summary)\b(.*)$", re.I | re.S)
+
+MAX_STEPS = 5  # planner rounds per message
+MAX_TOOL_CALLS = 12  # tool calls executed per planner round
+TOOL_RESULT_CHARS = 4000  # a tool result is clipped to this before it goes back to the LLM
+
+WRITE_TOOLS = {
+    "log_expense",
+    "log_income",
+    "transfer_funds",
+    "transfer_between_pipes",
+    "edit_transaction",
+    "delete_transaction",
+    "set_category_budget",
+    "set_default_account",
+    "set_account_balance",
+}
+HIDDEN_TOOLS = {"save_user_api_key"}  # keys are saved by ingress, never by the LLM
+
+NEEDS_KEY_TEXT = (
+    "I need an AI key to understand free-form messages, so I didn't record anything.\n"
+    "Add one with /setkey (a free Gemini key takes a minute: aistudio.google.com/apikey).\n"
+    "Commands like /balance, /stats and /history work without it."
+)
+AI_BUSY_TEXT = "The AI is busy right now; nothing was recorded. Please try again."
+TOO_MANY_STEPS_TEXT = (
+    "That needed too many steps, so I stopped. Try splitting it into smaller messages."
+)
+ERROR_TEXT = "⚠️ Something went wrong on my side. Please try again in a moment."
 
 
 def _amount_of(args: Any) -> float:
@@ -88,11 +110,13 @@ def _amount_of(args: Any) -> float:
 def confirmation_reason(tool_name: str | None, args: Any) -> str | None:
     """A sentence describing what needs the user's Yes, or None if the call can run straight away.
 
-    A transfer of ₹5,000 or more, and any edit of an existing entry made by the AI.
+    A transfer of ₹5,000 or more, any edit or delete of an existing entry, and any balance reset.
     """
     if not isinstance(args, dict):
         return None
-    if tool_name == "transfer_funds" and _amount_of(args) >= CONFIRMATION_TRANSFER_THRESHOLD:
+    if tool_name in ("transfer_funds", "transfer_between_pipes") and (
+        _amount_of(args) >= CONFIRMATION_TRANSFER_THRESHOLD
+    ):
         amount = _amount_of(args)
         shown = f"{amount:,.0f}" if amount == int(amount) else f"{amount:,.2f}"
         return (
@@ -116,6 +140,17 @@ def confirmation_reason(tool_name: str | None, args: Any) -> str | None:
         return f"Change entry {str(args.get('transaction_id', ''))[:8]}: " + (
             ", ".join(changes) or "no changes"
         )
+    if tool_name == "delete_transaction":
+        return f"Delete entry {str(args.get('transaction_id', ''))[:8]} and restore its balance"
+    if tool_name == "set_account_balance":
+        try:
+            shown = fmt.inr(float(str(args.get("balance", 0)).replace(",", "")))
+        except TypeError, ValueError:
+            shown = str(args.get("balance"))
+        return (
+            f"Set {args.get('account_name', 'the account')} balance to {shown} "
+            "(the difference is recorded as an adjustment)"
+        )
     return None
 
 
@@ -137,14 +172,12 @@ def _budget_overage_reason(chat_id: str, call: dict[str, Any]) -> str | None:
     category = args.get("category")
     if not category or amount <= 0 or str(category).lower() == "uncategorized":
         return None
-    canon = nlu.canonical_category(str(category))
+    canon = canonical_category(str(category))
     from app.services import analytics
 
     try:
         with SessionLocal() as db:
-            user = db.get(User, str(chat_id)) or db.scalar(
-                select(User).where(User.telegram_chat_id == str(chat_id))
-            )
+            user = _find_user(db, chat_id)
             if user is None:
                 return None
             row = next(
@@ -175,20 +208,10 @@ def _utc_now() -> datetime:
     return datetime.now(UTC)
 
 
-def classify_reply(text: str) -> Literal["confirmed", "cancelled"] | None:
-    """Map a short yes/no style reply to a decision; anything else returns None."""
-    raw = (text or "").strip()
-    if raw and all(ch in _YES_EMOJI or ch.isspace() or ch == "\ufe0f" for ch in raw):
-        return "confirmed"
-    if raw and all(ch in _NO_EMOJI or ch.isspace() or ch == "\ufe0f" for ch in raw):
-        return "cancelled"
-    normalised = re.sub(r"[^\w\s']", " ", raw.lower())
-    normalised = re.sub(r"\s+", " ", normalised).strip()
-    if normalised in CONFIRM_WORDS:
-        return "confirmed"
-    if normalised in CANCEL_WORDS:
-        return "cancelled"
-    return None
+def _find_user(db: Any, chat_id: str) -> User | None:
+    return db.get(User, str(chat_id)) or db.scalar(
+        select(User).where(User.telegram_chat_id == str(chat_id))
+    )
 
 
 def redact_api_keys(text: str) -> str:
@@ -528,633 +551,53 @@ TOOLS_SCHEMA: list[dict[str, Any]] = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "delete_transaction",
+            "description": "Delete one of the user's existing entries (by its id or first 8+ characters, from search_transactions) and restore the account balance. Asks the user first.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "transaction_id": {
+                        "type": "string",
+                        "description": "Entry id (full or first 8+ characters).",
+                    }
+                },
+                "required": ["transaction_id"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "set_default_account",
+            "description": "Make an account the default one used when an entry names no account (created if new).",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "account_name": {"type": "string", "description": "e.g. Cash, Bank, UPI."}
+                },
+                "required": ["account_name"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "set_account_balance",
+            "description": "Set how much money an account holds right now (opening balance or a correction). The difference is recorded as an adjustment entry. Asks the user first.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "account_name": {"type": "string", "description": "e.g. Cash, Bank."},
+                    "balance": {"type": "number", "description": "Rupees in the account now."},
+                },
+                "required": ["account_name", "balance"],
+            },
+        },
+    },
 ]
-
-SYSTEM_AGENT_PROMPT = """You are WalletLedger's Financial AI Agent Brain modeled on the 'Tank & Pipes' architecture.
-Your job is to understand natural language user messages, analyze finances, and invoke appropriate tools dynamically.
-
-Key Guidelines:
-1. Account Pipes: Map colloquial payment accounts to clean pipe names (e.g. 'Bank', 'Cash', 'UPI Wallet'). If the user clearly specifies the payment medium (e.g. 'via bank', 'from cash', 'through UPI'), use that. If the payment account is NOT mentioned, omit `account_name` (the app uses the user's default account). Use 'Bank' for income/transfers.
-2. Categories: Infer accurate, standard expense or income categories based on context (e.g. Food, Groceries, Transport, Shopping, Utilities, Subscriptions, Health, Personal Care, Entertainment, Gifts, Salary, Freelance, Stipend, Cashback).
-3. Multi-Item & Batch Transactions:
-   When the user provides a list of expenses (e.g. '190=poornima pizza Dosa\\n80=Neeraj Dosa\\n115.62=petrol...'), multiple purchases, or an income together with expenses ('got stipend 15000 and spent 190 on dosa, 80 on coffee'), YOU MUST CALL THE RELEVANT TOOL FOR EACH INDIVIDUAL ITEM (call `log_income` for the stipend, and call `log_expense` for EVERY single expense item). Do not truncate, merge, or ignore any item.
-4. Merchants & Descriptions: Identify merchant/payee names and clear descriptions for each transaction.
-5. Queries & Reporting:
-   - When the user asks 'how much total i spend', 'total expenses', 'show spending breakdown', call `get_spending_breakdown`.
-   - When the user asks 'what is my balance', 'net worth', 'show pipes', call `get_pipe_balances`.
-   - When the user asks how to save money, reduce expenses, or wants financial advice, call `financial_advice_bundle`.
-   - When the user asks for budget checks or alerts, call `skill_budget_alert_check`.
-   - When the user asks for recurring bills or subscriptions, call `skill_recurring_bill_detector`.
-   - When the user asks for emergency fund or runway calculations, call `skill_emergency_fund_calculator`.
-6. General Financial Conversations:
-   If the user asks a general question, greetings, or conversational advice where no tools need to be executed, reply with a helpful, friendly, and structured financial response.
-"""
-
-
-# ---------------------------------------------------------------------------
-# Pending Confirmation State
-# ---------------------------------------------------------------------------
-
-
-class PendingAction(TypedDict, total=False):
-    id: str  # short random id carried by the Yes/Cancel buttons
-    tool_name: str
-    tool_args: dict[str, Any]
-    tool_calls: list[dict[str, Any]]  # everything from the same message, run together on Yes
-    description: str
-    created_at: str
-
-
-@dataclass
-class UserSession:
-    chat_id: str
-    pending_action: PendingAction | None = None
-    last_active: datetime = field(default_factory=_utc_now)
-
-
-class SessionStore:
-    def __init__(self) -> None:
-        self._sessions: dict[str, UserSession] = {}
-
-    def get_session(self, chat_id: str) -> UserSession:
-        if chat_id not in self._sessions:
-            self._sessions[chat_id] = UserSession(chat_id=chat_id)
-        return self._sessions[chat_id]
-
-    def set_pending(self, chat_id: str, action: PendingAction) -> None:
-        session = self.get_session(chat_id)
-        session.pending_action = action
-        session.last_active = _utc_now()
-
-    def get_pending(self, chat_id: str) -> PendingAction | None:
-        """Return the pending action, discarding it if it is older than PENDING_ACTION_TTL."""
-        session = self.get_session(chat_id)
-        action = session.pending_action
-        if action is None:
-            return None
-        try:
-            created_raw = action.get("created_at", "")
-            if created_raw.endswith("Z"):
-                created = datetime.fromisoformat(created_raw[:-1] + "+00:00")
-            elif "+" not in created_raw and "-" in created_raw:
-                # Handle naive ISO format by assuming UTC
-                created = datetime.fromisoformat(created_raw).replace(tzinfo=UTC)
-            else:
-                created = datetime.fromisoformat(created_raw)
-        except Exception:
-            created = session.last_active
-        if _utc_now() - created > PENDING_ACTION_TTL:
-            logger.info("Pending action for chat %s expired; discarding it.", chat_id)
-            session.pending_action = None
-            return None
-        return action
-
-    def clear_pending(self, chat_id: str) -> PendingAction | None:
-        session = self.get_session(chat_id)
-        action = session.pending_action
-        session.pending_action = None
-        session.last_active = _utc_now()
-        return action
-
-
-session_store = SessionStore()
-
-
-# ---------------------------------------------------------------------------
-# LangGraph Agent State
-# ---------------------------------------------------------------------------
-
-
-class AgentState(TypedDict, total=False):
-    chat_id: str
-    user_id: str
-    user_message: str
-    attachments: list[Any] | None
-    messages: Sequence[BaseMessage]
-    llm_thought: str | None
-    is_confirmation_reply: bool
-    confirmation_decision: Literal["confirmed", "cancelled", "none"]
-    requires_confirmation: bool
-    confirmation_action: PendingAction | None
-    tool_name: str | None
-    tool_args: dict[str, Any] | None
-    tool_result: dict[str, Any] | None
-    tool_calls: list[dict[str, Any]] | None
-    tool_results: list[dict[str, Any]] | None
-    response_text: str
-    error: str | None
-    persona_mode: str | None
-    offline_reason: str | None
-    pay_alternative: dict[str, Any] | None  # another account that could cover a blocked spend
-    preamble: str | None  # shown before a confirmation question (what was already recorded)
-
-
-# ---------------------------------------------------------------------------
-# LLM Reasoning & Dynamic Analysis
-# ---------------------------------------------------------------------------
-
-
-async def _run_llm_analysis(
-    user_id: str, message: str, history: list[dict[str, str]]
-) -> dict[str, Any]:
-    """Calls the LLM via AI Gateway to parse intent, extract parameters, and select tools dynamically.
-
-    Falls back to deterministic offline rules when no key is configured or the AI call fails.
-    On failure the reason is logged and returned as ``offline_reason`` so the reply can say so.
-    """
-    keys = get_user_api_keys(user_id)
-    offline_reason: str | None = None
-
-    if keys:
-        try:
-            res = await ask_llm(
-                user_id=user_id,
-                system_prompt=SYSTEM_AGENT_PROMPT,
-                user_prompt=message,
-                tools=tool_client.available_tools(TOOLS_SCHEMA),
-                messages_history=history,
-            )
-            choice = res.choices[0]
-            message_obj = choice.message
-            if hasattr(message_obj, "tool_calls") and message_obj.tool_calls:
-                parsed_calls = []
-                for call in message_obj.tool_calls:
-                    fn_name = call.function.name
-                    fn_args = json.loads(call.function.arguments or "{}")
-                    parsed_calls.append({"tool_name": fn_name, "tool_args": fn_args})
-                return {
-                    "type": "tool_calls",
-                    "tool_calls": parsed_calls,
-                    "tool_name": parsed_calls[0]["tool_name"] if parsed_calls else None,
-                    "tool_args": parsed_calls[0]["tool_args"] if parsed_calls else None,
-                }
-            elif getattr(message_obj, "content", None):
-                return {"type": "direct_text", "content": message_obj.content}
-            offline_reason = "the AI returned an empty response"
-        except Exception as e:
-            offline_reason = redact_secrets(
-                f"{type(e).__name__}: {str(e).splitlines()[0][:200] if str(e) else ''}"
-            )
-        logger.warning(
-            "AI unavailable for chat %s (%s); using offline rules.", user_id, offline_reason
-        )
-
-    # Dynamic fallback structured reasoning
-    analysis = _offline_intent(message)
-    if offline_reason:
-        analysis["offline_reason"] = offline_reason
-    return analysis
-
-
-# What a user with no AI key can still ask for in words. Logging is NOT here: the rules in nlu.py read
-# entries, and anything they can't read must not be guessed into an expense.
-_OFFLINE_INTENTS: list[tuple[tuple[str, ...], str, dict[str, Any]]] = [
-    (
-        (
-            "reduce money",
-            "reduce expense",
-            "how to save",
-            "how can i save",
-            "save money",
-            "financial advice",
-            "coach",
-        ),
-        "financial_advice_bundle",
-        {},
-    ),
-    (("budget alert", "budget cap", "over budget", "check budget"), "skill_budget_alert_check", {}),
-    (
-        ("recurring", "subscriptions", "detect bills", "hidden bill"),
-        "skill_recurring_bill_detector",
-        {},
-    ),
-    (
-        ("emergency fund", "runway", "liquid fund", "survival fund"),
-        "skill_emergency_fund_calculator",
-        {},
-    ),
-    (("balance", "net worth", "tank", "pipes"), "get_pipe_balances", {}),
-    (
-        (
-            "how much did i spend",
-            "how much spent",
-            "how much i spend",
-            "how much total",
-            "total i spend",
-            "total spent",
-            "total spend",
-            "spending breakdown",
-            "spending summary",
-            "expense breakdown",
-            "show expenses",
-            "my expenses",
-        ),
-        "get_spending_breakdown",
-        {"period": "month"},
-    ),
-]
-
-
-_hinted_about_keys: set[str] = set()
-_SMALL_TALK = re.compile(
-    r"(?:hi+|hello+|hey+|hii+|yo|hola|namaste|sup|good (?:morning|afternoon|evening|night)|"
-    r"thanks?(?: you| a lot)?|thx|ty|ok(?:ay)?|cool|great|nice|got it|👍|🙏|😀|🙂)(?: there| bot| buddy)?"
-)
-
-
-def _offline_intent(message: str) -> dict[str, Any]:
-    """Without an AI key: a few fixed requests by keyword, otherwise a short, honest hint."""
-    lower = message.strip().lower()
-    if _SMALL_TALK.fullmatch(lower.strip(" !.,?")):
-        thanks = bool(re.match(r"thank|thx|ty\b|ok|okay|cool|great|nice|got it|👍", lower))
-        return {"type": "direct_text", "content": replies.THANKS if thanks else replies.HELLO}
-    bare = nlu.parse_amount(lower.strip(" .!"))
-    if bare is not None:
-        return {
-            "type": "direct_text",
-            "content": replies.BARE_AMOUNT.format(
-                amount=fmt.inr(bare, 2 if bare % 1 else 0), plain=f"{bare:g}"
-            ),
-        }
-    if nlu.is_question(lower) and re.search(r"\d", lower):
-        return {"type": "direct_text", "content": replies.QUESTION_NEEDS_AI}
-    for keywords, tool, args in _OFFLINE_INTENTS:
-        if any(k in lower for k in keywords):
-            args = dict(args)
-            if tool == "get_spending_breakdown":
-                args["period"] = next(
-                    (w for w in ("week", "quarter", "year") if w in lower), "month"
-                )
-            call = {"tool_name": tool, "tool_args": args}
-            return {
-                "type": "tool_calls",
-                "tool_calls": [call],
-                "tool_name": tool,
-                "tool_args": args,
-            }
-    if nlu.is_question(lower):
-        return {"type": "direct_text", "content": replies.QUESTION_NEEDS_AI}
-    if lower in {"/help", "help", "/start", "menu", "commands"}:
-        return {"type": "direct_text", "content": replies.GREETING}
-    if re.search(
-        r"\d", lower
-    ):  # has a number but the rules could not read it: never guess an expense
-        return {"type": "direct_text", "content": replies.NOT_UNDERSTOOD}
-    return {"type": "direct_text", "content": replies.GREETING}
-
-
-# ---------------------------------------------------------------------------
-# LangGraph Nodes
-# ---------------------------------------------------------------------------
-
-
-def _nlu_context(chat_id: str) -> nlu.Context:
-    """Names the user already uses (accounts, merchants) and where their money usually goes."""
-    from sqlalchemy import select as _select
-
-    from app.models import Account, Merchant, Transaction
-
-    with SessionLocal() as db:
-        user = db.get(User, str(chat_id)) or db.scalar(
-            _select(User).where(User.telegram_chat_id == str(chat_id))
-        )
-        if user is None:
-            return nlu.Context()
-        accounts = {
-            a.id: a.name for a in db.scalars(_select(Account).where(Account.user_id == user.id))
-        }
-        merchants = list(
-            db.scalars(_select(Merchant.name).where(Merchant.user_id == user.id).limit(300))
-        )
-
-        def last_account(kind: str) -> str | None:
-            account_id = db.scalar(
-                _select(Transaction.account_id)
-                .where(Transaction.user_id == user.id, Transaction.transaction_type == kind)
-                .order_by(Transaction.created_at.desc())
-                .limit(1)
-            )
-            return accounts.get(account_id) if account_id else None
-
-        names = list(accounts.values())
-        bank = next((n for n in names if "cash" not in n.lower()), "Bank")
-        return nlu.Context(
-            accounts=names,
-            merchants=merchants,
-            default_expense_account=user.default_account
-            or last_account("expense")
-            or ("Cash" if "Cash" in names else bank),
-            default_income_account=last_account("income") or bank,
-        )
-
-
-async def _nlu_analysis(chat_id: str, message: str) -> dict[str, Any] | None:
-    """Clear messages ("Spent 200 on chai, 80 on auto") are handled by rules: instant, no AI call."""
-    ctx = await asyncio.to_thread(_nlu_context, chat_id)
-    entries = nlu.parse_entries(message, ctx)
-    if not entries:
-        return None
-
-    calls: list[dict[str, Any]] = []
-    for e in entries:
-        if e.kind == "transfer":
-            args = {"from_account": e.account, "to_account": e.to_account, "amount": e.amount}
-            calls.append({"tool_name": "transfer_funds", "tool_args": args})
-        elif e.kind == "income":
-            args = {
-                "amount": e.amount,
-                "source_account": e.account,
-                "category": e.category or "Income",
-                "description": e.note,
-                "date": e.when,
-            }
-            calls.append(
-                {
-                    "tool_name": "log_income",
-                    "tool_args": {k: v for k, v in args.items() if v is not None},
-                }
-            )
-        else:
-            args = {
-                "amount": e.amount,
-                "category": e.category or "Uncategorized",
-                "merchant": e.merchant,
-                "account_name": e.account,
-                "description": e.note,
-                "date": e.when,
-            }
-            calls.append(
-                {
-                    "tool_name": "log_expense",
-                    "tool_args": {k: v for k, v in args.items() if v is not None},
-                }
-            )
-
-    return {"type": "tool_calls", "tool_calls": calls}
-
-
-async def _orchestrate(
-    chat_id: str, message: str, history: list[dict[str, str]]
-) -> dict[str, Any] | None:
-    """Multi-step answer for goals and questions. None -> use the simple one-shot path."""
-    try:
-        res = await orchestrator.run(
-            chat_id,
-            message,
-            history,
-            tools=tool_client.available_tools(TOOLS_SCHEMA),
-            system_prompt=SYSTEM_AGENT_PROMPT,
-            transfer_threshold=CONFIRMATION_TRANSFER_THRESHOLD,
-            confirm=confirmation_reason,
-        )
-    except Exception as exc:
-        logger.warning("Multi-step helper unavailable for chat %s: %s", chat_id, exc)
-        return None
-
-    logged = replies.compact({"tool_results": [r for r in res.tool_results if r["result"]]})
-    if res.pending_calls:
-        calls = [
-            {"tool_name": c["tool_name"], "tool_args": c["tool_args"]} for c in res.pending_calls
-        ]
-        action: PendingAction = {
-            "id": secrets.token_hex(3),
-            "tool_name": calls[0]["tool_name"],
-            "tool_args": calls[0]["tool_args"],
-            "tool_calls": calls,
-            "description": " and ".join(c["reason"] for c in res.pending_calls),
-            "created_at": _utc_now().isoformat(),
-        }
-        session_store.set_pending(chat_id, action)
-        return {
-            "requires_confirmation": True,
-            "confirmation_action": action,
-            "tool_name": action["tool_name"],
-            "tool_args": action["tool_args"],
-            "tool_calls": calls,
-            "tool_results": res.tool_results,
-            "preamble": "\n\n".join(p for p in (logged, res.text) if p) or None,
-        }
-
-    parts = [p for p in (logged, res.text) if p]
-    if not parts and res.tool_results:
-        parts = [
-            "✅ Done."
-        ]  # something ran but the AI said nothing: never fall through and run it twice
-    if not parts:
-        return None
-    return {
-        "response_text": "\n\n".join(parts),
-        "tool_results": res.tool_results,
-        "tool_name": None,
-        "tool_args": None,
-        "tool_calls": None,
-        "requires_confirmation": False,
-    }
-
-
-async def llm_reasoning_node(state: AgentState) -> dict[str, Any]:
-    """Node 1: LLM analyzes intent, resolves entities, and chooses tools dynamically."""
-    chat_id = state.get("chat_id", "")
-    user_message = state.get("user_message", "")
-
-    # 1. Human-in-the-loop: a yes/no answer to a pending action never goes to the AI.
-    pending = session_store.get_pending(chat_id)
-    if pending:
-        # Transfer / AI-action confirmation — yes/no reply
-        decision = classify_reply(user_message)
-        if decision:
-            return {
-                "is_confirmation_reply": True,
-                "confirmation_decision": decision,
-                "confirmation_action": pending,
-            }
-        # Unrelated message: drop the pending action and handle the new message normally.
-        session_store.clear_pending(chat_id)
-        logger.info("Chat %s sent a new request; cancelled pending action.", chat_id)
-
-    # 2. API keys pasted in chat (Gemini AIza / AQ., OpenAI, Claude, Groq; several at once).
-    if extract_api_keys(user_message):
-        return {"response_text": await save_keys(chat_id, user_message)}
-
-    # 3. Explicit persona command, e.g. "/budgeter" or "/summary how did I do?".
-    command = PERSONA_COMMAND.match(user_message)
-    if command:
-        return {
-            "tool_name": "financial_advice_bundle",
-            "tool_args": {"user_id": chat_id},
-            "tool_calls": [
-                {"tool_name": "financial_advice_bundle", "tool_args": {"user_id": chat_id}}
-            ],
-            "requires_confirmation": False,
-            "persona_mode": resolve_mode(command.group(1)).value,
-        }
-
-    # 4. AI reasoning. History = previous messages only.
-    history = [
-        {"role": "user" if isinstance(m, HumanMessage) else "assistant", "content": m.content}
-        for m in state.get("messages", [])
-    ]
-    analysis = await _nlu_analysis(chat_id, user_message)
-    if (
-        analysis is None
-        and orchestrator.looks_complex(user_message)
-        and (get_user_api_keys(chat_id) or has_server_keys())
-    ):
-        multi = await _orchestrate(chat_id, user_message, history)
-        if multi is not None:
-            return multi
-    if analysis is None:
-        analysis = await _run_llm_analysis(chat_id, user_message, history)
-    offline = (
-        {"offline_reason": analysis["offline_reason"]} if analysis.get("offline_reason") else {}
-    )
-
-    if analysis.get("type") == "tool_calls" or analysis.get("tool_calls"):
-        raw_calls = analysis.get("tool_calls") or []
-        tool_calls: list[dict[str, Any]] = []
-        for tc in raw_calls:
-            t_name = tc.get("tool_name")
-            raw_args = tc.get("tool_args")
-            t_args = dict(raw_args) if isinstance(raw_args, dict) else {}
-            t_args["user_id"] = chat_id
-            tool_calls.append({"tool_name": t_name, "tool_args": t_args})
-
-        # Anything that needs a human Yes (big transfers, AI edits) waits, together with the rest of the message
-        reasons = [
-            (
-                tc,
-                confirmation_reason(tc["tool_name"], tc["tool_args"])
-                or _budget_overage_reason(chat_id, tc),
-            )
-            for tc in tool_calls
-        ]
-        waiting = [(tc, why) for tc, why in reasons if why]
-        if waiting:
-            others = len(tool_calls) - len(waiting)
-            extra = (
-                f" (and {others} other entr{'y' if others == 1 else 'ies'} from your message)"
-                if others
-                else ""
-            )
-            first = waiting[0][0]
-            pending_action: PendingAction = {
-                "id": secrets.token_hex(3),
-                "tool_name": first["tool_name"],
-                "tool_args": first["tool_args"],
-                "tool_calls": tool_calls,
-                "description": " and ".join(why for _, why in waiting) + extra,
-                "created_at": _utc_now().isoformat(),
-            }
-            session_store.set_pending(chat_id, pending_action)
-            return {
-                "requires_confirmation": True,
-                "confirmation_action": pending_action,
-                "tool_name": first["tool_name"],
-                "tool_args": first["tool_args"],
-                "tool_calls": tool_calls,
-                **offline,
-            }
-
-        first_name = tool_calls[0]["tool_name"] if tool_calls else None
-        first_args = tool_calls[0]["tool_args"] if tool_calls else None
-        return {
-            "tool_calls": tool_calls,
-            "tool_name": first_name,
-            "tool_args": first_args,
-            "requires_confirmation": False,
-            **offline,
-        }
-
-    text = analysis.get("content", "")
-    if (
-        text in (replies.GREETING, replies.NOT_UNDERSTOOD, replies.HELLO)
-        and chat_id not in _hinted_about_keys
-        and not get_user_api_keys(chat_id)
-    ):
-        _hinted_about_keys.add(
-            chat_id
-        )  # bring-your-own-key: tell them how, once per run, not every message
-        text += "\n\n" + replies.NO_AI_HINT
-    return {
-        "response_text": text,
-        "tool_name": None,
-        "tool_args": None,
-        "tool_calls": None,
-        "requires_confirmation": False,
-        **offline,
-    }
-
-
-async def confirmation_node(state: AgentState) -> dict[str, Any]:
-    """Node 2: Resolves confirmation or cancellation of a pending action."""
-    chat_id = state.get("chat_id", "")
-    decision = state.get("confirmation_decision", "none")
-    pending = session_store.clear_pending(chat_id)
-
-    if decision == "confirmed" and pending:
-        return {
-            "tool_name": pending["tool_name"],
-            "tool_args": pending["tool_args"],
-            "tool_calls": pending.get("tool_calls")
-            or [{"tool_name": pending["tool_name"], "tool_args": pending["tool_args"]}],
-            "requires_confirmation": False,
-            "confirmation_decision": "confirmed",
-        }
-    else:
-        return {
-            "tool_name": None,
-            "tool_args": None,
-            "tool_calls": None,
-            "requires_confirmation": False,
-            "confirmation_decision": "cancelled",
-            "response_text": replies.CANCELLED,
-        }
-
-
-async def tool_executor_node(state: AgentState) -> dict[str, Any]:
-    """Node 3: Executes MCP tools dynamically."""
-    if state.get("requires_confirmation"):
-        action = state.get("confirmation_action", {})
-        desc = action.get("description", "High-value ledger transaction")
-        before = state.get("preamble")
-        question = replies.confirm_prompt(desc)
-        return {"response_text": f"{before}\n\n{question}" if before else question}
-
-    tool_calls = state.get("tool_calls")
-    if not tool_calls and state.get("tool_name"):
-        tool_calls = [
-            {"tool_name": state.get("tool_name"), "tool_args": state.get("tool_args") or {}}
-        ]
-
-    if not tool_calls:
-        return {"tool_result": None, "tool_results": None}
-
-    results = []
-    first_error = None
-    for tc in tool_calls:
-        t_name = tc.get("tool_name")
-        t_args = dict(tc.get("tool_args") or {})
-        if not t_name:
-            continue
-        try:
-            res = await tool_client.call_tool(t_name, **t_args)
-            results.append({"tool_name": t_name, "tool_args": t_args, "result": res, "error": None})
-        except Exception as e:
-            logger.error(f"Error executing MCP tool {t_name}: {e}", exc_info=True)
-            results.append(
-                {"tool_name": t_name, "tool_args": t_args, "result": None, "error": str(e)}
-            )
-            if not first_error:
-                first_error = str(e)
-
-    first_result = results[0]["result"] if results else None
-    alt = _pay_alternative(state.get("chat_id", ""), results)
-    return {
-        "tool_results": results,
-        "tool_result": first_result,
-        "error": first_error,
-        **({"pay_alternative": alt} if alt else {}),
-    }
 
 
 def _pay_alternative(chat_id: str, results: list[dict[str, Any]]) -> dict[str, Any] | None:
@@ -1201,30 +644,7 @@ def _pay_alternative(chat_id: str, results: list[dict[str, Any]]) -> dict[str, A
         return {"account": best.name, "balance": round(best.balance, 2), "args": args}
 
 
-OFFLINE_NOTE = "\n\n_(The AI is busy right now, so I used basic rules.)_"
-
-
-async def response_synthesizer_node(state: AgentState) -> dict[str, Any]:
-    """Node 4: Builds the reply.
-
-    Advice/report tools are written by a persona (Coach / Budgeter / Summary) from the tool data;
-    ledger confirmations stay as fast fixed templates. Adds an offline note if the AI failed.
-    """
-    text = (
-        state.get("response_text")
-        or await _persona_response(state)
-        or replies.compact(state)
-        or _multi_tool_or_template_response(state)
-    )
-    budget_note = await asyncio.to_thread(_budget_note_for, state)
-    if budget_note:
-        text = f"{text}\n{budget_note}"
-    if state.get("offline_reason"):
-        text += OFFLINE_NOTE
-    return {"response_text": text}
-
-
-def _budget_note_for(state: AgentState) -> str | None:
+def _budget_note_for(state: dict[str, Any]) -> str | None:
     """One line about the budget of a category just spent on: used so far, left, and an alert at 80%+.
 
     Only for freshly logged expenses whose category has a budget. Returns None otherwise.
@@ -1265,124 +685,7 @@ def _budget_note_for(state: AgentState) -> str | None:
     return "\n".join(lines) if lines else None
 
 
-async def _persona_response(state: AgentState) -> str | None:
-    """Render advice-type tool results with a prompts.py persona; None -> use the template."""
-    tool_name = state.get("tool_name")
-    tool_result = state.get("tool_result")
-    if tool_name not in PERSONA_TOOLS or not tool_result or state.get("error"):
-        return None
-    if state.get("offline_reason"):
-        return None  # AI already failed this turn; don't spend another call.
-
-    chat_id = state.get("chat_id", "")
-    message = state.get("user_message", "")
-    command = PERSONA_COMMAND.match(message)
-    if command:
-        mode = resolve_mode(command.group(1))
-        message = command.group(2).strip() or "Review my finances using this data."
-    else:
-        mode = (
-            resolve_mode(state.get("persona_mode"))
-            if state.get("persona_mode")
-            else detect_mode(message)
-        )
-
-    try:
-        reply = await ask_persona(chat_id, message, mode=mode.value, context=tool_result)
-    except NoAPIKeyError:
-        return None
-    except Exception as e:
-        logger.warning(
-            "Persona %s failed for chat %s (%s); using template reply.", mode.value, chat_id, e
-        )
-        return None
-    if not reply or not str(reply).strip():
-        return None
-    return f"🧠 *{get_persona(mode).name}*\n\n{str(reply).strip()}"
-
-
-def _multi_tool_or_template_response(state: AgentState) -> str:
-    """Renders responses for single or batch multi-tool executions."""
-    tool_results = state.get("tool_results")
-    if tool_results and len(tool_results) > 1:
-        return _batch_template_response(tool_results)
-    return _template_response(state)
-
-
-def _batch_template_response(tool_results: list[dict[str, Any]]) -> str:
-    """Renders a comprehensive ledger update card for multiple transactions."""
-    incomes = []
-    expenses = []
-    transfers = []
-    other_msgs = []
-
-    total_income = 0.0
-    total_expense = 0.0
-
-    for item in tool_results:
-        t_name = item.get("tool_name")
-        res = item.get("result") or {}
-        err = item.get("error")
-
-        if err:
-            other_msgs.append(f"⚠️ Failed: {t_name} - {err}")
-            continue
-
-        if t_name == "log_income":
-            amt = float(res.get("amount", 0.0))
-            acc = res.get("account", "Bank")
-            cat = res.get("category", "Income")
-            total_income += amt
-            incomes.append(f"  • **+₹{amt:,.2f}** → {acc} ({cat})")
-        elif t_name == "log_expense":
-            amt = float(res.get("amount", 0.0))
-            acc = res.get("account", "Cash")
-            cat = res.get("category", "General")
-            merchant = res.get("merchant") or "General"
-            desc = item.get("tool_args", {}).get("description") or merchant
-            total_expense += amt
-            expenses.append(f"  • **₹{amt:,.2f}** - {desc} *({cat})* via {acc}")
-        elif t_name == "transfer_funds":
-            amt = float(res.get("transferred", 0.0))
-            from_acc = res.get("from_account", "Source")
-            to_acc = res.get("to_account", "Destination")
-            transfers.append(f"  • **₹{amt:,.2f}** from {from_acc} to {to_acc}")
-        else:
-            other_msgs.append(f"  • {t_name}: Completed")
-
-    sections = ["🧾 **Ledger Transactions Recorded!**\n"]
-
-    if incomes:
-        sections.append(f"💰 **Income Logged ({len(incomes)}):**\n" + "\n".join(incomes))
-    if expenses:
-        sections.append(f"💸 **Expenses Logged ({len(expenses)}):**\n" + "\n".join(expenses))
-    if transfers:
-        sections.append(f"🔄 **Transfers Logged ({len(transfers)}):**\n" + "\n".join(transfers))
-    if other_msgs:
-        sections.append("\n".join(other_msgs))
-
-    # Summary
-    summary_lines = []
-    if total_income > 0:
-        summary_lines.append(f"• **Total Inflow:** ₹{total_income:,.2f}")
-    if total_expense > 0:
-        summary_lines.append(f"• **Total Outflow:** ₹{total_expense:,.2f}")
-    if total_income > 0 and total_expense > 0:
-        net = total_income - total_expense
-        summary_lines.append(f"• **Net Balance Change:** {'+' if net >= 0 else ''}₹{net:,.2f}")
-
-    if summary_lines:
-        sections.append("📊 **Summary:**\n" + "\n".join(summary_lines))
-
-    sections.append("✨ *Updated your Tank & Pipes ledger seamlessly.*")
-    return "\n\n".join(sections)
-
-
-def _template_response(state: AgentState) -> str:
-    return _template_response_dict(state)["response_text"]
-
-
-def _template_response_dict(state: AgentState) -> dict[str, Any]:
+def _template_response_dict(state: dict[str, Any]) -> dict[str, Any]:
     """Fixed Markdown templates for every tool result (also the offline fallback for advice)."""
     tool_name = state.get("tool_name")
     tool_result = state.get("tool_result")
@@ -1601,69 +904,458 @@ def _template_response_dict(state: AgentState) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
-# StateGraph Router Condition
+# Graph state and nodes
 # ---------------------------------------------------------------------------
 
 
-def route_after_llm_reasoning(state: AgentState) -> str:
-    """Routes to confirmation node, tool executor, or response synthesizer."""
-    if state.get("is_confirmation_reply"):
-        return "confirmation_node"
-    if state.get("requires_confirmation") or state.get("tool_name") or state.get("tool_calls"):
-        return "tool_executor_node"
-    return "response_synthesizer_node"
+class AgentState(TypedDict, total=False):
+    chat_id: str
+    user_text: str
+    persona: str | None  # "coach" | "budgeter" | "summary" from /coach etc.
+    convo: list[dict[str, Any]]  # OpenAI-format messages; overwritten by each node (no reducer)
+    context: dict[str, Any]  # accounts, default account, budgets, today
+    step: int  # planner rounds this turn
+    proposed: list[dict[str, Any]]  # this round's tool calls: {id, name, args}
+    declined: bool
+    last_round: int  # how many tool_runs the executor just added
+    tool_runs: list[dict[str, Any]]  # {tool_name, tool_args, result, error, error_kind}
+    reply_text: str
+    reply_source: str  # "planner" when reply_text is the LLM's own words
+    pay_alternative: dict[str, Any] | None
+    ai_failed: bool
+    rejected: bool  # the tool guardrail threw every proposed call away this round
+    off_topic_mixed: bool  # the message mixed money requests with an off-topic part
+    off_topic_confirmed: bool  # the user already said Yes to the money part of such a message
 
 
-def route_after_confirmation(state: AgentState) -> str:
-    """After confirmation: execute tool if confirmed; else synthesize response."""
-    if state.get("confirmation_decision") == "confirmed" and (
-        state.get("tool_name") or state.get("tool_calls")
-    ):
-        return "tool_executor_node"
-    return "response_synthesizer_node"
+def _load_context(chat_id: str) -> dict[str, Any]:
+    """Live data the planner treats as the source of truth (balances, budgets, today)."""
+    from app.models import Account
+    from app.services import analytics
+
+    context: dict[str, Any] = {"today": clock.today_local().isoformat()}
+    try:
+        with SessionLocal() as db:
+            user = _find_user(db, chat_id)
+            if user is None:
+                return {**context, "accounts": [], "default_account": None, "budgets": []}
+            accounts = db.scalars(select(Account).where(Account.user_id == user.id))
+            context["accounts"] = [
+                {"name": a.name, "balance": round(a.balance, 2)} for a in accounts
+            ]
+            context["default_account"] = user.default_account
+            context["budgets"] = analytics.budget_status(db, user.id)
+    except Exception:
+        logger.warning("Agent: could not load context for %s", chat_id, exc_info=True)
+    return context
 
 
-# ---------------------------------------------------------------------------
-# StateGraph Workflow Construction
-# ---------------------------------------------------------------------------
+def _history_dicts(chat_id: str, user_text: str) -> list[dict[str, Any]]:
+    user_text = gr.mask_pii(redact_api_keys(user_text or ""))[0]
+    history = get_db_conversation_history(chat_id, limit=HISTORY_LIMIT)
+    out = [
+        {"role": "user" if isinstance(m, HumanMessage) else "assistant", "content": m.content}
+        for m in history
+        if isinstance(m, (HumanMessage, AIMessage)) and m.content
+    ]
+    # The caller saves this turn's message before the graph runs; don't send it twice.
+    if out and out[-1]["role"] == "user" and out[-1]["content"].strip() == user_text.strip():
+        out.pop()
+    return out
+
+
+async def ingress_node(state: AgentState) -> dict[str, Any]:
+    """No LLM: key paste short-circuit, persona command, context + history, per-turn reset."""
+    chat_id = str(state.get("chat_id", ""))
+    text = (state.get("user_text") or "").strip()
+    reset: dict[str, Any] = {
+        "step": 0,
+        "proposed": [],
+        "declined": False,
+        "tool_runs": [],
+        "reply_text": "",
+        "reply_source": "",
+        "pay_alternative": None,
+        "ai_failed": False,
+        "rejected": False,
+        "off_topic_mixed": False,
+        "off_topic_confirmed": False,
+        "persona": None,
+    }
+    if extract_api_keys(text):
+        return {**reset, "convo": [], "reply_text": await save_keys(chat_id, text)}
+    text, flags = gr.check_input(text)  # input guardrail: length cap + PII masking
+    if flags:
+        logger.info("Input guardrail for %s: %s", chat_id, ", ".join(flags))
+    persona = None
+    match = PERSONA_COMMAND.match(text)
+    if match:
+        persona = resolve_mode(match.group(1).lower()).value
+        text = match.group(2).strip() or "Review my finances."
+    context = await asyncio.to_thread(_load_context, chat_id)
+    history = await asyncio.to_thread(_history_dicts, chat_id, state.get("user_text") or "")
+    system = build_planner_prompt(context, persona, EXPENSE_CATEGORIES)
+    convo = [{"role": "system", "content": system}, *history, {"role": "user", "content": text}]
+    return {**reset, "persona": persona, "context": context, "convo": convo, "user_text": text}
+
+
+def _parse_args(raw: Any) -> dict[str, Any]:
+    if isinstance(raw, dict):
+        return dict(raw)
+    try:
+        data = json.loads(raw or "{}")
+    except TypeError, ValueError:
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+async def planner_node(state: AgentState) -> dict[str, Any]:
+    """One LLM call: conversation + tool schema -> tool calls (to guard) or final text."""
+    chat_id = str(state.get("chat_id", ""))
+    step = int(state.get("step") or 0)
+    runs = state.get("tool_runs") or []
+    wrote = any(r.get("tool_name") in WRITE_TOOLS and not r.get("error") for r in runs)
+    if step >= MAX_STEPS:
+        if runs:  # keep what was done; the renderer shows it from templates
+            return {"proposed": [], "ai_failed": True}
+        return {"proposed": [], "reply_text": TOO_MANY_STEPS_TEXT}
+    schema = [
+        t
+        for t in tool_client.available_tools(TOOLS_SCHEMA)
+        if t["function"]["name"] not in HIDDEN_TOOLS
+    ] + [gr.OFF_TOPIC_TOOL]
+    convo = list(state.get("convo") or [])
+    try:
+        response = await gw.complete(chat_id, convo, tools=schema)
+        message = response.choices[0].message
+    except gw.NoAPIKeyError:
+        if wrote:
+            return {"proposed": [], "ai_failed": True}
+        return {"proposed": [], "reply_text": NEEDS_KEY_TEXT}
+    except Exception as exc:
+        logger.warning("Agent planner failed for %s: %s", chat_id, exc)
+        if runs:
+            return {"proposed": [], "ai_failed": True}
+        return {"proposed": [], "reply_text": AI_BUSY_TEXT}
+
+    tool_calls = list(getattr(message, "tool_calls", None) or [])
+    off_topic = [
+        tc
+        for tc in tool_calls
+        if getattr(tc, "function", None) and tc.function.name == "decline_off_topic"
+    ]
+    mixed = bool(state.get("off_topic_mixed"))
+    if off_topic:
+        tool_calls = [tc for tc in tool_calls if tc not in off_topic]
+        if not tool_calls:
+            logger.info("Off-topic declined for %s", chat_id)
+            if runs or mixed:  # money part already handled: keep its reply, add the note
+                return {"proposed": [], "off_topic_mixed": True}
+            return {"proposed": [], "reply_text": gr.OFF_TOPIC_TEXT}
+        logger.info("Off-topic part skipped for %s; money part kept", chat_id)
+        mixed = True
+    if not tool_calls:
+        text = (getattr(message, "content", None) or "").strip()
+        if not text and runs:
+            return {"proposed": [], "ai_failed": True}
+        return {
+            "proposed": [],
+            "reply_text": text or replies.NOT_UNDERSTOOD,
+            "reply_source": "planner" if text else "",
+        }
+    proposed = []
+    wire_calls = []
+    for i, tc in enumerate(tool_calls[:MAX_TOOL_CALLS]):
+        call_id = getattr(tc, "id", None) or f"call_{step}_{i}"
+        name = tc.function.name
+        raw_args = tc.function.arguments
+        args = _parse_args(raw_args)
+        args.pop("user_id", None)
+        proposed.append({"id": call_id, "name": name, "args": args})
+        wire_calls.append(
+            {
+                "id": call_id,
+                "type": "function",
+                "function": {
+                    "name": name,
+                    "arguments": raw_args if isinstance(raw_args, str) else json.dumps(args),
+                },
+            }
+        )
+    convo.append(
+        {
+            "role": "assistant",
+            "content": getattr(message, "content", None),
+            "tool_calls": wire_calls,
+        }
+    )
+    return {
+        "convo": convo,
+        "proposed": proposed,
+        "step": step + 1,
+        "rejected": False,
+        "off_topic_mixed": mixed,
+    }
+
+
+def _describe_call(call: dict[str, Any]) -> str:
+    """A short human sentence for one write call, used in confirmation questions."""
+    name, args = call["name"], call.get("args") or {}
+    amount = fmt.inr(_amount_of(args))
+    if name == "log_expense":
+        bits = [args.get("category"), args.get("account_name")]
+        return f"log {amount} expense" + (
+            f" ({', '.join(str(b) for b in bits if b)})" if any(bits) else ""
+        )
+    if name == "log_income":
+        bits = [args.get("category"), args.get("source_account")]
+        return f"log {amount} income" + (
+            f" ({', '.join(str(b) for b in bits if b)})" if any(bits) else ""
+        )
+    reason = confirmation_reason(name, args)
+    if reason:
+        return reason[0].lower() + reason[1:]
+    return name.replace("_", " ")
+
+
+def _pending_id(chat_id: str, calls: list[dict[str, Any]]) -> str:
+    raw = json.dumps([chat_id, calls], sort_keys=True, default=str)
+    return hashlib.sha1(raw.encode()).hexdigest()[:6]
+
+
+def guard_node(state: AgentState) -> dict[str, Any]:
+    """No LLM: pause with interrupt() when any proposed call needs the user's Yes.
+
+    On resume LangGraph re-runs this node from the top: the id is deterministic, and the new
+    created_at is never read (resume_pending checks the stored interrupt's created_at BEFORE
+    resuming), so the second pass simply receives the answer from interrupt().
+    """
+    chat_id = str(state.get("chat_id", ""))
+    calls = state.get("proposed") or []
+    # --- tool guardrail: reject bad calls before anything runs; the planner sees the error ---
+    schema = TOOLS_SCHEMA + [gr.OFF_TOPIC_TOOL]
+    today = clock.today_local()
+    ok_calls, rejects = [], []
+    writes = 0
+    for c in calls:
+        error = gr.check_call(c["name"], c["args"], schema, today)
+        if not error and c["name"] in WRITE_TOOLS:
+            writes += 1
+            if writes > gr.MAX_WRITES_PER_MESSAGE:
+                error = f"too many writes in one message (limit {gr.MAX_WRITES_PER_MESSAGE})"
+        (rejects if error else ok_calls).append((c, error))
+    if rejects:
+        convo = list(state.get("convo") or [])
+        for c, error in rejects:
+            logger.info("Tool guardrail rejected %s for %s: %s", c["name"], chat_id, error)
+            convo.append(
+                {"role": "tool", "tool_call_id": c["id"], "content": gr.as_json({"error": error})}
+            )
+        calls = [c for c, _ in ok_calls]
+        if not calls:  # nothing survived: back to the planner to explain or ask
+            return {"declined": False, "convo": convo, "proposed": [], "rejected": True}
+        state = {**state, "convo": convo, "proposed": calls, "rejected": True}
+    reasons = []
+    for c in calls:
+        reason = confirmation_reason(c["name"], c["args"]) or _budget_overage_reason(
+            chat_id, {"tool_name": c["name"], "tool_args": c["args"]}
+        )
+        if reason:
+            reasons.append(reason)
+    rejected = bool(state.get("rejected"))
+    mixed_writes = [c for c in calls if c["name"] in WRITE_TOOLS]
+    ask_mixed = (
+        bool(state.get("off_topic_mixed"))
+        and not state.get("off_topic_confirmed")
+        and bool(mixed_writes)
+    )
+    if ask_mixed:
+        # The message also asked something off-topic: show what we understood and ask first.
+        reasons = [gr.OFF_TOPIC_HITL_PREFIX + "; ".join(_describe_call(c) for c in mixed_writes)]
+    if not reasons:
+        return {
+            "declined": False,
+            "convo": state.get("convo"),
+            "proposed": calls,
+            "rejected": rejected,
+        }
+    description = " and ".join(reasons)
+    others = len(calls) - len(reasons)
+    if others > 0:
+        description += (
+            f" (and {others} other entr{'y' if others == 1 else 'ies'} from your message)"
+        )
+    if ask_mixed:
+        description = reasons[0]
+    answer = interrupt(
+        {
+            "kind": "confirm",
+            "id": _pending_id(chat_id, calls),
+            "created_at": _utc_now().isoformat(),
+            "description": description,
+            "calls": calls,
+        }
+    )
+    if answer == "yes":
+        return {
+            "declined": False,
+            "convo": state.get("convo"),
+            "proposed": calls,
+            "rejected": rejected,
+            "off_topic_confirmed": bool(state.get("off_topic_confirmed")) or ask_mixed,
+        }
+    convo = list(state.get("convo") or [])
+    for c in calls:
+        convo.append({"role": "tool", "tool_call_id": c["id"], "content": "cancelled by the user"})
+    return {"declined": True, "convo": convo, "proposed": [], "reply_text": replies.CANCELLED}
+
+
+async def executor_node(state: AgentState) -> dict[str, Any]:
+    """No LLM: run the approved calls (user_id injected), one tool message per call."""
+    chat_id = str(state.get("chat_id", ""))
+    convo = list(state.get("convo") or [])
+    runs = list(state.get("tool_runs") or [])
+    this_round: list[dict[str, Any]] = []
+    for call in (state.get("proposed") or [])[:MAX_TOOL_CALLS]:
+        name, args = call["name"], dict(call["args"])
+        run: dict[str, Any] = {"tool_name": name, "tool_args": args, "result": None, "error": None}
+        try:
+            run["result"] = await tool_client.call_tool(name, **{**args, "user_id": chat_id})
+        except Exception as exc:
+            error = str(exc) or type(exc).__name__
+            run["error"] = error
+            low = error.lower()
+            run["error_kind"] = "insufficient_balance" if "not enough balance" in low else "error"
+        this_round.append(run)
+        payload = run["result"] if run["error"] is None else {"error": run["error"]}
+        content = json.dumps(payload, default=str, ensure_ascii=False)[:TOOL_RESULT_CHARS]
+        convo.append({"role": "tool", "tool_call_id": call["id"], "content": content})
+    return {
+        "convo": convo,
+        "tool_runs": runs + this_round,
+        "proposed": [],
+        "last_round": len(this_round),
+        "pay_alternative": await asyncio.to_thread(_pay_alternative, chat_id, this_round),
+    }
+
+
+def route_after_ingress(state: AgentState) -> Literal["planner", "renderer"]:
+    return "renderer" if state.get("reply_text") else "planner"
+
+
+def route_after_planner(state: AgentState) -> Literal["guard", "renderer"]:
+    return "guard" if state.get("proposed") else "renderer"
+
+
+def route_after_guard(state: AgentState) -> Literal["executor", "planner", "renderer"]:
+    if state.get("declined"):
+        return "renderer"
+    if state.get("rejected") and not state.get("proposed"):
+        return "planner"  # every call was invalid; the planner sees the errors and retries or asks
+    return "executor"
+
+
+def route_after_executor(state: AgentState) -> Literal["planner", "renderer"]:
+    """Read/advice results go back to the planner to be explained; plain writes are templated."""
+    runs = state.get("tool_runs") or []
+    if state.get("rejected"):
+        return "planner"  # some calls were rejected by the tool guardrail: let the planner explain
+    for r in runs[len(runs) - int(state.get("last_round") or 0) :]:
+        if r["tool_name"] not in WRITE_TOOLS:
+            return "planner"
+        if r.get("error") and r.get("error_kind") != "insufficient_balance":
+            return "planner"
+    return "renderer"
+
+
+def renderer_node(state: AgentState) -> dict[str, Any]:
+    """No LLM: planner text, else fixed templates; then the persona header and budget note."""
+    runs = state.get("tool_runs") or []
+    text = state.get("reply_text") or ""
+    from_planner = bool(text) and state.get("reply_source") == "planner"
+    if not text:
+        text = replies.compact({"tool_results": runs}) or ""
+    if not text:
+        summaries = [
+            replies.tool_summary(r["tool_name"], r["result"])
+            for r in runs
+            if isinstance(r.get("result"), dict) and not r.get("error")
+        ]
+        text = "\n\n".join(s for s in summaries if s)
+    if not text and runs:
+        last = runs[-1]
+        text = _template_response_dict(
+            {"tool_name": last["tool_name"], "tool_result": last["result"], "error": last["error"]}
+        )["response_text"]
+    text = text or "Done."
+    if from_planner:  # output guardrail: only LLM-written text can invent figures or leak
+        chat_id = str(state.get("chat_id", ""))
+        found = gr.leaks(text, chat_id)
+        if found:
+            logger.warning("Output guardrail blocked a leak for %s: %s", chat_id, found)
+            text, from_planner = gr.LEAK_TEXT, False
+        else:
+            bad = gr.ungrounded_figures(
+                text,
+                state.get("context"),
+                [{"args": r.get("tool_args"), "result": r.get("result")} for r in runs],
+                state.get("user_text"),
+            )
+            if bad:
+                logger.warning("Output guardrail: ungrounded figures %s for %s", bad, chat_id)
+                fallback = replies.compact({"tool_results": runs}) or "\n\n".join(
+                    s
+                    for r in runs
+                    if isinstance(r.get("result"), dict) and not r.get("error")
+                    for s in [replies.tool_summary(r["tool_name"], r["result"])]
+                    if s
+                )
+                if not fallback and runs and not runs[-1].get("error"):
+                    last = runs[-1]
+                    fallback = _template_response_dict(
+                        {
+                            "tool_name": last["tool_name"],
+                            "tool_result": last["result"],
+                            "error": None,
+                        }
+                    )["response_text"]
+                text, from_planner = fallback or gr.GROUNDING_FALLBACK_TEXT, False
+    text = gr.sanitize_reply(text)
+    if state.get("off_topic_mixed") and not state.get("declined") and gr.OFF_TOPIC_NOTE not in text:
+        text = (
+            f"{text}\n\n{gr.OFF_TOPIC_NOTE}"
+            if text.strip() and text != "Done."
+            else gr.OFF_TOPIC_TEXT
+        )
+    persona = state.get("persona")
+    if persona and from_planner:
+        text = f"🧠 *{get_persona(persona).name}*\n\n{text}"
+    if not state.get("declined") and any(r["tool_name"] == "log_expense" for r in runs):
+        try:
+            note = _budget_note_for({"chat_id": state.get("chat_id", ""), "tool_results": runs})
+        except Exception:
+            note = None
+        if note:
+            text = f"{text}\n{note}"
+    return {"reply_text": text}
 
 
 def build_agent_graph():
-    """Builds and compiles the agent's StateGraph."""
+    """ingress -> planner -> guard (interrupt) -> executor -> planner|renderer, checkpointed."""
     workflow = StateGraph(AgentState)
-
-    # 1. Add Nodes
-    workflow.add_node("llm_reasoning", llm_reasoning_node)
-    workflow.add_node("confirmation_node", confirmation_node)
-    workflow.add_node("tool_executor", tool_executor_node)
-    workflow.add_node("response_synthesizer", response_synthesizer_node)
-
-    # 2. Add Edges
-    workflow.add_edge(START, "llm_reasoning")
-
-    workflow.add_conditional_edges(
-        "llm_reasoning",
-        route_after_llm_reasoning,
-        {
-            "confirmation_node": "confirmation_node",
-            "tool_executor_node": "tool_executor",
-            "response_synthesizer_node": "response_synthesizer",
-        },
-    )
-
-    workflow.add_conditional_edges(
-        "confirmation_node",
-        route_after_confirmation,
-        {
-            "tool_executor_node": "tool_executor",
-            "response_synthesizer_node": "response_synthesizer",
-        },
-    )
-
-    workflow.add_edge("tool_executor", "response_synthesizer")
-    workflow.add_edge("response_synthesizer", END)
-
-    return workflow.compile()
+    workflow.add_node("ingress", ingress_node)
+    workflow.add_node("planner", planner_node)
+    workflow.add_node("guard", guard_node)
+    workflow.add_node("executor", executor_node)
+    workflow.add_node("renderer", renderer_node)
+    workflow.add_edge(START, "ingress")
+    workflow.add_conditional_edges("ingress", route_after_ingress)
+    workflow.add_conditional_edges("planner", route_after_planner)
+    workflow.add_conditional_edges("guard", route_after_guard)
+    workflow.add_conditional_edges("executor", route_after_executor)
+    workflow.add_edge("renderer", END)
+    # In-memory checkpoints (thread_id = chat_id): a pending Yes/No dies on restart, by design.
+    return workflow.compile(checkpointer=InMemorySaver())
 
 
 # Compiled LangGraph agent app
@@ -1686,6 +1378,136 @@ class Outcome:
     pay_alternative: dict[str, Any] | None = None  # {account, balance, args}: offer another account
 
 
+def _config(chat_id: str) -> dict[str, Any]:
+    return {"configurable": {"thread_id": str(chat_id)}}
+
+
+def _interrupt_value(items: Any) -> dict[str, Any] | None:
+    for item in items or ():
+        value = getattr(item, "value", None)
+        if isinstance(value, dict) and value.get("kind") == "confirm":
+            return value
+    return None
+
+
+async def _pending_payload(chat_id: str) -> dict[str, Any] | None:
+    """The confirmation the graph is paused on for this chat, or None."""
+    try:
+        snapshot = await agent_app.aget_state(_config(chat_id))
+    except Exception:
+        return None
+    value = _interrupt_value(getattr(snapshot, "interrupts", None))
+    if value is None:
+        for task in getattr(snapshot, "tasks", None) or ():
+            value = _interrupt_value(getattr(task, "interrupts", None))
+            if value:
+                break
+    return value
+
+
+def _tx_ids(runs: list[dict[str, Any]]) -> list[str]:
+    return [
+        str(r["result"]["transaction_id"])
+        for r in runs
+        if isinstance(r.get("result"), dict) and r["result"].get("transaction_id")
+    ]
+
+
+async def _outcome_from(chat_id: str, result: Any) -> Outcome:
+    """Turn a graph run (finished or paused on a confirmation) into an Outcome."""
+    result = result if isinstance(result, dict) else {}
+    runs = result.get("tool_runs") or []
+    payload = _interrupt_value(result.get("__interrupt__")) or await _pending_payload(chat_id)
+    if payload is not None:
+        done = [r for r in runs if r.get("result") and not r.get("error")]
+        prefix = replies.compact({"tool_results": done}) if done else None
+        text = (f"{prefix}\n\n" if prefix else "") + replies.confirm_prompt(
+            payload.get("description", "Go ahead")
+        )
+        return Outcome(text, _tx_ids(runs), True, payload.get("id"), None)
+    text = result.get("reply_text") or "Done."
+    return Outcome(text, _tx_ids(runs), False, None, result.get("pay_alternative"))
+
+
+async def has_pending(chat_id: str) -> bool:
+    """True while the graph for this chat waits for a Yes/Cancel."""
+    return await _pending_payload(chat_id) is not None
+
+
+async def cancel_pending(chat_id: str) -> None:
+    """Answer the waiting confirmation with "no" and discard the reply."""
+    if await _pending_payload(chat_id) is None:
+        return
+    try:
+        await agent_app.ainvoke(Command(resume="no"), _config(chat_id))
+    except Exception:
+        logger.warning("Agent: could not cancel pending action for %s", chat_id, exc_info=True)
+
+
+async def resume_pending(chat_id: str, yes: bool, pending_id: str | None = None) -> Outcome | None:
+    """Continue a paused graph with the user's answer. None if nothing (or something else) waits.
+
+    An answer older than PENDING_ACTION_TTL is refused and the stale action cancelled, so an old
+    button can never move money.
+    """
+    payload = await _pending_payload(chat_id)
+    if payload is None or (pending_id and payload.get("id") != pending_id):
+        return None
+    try:
+        created = datetime.fromisoformat(payload["created_at"])
+    except KeyError, TypeError, ValueError:
+        created = None
+    if created is None or _utc_now() - created > PENDING_ACTION_TTL:
+        await cancel_pending(chat_id)
+        return None
+    try:
+        result = await agent_app.ainvoke(Command(resume="yes" if yes else "no"), _config(chat_id))
+        outcome = await _outcome_from(chat_id, result)
+    except Exception as e:
+        logger.error(f"Error resuming agent for {chat_id}: {e}", exc_info=True)
+        outcome = Outcome(ERROR_TEXT)
+    save_db_chat_message(chat_id, "assistant", outcome.text)
+    return outcome
+
+
+DECISION_PROMPT = (
+    "You classify a chat reply. The bot asked the user to confirm this action: {description}.\n"
+    "Read the user's reply (any language, slang or emoji) and answer with exactly one word:\n"
+    "confirm - the user agrees to go ahead with that action\n"
+    "cancel - the user refuses or wants to stop that action\n"
+    "new - the user is saying or asking something else\n"
+    "Answer only: confirm, cancel or new."
+)
+
+
+async def classify_decision(
+    chat_id: str, text: str, description: str | None = None
+) -> Literal["confirm", "cancel", "new"]:
+    """One small LLM call: is this typed reply a yes, a no, or a new request? Unsure -> new.
+
+    ``description`` names what is waiting; by default the agent's own pending action.
+    """
+    if description is None:
+        payload = await _pending_payload(chat_id)
+        description = (payload or {}).get("description", "the pending action")
+    messages = [
+        {"role": "system", "content": DECISION_PROMPT.format(description=description)},
+        {"role": "user", "content": (text or "").strip()[:500]},
+    ]
+    try:
+        response = await gw.complete(str(chat_id), messages)
+    except Exception:
+        return "new"
+    if not isinstance(response, str):
+        try:
+            response = response.choices[0].message.content or ""
+        except AttributeError, IndexError:
+            return "new"
+    word = re.sub(r"[^a-z]", " ", response.lower()).split()
+    answer = word[0] if word else ""
+    return answer if answer in ("confirm", "cancel", "new") else "new"  # type: ignore[return-value]
+
+
 async def process_user_interaction(
     chat_id: str, text: str, attachments: list[Any] | None = None
 ) -> str:
@@ -1696,47 +1518,26 @@ async def process_user_interaction(
 async def process_user_interaction_ex(
     chat_id: str, text: str, attachments: list[Any] | None = None
 ) -> Outcome:
-    """
-    Entry point for the Telegram bot.
-    Loads the recent conversation history, runs the graph, and persists both messages.
-    """
+    """Entry point for the Telegram bot: run (or resume) the graph and persist both messages."""
+    chat_id = str(chat_id)
     clean_text = (text or "").strip()
-
-    # Previous messages only (newest HISTORY_LIMIT); current message is the prompt.
-    history = get_db_conversation_history(chat_id, limit=HISTORY_LIMIT)
-
-    initial_state: AgentState = {
-        "chat_id": str(chat_id),
-        "user_id": str(chat_id),
-        "user_message": clean_text,
-        "attachments": attachments or [],
-        "messages": list(history),
-    }
-
     try:
         # Save user message to database (API keys masked, so they never reach chat history)
-        save_db_chat_message(chat_id, "user", redact_api_keys(clean_text))
-
-        # Run StateGraph
-        final_state = await agent_app.ainvoke(initial_state)
-        reply = final_state.get("response_text", "Done.")
-        tx_ids = [
-            str(r["result"]["transaction_id"])
-            for r in (final_state.get("tool_results") or [])
-            if isinstance(r.get("result"), dict) and r["result"].get("transaction_id")
-        ]
-
-        # Save assistant reply to database
-        save_db_chat_message(chat_id, "assistant", reply)
-
-        action = final_state.get("confirmation_action") or {}
-        return Outcome(
-            reply,
-            tx_ids,
-            bool(final_state.get("requires_confirmation")),
-            action.get("id") if final_state.get("requires_confirmation") else None,
-            final_state.get("pay_alternative"),
+        save_db_chat_message(chat_id, "user", gr.mask_pii(redact_api_keys(clean_text))[0])
+        if await has_pending(chat_id):
+            decision = await classify_decision(chat_id, clean_text)
+            if decision in ("confirm", "cancel"):
+                outcome = await resume_pending(chat_id, decision == "confirm")
+                if outcome is not None:
+                    return outcome  # resume_pending saved the reply
+            else:
+                await cancel_pending(chat_id)
+        result = await agent_app.ainvoke(
+            {"chat_id": chat_id, "user_text": clean_text}, _config(chat_id)
         )
+        outcome = await _outcome_from(chat_id, result)
     except Exception as e:
         logger.error(f"Error executing LLM Agent StateGraph: {e}", exc_info=True)
-        return Outcome("⚠️ Something went wrong on my side. Please try again in a moment.")
+        outcome = Outcome(ERROR_TEXT)
+    save_db_chat_message(chat_id, "assistant", outcome.text)
+    return outcome

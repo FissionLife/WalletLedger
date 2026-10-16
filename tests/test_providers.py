@@ -27,6 +27,12 @@ from app.bot import main as bot  # noqa: E402
 from app.db import init_db  # noqa: E402
 from app.services_ai import ai_gateway as gw  # noqa: E402
 from app.services_ai import model_catalog as mc  # noqa: E402
+from app.services_ai.mcp_server import execute_tool  # noqa: E402
+
+try:
+    from tests.fake_llm import FakeLLM, tool  # noqa: E402
+except ImportError:  # discover -s tests (no -t .) puts tests/ on sys.path directly
+    from fake_llm import FakeLLM, tool  # noqa: E402
 
 init_db()
 _ids = itertools.count(1)
@@ -180,9 +186,20 @@ class OnboardingTests(unittest.TestCase):
         self.assertIn("aistudio.google.com/apikey", reply)
 
     def test_clear_messages_never_mention_keys(self):
-        reply = self.say("Spent 450 on dinner via Bank")
+        """With a working AI, a logged entry's reply does not nag about keys."""
+        execute_tool("set_account_balance", user_id=self.chat, account_name="Bank", balance=5000)
+        with FakeLLM(
+            tool("log_expense", amount=450, category="Food & Dining", account_name="Bank")
+        ):
+            reply = self.say("Spent 450 on dinner via Bank")
+        self.assertIn("450", reply)
         self.assertNotIn("setkey", reply)
         self.assertNotIn("AI key", reply)
+
+    def test_free_text_without_a_key_is_not_logged(self):
+        with FakeLLM(no_key=True):
+            reply = self.say("Spent 450 on dinner via Bank")
+        self.assertIn("/setkey", reply)
 
     def test_user_with_a_key_is_not_nagged(self):
         async def ok(**kw):

@@ -28,6 +28,11 @@ import uuid  # noqa: E402
 from app.bot import main as bot  # noqa: E402
 from app.db import init_db  # noqa: E402
 from app.services_ai.mcp_server import execute_tool  # noqa: E402
+
+try:
+    from tests.fake_llm import FakeLLM  # noqa: E402
+except ImportError:  # discover -s tests (no -t .) puts tests/ on sys.path directly
+    from fake_llm import FakeLLM  # noqa: E402
 from app.services_ai.transaction_parser import (  # noqa: E402
     categorize_transaction,
     detect_statement_format,
@@ -594,7 +599,8 @@ class FileAndImportTests(unittest.TestCase):
         self.assertAlmostEqual(balance, 75473.0 - 12599.0)
 
         asyncio.run(bot.handle_document(self.chat_id, "hdfc-again.pdf", pdf))
-        again = asyncio.run(bot.handle_text(self.chat_id, "yes"))
+        with FakeLLM("confirm"):  # the typed yes is classified by the AI
+            again = asyncio.run(bot.handle_text(self.chat_id, "yes"))
         self.assertIn("Imported 0 transactions", again)
         self.assertIn("Skipped 9", again)
         self.assertAlmostEqual(self.bank_balance(), balance)

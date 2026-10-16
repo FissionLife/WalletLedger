@@ -26,12 +26,17 @@ from sqlalchemy import create_engine, text  # noqa: E402
 
 from app import db as db_module  # noqa: E402
 from app.bot import main as bot  # noqa: E402
-from app.bot import nlu, ui  # noqa: E402
+from app.bot import ui  # noqa: E402
 from app.db import SessionLocal, init_db  # noqa: E402
 from app.services import analytics, ledger  # noqa: E402
 from app.services_ai.mcp_server import execute_tool  # noqa: E402
 from app.web import tokens  # noqa: E402
 from main import app  # noqa: E402
+
+try:
+    from tests.fake_llm import FakeLLM, tool  # noqa: E402
+except ImportError:  # run as: unittest discover -s tests (no top-level dir)
+    from fake_llm import FakeLLM, tool  # noqa: E402
 
 init_db()
 _ids = itertools.count(1)
@@ -158,19 +163,22 @@ class UndoOrderTests(unittest.TestCase):
 class OfflineHonestyTests(unittest.TestCase):
     def test_no_key_never_turns_a_stray_number_into_an_expense(self):
         chat = new_chat()
-        for message in (
-            "Call mom at 5pm",
-            "my flat number is 402",
-            "room 12 is booked",
-            "meet at 6",
-        ):
-            reply = run(bot.handle_text(chat, message))
-            self.assertNotIn("−₹", reply, message)
+        with FakeLLM(no_key=True):
+            for message in (
+                "Call mom at 5pm",
+                "my flat number is 402",
+                "room 12 is booked",
+                "meet at 6",
+            ):
+                reply = run(bot.handle_text(chat, message))
+                self.assertNotIn("−₹", reply, message)
         self.assertEqual(count_transactions(chat), 0)
 
-    def test_numbers_the_rules_cannot_read_get_a_hint(self):
-        reply = run(bot.handle_text(new_chat(), "invoice 7731 is pending"))
+    def test_no_key_gets_a_hint(self):
+        with FakeLLM(no_key=True):
+            reply = run(bot.handle_text(new_chat(), "invoice 7731 is pending"))
         self.assertIn("didn't record anything", reply)
+        self.assertIn("/setkey", reply)
 
     def test_a_big_transfer_does_not_swallow_the_other_items(self):
         chat = new_chat()
@@ -178,31 +186,25 @@ class OfflineHonestyTests(unittest.TestCase):
             uid = ledger.get_or_create_user(db, chat).id
             ledger.record_transaction(db, uid, 20000, "Bank", "Seed", tx_type="income")
             ledger.record_transaction(db, uid, 1000, "Cash", "Seed", tx_type="income")
-        ask = run(
-            bot.handle_incoming(chat, "Spent 200 on chai and transferred 6000 from Bank to Cash")
-        )
-        self.assertTrue(ask.rows)  # waiting for Yes
-        self.assertIn("1 other", ask.text)
-        done = run(bot.handle_text(chat, "yes"))
+        with FakeLLM() as llm:
+            llm.add(
+                tool("log_expense", amount=200, category="Food & Dining", account_name="Cash"),
+                tool("transfer_funds", from_account="Bank", to_account="Cash", amount=6000),
+            )
+            ask = run(
+                bot.handle_incoming(
+                    chat, "Spent 200 on chai and transferred 6000 from Bank to Cash"
+                )
+            )
+            self.assertTrue(ask.rows)  # waiting for Yes
+            self.assertIn("1 other", ask.text)
+            self.assertEqual(count_transactions(chat), 2)  # nothing ran yet
+            llm.add("confirm")  # the typed "yes" is read by the AI
+            done = run(bot.handle_text(chat, "yes"))
         self.assertIn("₹200", done)
         self.assertEqual(count_transactions(chat), 4)
-
-
-class RuleReaderTests(unittest.TestCase):
-    def amounts(self, text_):
-        return [(e.kind, e.amount) for e in nlu.parse_entries(text_, nlu.Context())]
-
-    def test_counts_are_not_amounts(self):
-        self.assertEqual(self.amounts("Bought 3 shirts for 1500"), [("expense", 1500.0)])
-        self.assertEqual(self.amounts("Spent 20 on 2 samosas"), [("expense", 20.0)])
-        self.assertEqual(self.amounts("chai 20"), [("expense", 20.0)])
-
-    def test_a_new_line_does_not_inherit_income(self):
-        got = self.amounts("got stipend of 15000\n190=pizza\n80 = dosa")
-        self.assertEqual(got, [("income", 15000.0), ("expense", 190.0), ("expense", 80.0)])
-
-    def test_stray_numbers_are_left_to_the_ai(self):
-        self.assertEqual(self.amounts("room 12 is booked"), [])
+        self.assertEqual(balance(chat, "Cash"), 1000 - 200 + 6000)
+        self.assertEqual(balance(chat, "Bank"), 14000)
 
 
 class ToolValidationTests(unittest.TestCase):

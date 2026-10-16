@@ -1,4 +1,8 @@
-"""First contact and everyday chat: the one setup question, default account, corrections, balances. Offline."""
+"""First contact and everyday chat: the one setup question, default account, corrections, balances.
+
+Offline: the AI agent is scripted with FakeLLM (the fake decides the tool call; the test checks the
+ledger, the reply and the confirmation flow).
+"""
 
 import os
 
@@ -18,12 +22,17 @@ import itertools  # noqa: E402
 import unittest  # noqa: E402
 from unittest.mock import patch  # noqa: E402
 
+from app.bot import agent, onboarding  # noqa: E402
 from app.bot import main as bot_main  # noqa: E402
-from app.bot import nlu, onboarding  # noqa: E402
 from app.bot.callbacks import handle_callback  # noqa: E402
 from app.config import settings  # noqa: E402
 from app.db import SessionLocal, init_db  # noqa: E402
 from app.services import ledger  # noqa: E402
+
+try:
+    from tests.fake_llm import FakeLLM, tool  # noqa: E402
+except ImportError:  # run as: unittest discover -s tests (no top-level dir)
+    from fake_llm import FakeLLM, tool  # noqa: E402
 
 _ids = itertools.count(700000)
 
@@ -34,6 +43,18 @@ def say(chat, text):
 
 def tap(chat, data):
     return asyncio.run(handle_callback(chat, data))
+
+
+def yes(chat):
+    """Tap Yes on the question the agent is waiting on."""
+    return asyncio.run(bot_main.answer_pending_action(chat, True))
+
+
+def last_ids(chat, n=10):
+    with SessionLocal() as db:
+        uid = ledger.get_or_create_user(db, chat).id
+        rows, _ = ledger.recent_transactions(db, uid, n)
+    return rows
 
 
 def balances(chat):
@@ -85,26 +106,38 @@ class NewUserTests(unittest.TestCase):
         with SessionLocal() as db:
             uid = ledger.get_or_create_user(db, self.chat).id
             ledger.record_transaction(db, uid, 1000, "Cash", "Seed", tx_type="income")
-        say(self.chat, "chai 20")
+        with FakeLLM() as llm:  # the AI names no account: the user's default is used
+            llm.add(tool("log_expense", amount=20, category="Food & Dining"))
+            say(self.chat, "chai 20")
         self.assertEqual(balances(self.chat)["Cash"], 980)
-        self.assertEqual(balances(self.chat)["Bank"], 0)
+        self.assertEqual(balances(self.chat).get("Bank", 0), 0)
 
     def test_a_first_message_that_is_an_entry_is_logged_after_the_answer(self):
-        r = say(self.chat, "spent 450 on dinner")
-        self.assertIn("where do you usually pay from", r.text)
-        self.assertEqual(balances(self.chat).get("Bank", 0), 0)  # nothing yet
-        r = tap(self.chat, "ob:acct:bank")
-        self.assertIn("not enough balance", r.text.lower())
+        with FakeLLM() as llm:
+            r = say(self.chat, "spent 450 on dinner")
+            self.assertIn("where do you usually pay from", r.text)
+            self.assertEqual(llm.calls, [])  # held by onboarding, the AI is not asked yet
+            self.assertEqual(balances(self.chat).get("Bank", 0), 0)  # nothing yet
+            llm.add(tool("log_expense", amount=450, category="Food & Dining", account_name="Bank"))
+            r = tap(self.chat, "ob:acct:bank")
+            self.assertEqual(len(llm.calls), 1)  # the held message reached the AI after the answer
+        self.assertIn("not enough balance", r.text.lower())  # strict wallet: Bank is ₹0
         self.assertEqual(balances(self.chat)["Bank"], 0)
 
     def test_ignoring_the_question_is_never_a_dead_end(self):
-        say(self.chat, "spent 450 on dinner")
-        r = say(self.chat, "also got salary 50000")  # not an answer
-        self.assertIn("not enough balance", r.text.lower())
-        self.assertIn("+₹50,000", r.text)
-        self.assertEqual(balances(self.chat)["Bank"], 50000)
-        # and the next message is plain chat again, not another question
-        self.assertNotIn("where do you usually pay", say(self.chat, "coffee 100").text)
+        with FakeLLM() as llm:
+            say(self.chat, "spent 450 on dinner")
+            llm.add(tool("log_expense", amount=450, category="Food & Dining"))
+            llm.add(tool("log_income", amount=50000, source_account="Bank", category="Salary"))
+            r = say(self.chat, "also got salary 50000")  # not an answer
+            self.assertIn("not enough balance", r.text.lower())
+            self.assertIn("+₹50,000", r.text)
+            self.assertEqual(balances(self.chat)["Bank"], 50000)
+            # and the next message is plain chat again, not another question
+            llm.add(tool("log_expense", amount=100, category="Food & Dining"))
+            r = say(self.chat, "coffee 100")
+        self.assertNotIn("where do you usually pay", r.text)
+        self.assertEqual(balances(self.chat)["Bank"], 49900)
 
     def test_a_returning_user_is_not_asked(self):
         say(self.chat, "/start")
@@ -119,11 +152,15 @@ class NewUserTests(unittest.TestCase):
         say(self.chat, "/start")
         say(self.chat, "bank")
         say(self.chat, "skip")
-        self.assertIn("Cash", say(self.chat, "use cash by default").text)
-        with SessionLocal() as db:
-            uid = ledger.get_or_create_user(db, self.chat).id
-            ledger.record_transaction(db, uid, 1000, "Cash", "Seed", tx_type="income")
-        say(self.chat, "chai 20")
+        with FakeLLM() as llm:
+            llm.add(tool("set_default_account", account_name="Cash"))
+            say(self.chat, "use cash by default")
+            self.assertEqual(onboarding.default_account(self.chat), "Cash")
+            with SessionLocal() as db:
+                uid = ledger.get_or_create_user(db, self.chat).id
+                ledger.record_transaction(db, uid, 1000, "Cash", "Seed", tx_type="income")
+            llm.add(tool("log_expense", amount=20, category="Food & Dining"))
+            say(self.chat, "chai 20")
         self.assertEqual(balances(self.chat)["Cash"], 980)
 
     def test_a_stale_button_does_not_crash(self):
@@ -131,7 +168,7 @@ class NewUserTests(unittest.TestCase):
 
 
 class EverydayChatTests(unittest.TestCase):
-    """The new user is set up; these are the things people actually type."""
+    """The new user is set up; these are the things people actually type (the AI is scripted)."""
 
     def setUp(self):
         init_db()
@@ -142,103 +179,119 @@ class EverydayChatTests(unittest.TestCase):
             say(self.chat, "bank")
             say(self.chat, "skip")
 
-    def test_set_the_real_balance_in_words(self):
-        r = say(self.chat, "bank balance is 25000")
-        self.assertIn("Bank is now ₹25,000", r.text)
-        self.assertEqual(balances(self.chat)["Bank"], 25000)
-        say(self.chat, "I have 5000 in cash")
+    def seed(self, amount=100000):
+        with SessionLocal() as db:
+            uid = ledger.get_or_create_user(db, self.chat).id
+            ledger.record_transaction(db, uid, amount, "Bank", "Seed", tx_type="income")
+
+    def tx_id(self, amount):
+        return next(r["id"] for r in last_ids(self.chat) if r.get("amount") == amount)
+
+    def test_set_the_real_balance_in_words_asks_first(self):
+        with FakeLLM() as llm:
+            llm.add(tool("set_account_balance", account_name="Bank", balance=25000))
+            r = say(self.chat, "bank balance is 25000")
+            self.assertTrue(r.rows)  # Yes / Cancel
+            self.assertIn("Bank balance to ₹25,000", r.text)
+            self.assertEqual(balances(self.chat).get("Bank", 0), 0)  # nothing until Yes
+            yes(self.chat)
+            self.assertEqual(balances(self.chat)["Bank"], 25000)
+            llm.add(tool("set_account_balance", account_name="Cash", balance=5000))
+            say(self.chat, "I have 5000 in cash")
+            yes(self.chat)
         self.assertEqual(balances(self.chat)["Cash"], 5000)
-        say(self.chat, "my balance is 24000")  # no account named: the default one
-        self.assertEqual(balances(self.chat)["Bank"], 24000)
 
     def test_setting_a_balance_is_not_spending_or_earning(self):
-        say(self.chat, "bank balance is 25000")
-        say(self.chat, "bank balance is 20000")
+        with FakeLLM() as llm:
+            for amount in (25000, 20000):
+                llm.add(tool("set_account_balance", account_name="Bank", balance=amount))
+                say(self.chat, f"bank balance is {amount}")
+                yes(self.chat)
+        self.assertEqual(balances(self.chat)["Bank"], 20000)
         stats = say(self.chat, "/stats").text
         self.assertNotIn("Spent ₹5,000", stats)
         self.assertNotIn("Earned ₹25,000", stats)
 
-    def test_something_that_is_not_an_account_is_left_alone(self):
-        self.assertIsNone(
-            asyncio.run(onboarding.balance_command(self.chat, "my phone balance is 500"))
-        )
-
-    def test_correcting_an_entry_by_name_and_by_position(self):
-        with SessionLocal() as db:
-            uid = ledger.get_or_create_user(db, self.chat).id
-            ledger.record_transaction(db, uid, 100000, "Bank", "Seed", tx_type="income")
-        say(self.chat, "coffee 120")
-        say(self.chat, "paid 450 for dinner")
-        r = say(self.chat, "oops the dinner was actually 540 not 450")
-        self.assertIn("450 → ", r.text.replace("₹", "").replace("−", ""))
-        self.assertEqual(balances(self.chat)["Bank"], 100000 - 660)
-        say(self.chat, "change the last one to 600")
+    def test_correcting_an_entry_asks_then_moves_the_balance(self):
+        self.seed()
+        with FakeLLM() as llm:
+            llm.add(tool("log_expense", amount=120, category="Coffee", account_name="Bank"))
+            say(self.chat, "coffee 120")
+            llm.add(tool("log_expense", amount=450, category="Dinner", account_name="Bank"))
+            say(self.chat, "paid 450 for dinner")
+            dinner = self.tx_id(450)
+            llm.add(tool("edit_transaction", transaction_id=dinner, amount=540))
+            r = say(self.chat, "oops the dinner was actually 540 not 450")
+            self.assertIn("Change entry", r.text)
+            self.assertEqual(balances(self.chat)["Bank"], 100000 - 570)  # not yet
+            done = yes(self.chat)
+            self.assertIn("540", done.text)
+            self.assertEqual(balances(self.chat)["Bank"], 100000 - 660)
+            llm.add(tool("edit_transaction", transaction_id=dinner, amount=600))
+            say(self.chat, "change the last one to 600")
+            yes(self.chat)
         self.assertEqual(balances(self.chat)["Bank"], 100000 - 720)
 
+    def test_cancelling_a_correction_changes_nothing(self):
+        self.seed()
+        with FakeLLM() as llm:
+            llm.add(tool("log_expense", amount=450, category="Dinner", account_name="Bank"))
+            say(self.chat, "paid 450 for dinner")
+            llm.add(tool("edit_transaction", transaction_id=self.tx_id(450), amount=540))
+            say(self.chat, "the dinner was 540")
+            r = asyncio.run(bot_main.answer_pending_action(self.chat, False))
+        self.assertIn("Cancelled", r.text)
+        self.assertEqual(balances(self.chat)["Bank"], 100000 - 450)
+
     def test_a_plain_statement_is_a_new_entry_not_a_correction(self):
-        with SessionLocal() as db:
-            uid = ledger.get_or_create_user(db, self.chat).id
-            ledger.record_transaction(db, uid, 100000, "Bank", "Seed", tx_type="income")
-        say(self.chat, "paid 450 for dinner")
-        say(self.chat, "dinner was 400")
+        self.seed()
+        with FakeLLM() as llm:
+            llm.add(tool("log_expense", amount=450, category="Dinner", account_name="Bank"))
+            say(self.chat, "paid 450 for dinner")
+            llm.add(tool("log_expense", amount=400, category="Dinner", account_name="Bank"))
+            r = say(self.chat, "dinner was 400")
+        self.assertFalse(agent_waits(self.chat))
+        self.assertIn("−₹400", r.text)
         self.assertEqual(balances(self.chat)["Bank"], 100000 - 850)
 
-    def test_a_correction_with_nothing_to_correct_is_not_logged_twice(self):
-        r = say(self.chat, "delete the pizza")
+    def test_a_correction_with_nothing_to_correct_changes_nothing(self):
+        with FakeLLM() as llm:
+            llm.add(tool("search_transactions", query="pizza"))
+            llm.add("I couldn't find a pizza entry, so nothing changed.")
+            r = say(self.chat, "delete the pizza")
+            self.assertEqual(len(llm.calls), 2)  # looked it up, then answered
+            tool_msgs = [m for m in llm.calls[1] if m["role"] == "tool"]
+            self.assertIn("transactions", tool_msgs[-1]["content"])
         self.assertIn("couldn't find", r.text)
+        self.assertEqual(last_ids(self.chat), [])
 
     def test_deleting_an_entry_by_name(self):
-        with SessionLocal() as db:
-            uid = ledger.get_or_create_user(db, self.chat).id
-            ledger.record_transaction(db, uid, 100000, "Bank", "Seed", tx_type="income")
-        say(self.chat, "coffee 120")
-        say(self.chat, "uber 250")
-        say(self.chat, "delete the coffee")
+        self.seed()
+        with FakeLLM() as llm:
+            llm.add(tool("log_expense", amount=120, category="Coffee", account_name="Bank"))
+            say(self.chat, "coffee 120")
+            llm.add(tool("log_expense", amount=250, category="Transport", account_name="Bank"))
+            say(self.chat, "uber 250")
+            llm.add(tool("delete_transaction", transaction_id=self.tx_id(120)))
+            r = say(self.chat, "delete the coffee")
+            self.assertIn("Delete entry", r.text)
+            self.assertEqual(balances(self.chat)["Bank"], 100000 - 370)  # not before Yes
+            yes(self.chat)
         self.assertEqual(balances(self.chat)["Bank"], 100000 - 250)
 
-    def test_minus_sign_is_an_expense(self):
-        with SessionLocal() as db:
-            uid = ledger.get_or_create_user(db, self.chat).id
-            ledger.record_transaction(db, uid, 1000, "Bank", "Seed", tx_type="income")
-        say(self.chat, "-60 chai")
-        self.assertEqual(balances(self.chat)["Bank"], 940)
-
-    def test_greetings_and_thanks_get_a_human_reply(self):
-        self.assertIn("Hey", say(self.chat, "hi").text)
-        self.assertIn("Anytime", say(self.chat, "thanks").text)
-
-    def test_a_bare_number_asks_what_it_was(self):
-        r = say(self.chat, "450")
+    def test_chat_without_an_entry_gets_the_ai_reply_and_logs_nothing(self):
+        with FakeLLM() as llm:
+            llm.add("Hey! Tell me what you spent.")
+            self.assertIn("Hey", say(self.chat, "hi").text)
+            llm.add("450: did you spend it or receive it?")
+            r = say(self.chat, "450")
         self.assertIn("spend it or receive it", r.text)
-        self.assertEqual(balances(self.chat)["Bank"], 0)
-
-    def test_budget_and_biggest_expense_questions_open_the_right_screen(self):
-        self.assertEqual(nlu.detect_screen("how is my food budget").command, "/budget")
-        self.assertEqual(nlu.detect_screen("what is my biggest expense").command, "/chart")
-        self.assertEqual(nlu.detect_screen("how much in cash").command, "/balance")
-        self.assertEqual(nlu.detect_screen("show me what I have logged so far").command, "/history")
-        self.assertEqual(nlu.detect_screen("spent on food this week").command, "/stats")
-
-    def test_ok_without_a_question_is_friendly(self):
-        self.assertIn("Nothing is waiting", say(self.chat, "ok").text)
+        self.assertEqual(last_ids(self.chat), [])
+        self.assertEqual(balances(self.chat).get("Bank", 0), 0)
 
 
-class ParserTests(unittest.TestCase):
-    def test_parse_fix_shapes(self):
-        fix = nlu.parse_fix("oops the dinner was actually 540 not 450")
-        self.assertEqual(
-            (fix.action, fix.amount, fix.old_amount, fix.keyword), ("edit", 540, 450, "dinner")
-        )
-        self.assertIsNone(nlu.parse_fix("make it 200").keyword)
-        self.assertEqual(nlu.parse_fix("edit coffee to 150").keyword, "coffee")
-        self.assertEqual(nlu.parse_fix("delete the coffee").action, "delete")
-        self.assertIsNone(nlu.parse_fix("delete the last one"))  # that is Undo
-        self.assertIsNone(nlu.parse_fix("dinner was 400"))
-
-    def test_item_and_cost_is_an_entry(self):
-        entry = nlu.parse_entries("the rent was 5000")[0]
-        self.assertEqual((entry.kind, entry.amount, entry.category), ("expense", 5000, "Rent"))
-        self.assertEqual(nlu.parse_entries("the total was 900"), [])
+def agent_waits(chat):
+    return asyncio.run(agent.has_pending(chat))
 
 
 if __name__ == "__main__":

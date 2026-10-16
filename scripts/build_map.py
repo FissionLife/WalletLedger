@@ -91,21 +91,27 @@ NOTES: dict[str, tuple[str, str]] = {
         "chat",
         "The bot's Telegram profile: command menu, description, menu button. Used by `scripts/setup_bot.py`.",
     ),
-    "app/bot/nlu.py": (
+    "app/bot/guardrails.py": (
+        "chat",
+        "Safety checks around the AI agent, with no AI of their own: masks card/Aadhaar/PAN/OTP "
+        "numbers in what users type, rejects bad tool calls (unknown tool, missing or impossible "
+        "amounts, future dates) and checks AI replies for invented rupee figures and leaks.",
+    ),
+    "app/bot/categories.py": (
         "brain",
-        "Plain-message reader built from rules, no AI: amounts, dates, accounts, categories, several items per message, questions, savings goals.",
+        'The standard expense categories and `canonical_category` ("food" -> Food & Dining), so budgets and spends share one name.',
+    ),
+    "app/bot/textutil.py": (
+        "brain",
+        'Reads amounts ("2k", "1.5 lakh") and savings goals in command arguments and setup answers. Not intent detection.',
     ),
     "app/bot/agent.py": (
         "brain",
-        "The LangGraph agent: remembers pending confirmations, picks tools, writes replies, falls back to rules when the AI fails.",
+        "The LangGraph agent: an LLM planner reads free text and picks ledger tools; risky calls pause with interrupt() for Yes/Cancel.",
     ),
     "app/bot/onboarding.py": (
         "brain",
         "First contact for a new user: one question (where do you pay from?), an optional opening balance, and the default account.",
-    ),
-    "app/bot/orchestrator.py": (
-        "brain",
-        "The multi-step loop for goals and questions: AI picks tools, we run them, AI answers. Capped steps, safe tool list.",
     ),
     "app/services/ledger.py": (
         "money",
@@ -266,7 +272,7 @@ NOTES: dict[str, tuple[str, str]] = {
     ),
     "tests/test_chat_fixes.py": (
         "tests",
-        "Regression tests for the chat audit: reading messages, confirmations, buttons, keys, orchestrator.",
+        "Regression tests for the chat audit: confirmations, buttons, keys, the agent loop.",
     ),
     "tests/test_onboarding.py": (
         "tests",
@@ -280,7 +286,15 @@ NOTES: dict[str, tuple[str, str]] = {
         "tests",
         "Regression tests for the bugs found in the code audit: lost balance updates, junk entries, undo order, dashboard.",
     ),
-    "tests/test_agent.py": ("tests", "The agent: confirmations, tool use, fallbacks."),
+    "tests/test_agent.py": (
+        "tests",
+        "The AI agent graph: planner tool calls, interrupt() confirmations, no-key and failure paths.",
+    ),
+    "tests/fake_llm.py": ("tests", "A scripted stand-in for the LLM so agent tests run offline."),
+    "tests/test_guardrails.py": (
+        "tests",
+        "Input (PII masking), tool (argument checks) and output (invented figures, leaks) guardrails.",
+    ),
     "tests/test_ai_gateway.py": ("tests", "Key order, rotation, live key tests."),
     "tests/test_gateway_contract.py": (
         "tests",
@@ -302,7 +316,6 @@ NOTES: dict[str, tuple[str, str]] = {
     "tests/test_mcp_tools.py": ("tests", "The AI tools."),
     "tests/test_model_catalog.py": ("tests", "Model discovery and ranking."),
     "tests/test_model_fallback.py": ("tests", "Trying the next model or key when one fails."),
-    "tests/test_nlu.py": ("tests", "The message-reading rules."),
     "tests/test_planning.py": ("tests", "Savings plans, /plan, questions, the multi-step helper."),
     "tests/test_project_map.py": ("tests", "Every file has a note in this map."),
     "tests/test_providers.py": (
@@ -344,10 +357,9 @@ TOURS = [
                 "app/bot/main.py",
                 "`handle_incoming` checks you are allowed, and that it is not a /command or a screen.",
             ),
-            ("app/bot/agent.py", "The agent runs. First it asks the rules to read the message."),
             (
-                "app/bot/nlu.py",
-                "Rules find 2 items, the amounts, the category words and the date. No AI is used.",
+                "app/bot/agent.py",
+                "The agent's planner (the LLM) reads the message and proposes 2 `log_expense` calls with amounts, categories and the date.",
             ),
             (
                 "app/services_ai/tool_client.py",
@@ -369,8 +381,10 @@ TOURS = [
         "ask": "You send: Can I afford a 50000 laptop in 5 months?",
         "steps": [
             ("app/bot/main.py", "Not a command, not a screen: it goes to the agent."),
-            ("app/bot/nlu.py", "Rules see a question, so nothing is logged."),
-            ("app/bot/orchestrator.py", "The multi-step helper starts (needs an AI key)."),
+            (
+                "app/bot/agent.py",
+                "The planner sees a question, so it calls read tools, not log tools.",
+            ),
             (
                 "app/services_ai/ai_gateway.py",
                 "Picks your key (then shared, then server keys) and the best model.",
@@ -380,7 +394,7 @@ TOURS = [
                 "The AI calls `savings_plan` / `get_financial_snapshot`.",
             ),
             ("app/services/analytics.py", "Real numbers from your last 90 days come back."),
-            ("app/bot/orchestrator.py", "The AI reads them and writes a short answer."),
+            ("app/bot/agent.py", "The planner reads them and writes a short answer."),
         ],
     },
     {

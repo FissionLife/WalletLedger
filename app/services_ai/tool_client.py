@@ -5,7 +5,7 @@ TOOL_MODE=mcp               talk to the MCP server (``python -m app.services_ai.
                             over stdio. It is started once at app startup (``main.py`` lifespan)
                             and closed at shutdown.
 
-Callers (the agent, the multi-step orchestrator, PDF import) only use ``call_tool()`` and
+Callers (the agent and PDF import) only use ``call_tool()`` and
 ``available_tools()``; they never need to know which mode is on.
 """
 

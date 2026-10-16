@@ -1,6 +1,9 @@
-"""Tests for Role 2: LangGraph agent (confirmations, chat keys, personas, history, offline mode).
+"""Tests for Role 2: the LLM-native LangGraph agent.
 
-Offline only - litellm.acompletion is mocked, no real LLM calls are made.
+Offline only: the single LLM entry point ``ai_gateway.complete`` is replaced by ``FakeLLM`` (see
+``tests/fake_llm.py``), so each test states exactly what the "AI" decided (a tool call or text) and
+asserts the resulting ledger state, reply, and confirmation behaviour.
+
 Run with:  uv run python -m unittest discover -s tests -v
 """
 
@@ -28,14 +31,9 @@ _KEY_VARS = (
 )
 
 import asyncio  # noqa: E402
-import json  # noqa: E402
 import unittest  # noqa: E402
 import uuid  # noqa: E402
-from datetime import datetime, timedelta  # noqa: E402
-from types import SimpleNamespace  # noqa: E402
 from unittest.mock import AsyncMock, patch  # noqa: E402
-
-import litellm  # noqa: E402
 
 from app.bot import agent  # noqa: E402
 from app.db import SessionLocal, engine, init_db  # noqa: E402
@@ -43,20 +41,14 @@ from app.models import ApiKey, ChatMessage, User  # noqa: E402
 from app.services_ai import ai_gateway as gw  # noqa: E402
 from app.services_ai.mcp_server import execute_tool  # noqa: E402
 
+try:
+    from tests.fake_llm import FakeLLM, tool
+except ImportError:  # discover -s tests (no -t .) puts tests/ on sys.path directly
+    from fake_llm import FakeLLM, tool
+
 AQ_KEY = "AQ.Ab8RN6" + "x" * 40 + "YOQw"
 AQ_KEY_2 = "AQ.Ab8RN6" + "y" * 40 + "eDzg"
 AIZA_KEY = "AIza" + "B" * 35
-
-
-def text_response(text: str) -> SimpleNamespace:
-    message = SimpleNamespace(content=text, tool_calls=None)
-    return SimpleNamespace(choices=[SimpleNamespace(message=message)])
-
-
-def tool_response(name: str, args: dict) -> SimpleNamespace:
-    call = SimpleNamespace(function=SimpleNamespace(name=name, arguments=json.dumps(args)))
-    message = SimpleNamespace(content=None, tool_calls=[call])
-    return SimpleNamespace(choices=[SimpleNamespace(message=message)])
 
 
 def run(coro):
@@ -64,6 +56,7 @@ def run(coro):
 
 
 def chat(chat_id: str, text: str) -> str:
+    """Send a message through the agent and return the reply text."""
     return run(agent.process_user_interaction(chat_id, text))
 
 
@@ -83,7 +76,7 @@ class AgentTestCase(unittest.TestCase):
         self.env.start()
         for var in _KEY_VARS:
             os.environ.pop(var, None)
-        agent.session_store.clear_pending(self.chat_id)
+        # Strict wallet: seed funded balances so later spends/transfers are allowed.
         execute_tool("log_income", user_id=self.chat_id, amount=50000, source_account="Bank")
 
     def tearDown(self):
@@ -98,76 +91,99 @@ class AgentTestCase(unittest.TestCase):
 
 
 class TestConfirmationFlow(AgentTestCase):
-    """Fix 1: a yes/no reply to a pending transfer must work with or without the AI."""
+    """A big transfer pauses for a Yes; a stale or unrelated reply never moves money."""
 
-    def test_yes_executes_transfer_without_ai(self):
-        reply = chat(self.chat_id, "Transfer 10000 from Bank to Cash")
+    def test_yes_executes_transfer(self):
+        with FakeLLM() as llm:
+            llm.add(tool("transfer_funds", from_account="Bank", to_account="Cash", amount=10000))
+            reply = chat(self.chat_id, "Transfer 10000 from Bank to Cash")
         self.assertIn("Tap Yes", reply)
         self.assertEqual(self.balances()["Bank"], 50000)
-        reply = chat(self.chat_id, "yes")
+        # A typed "yes" is classified by the LLM, then resume runs the paused graph.
+        with FakeLLM("confirm") as llm:
+            reply = chat(self.chat_id, "yes")
         self.assertIn("Bank → Cash", reply)
         self.assertEqual(self.balances()["Bank"], 40000)
         self.assertEqual(self.balances()["Cash"], 10000)
 
     def test_no_cancels_transfer(self):
-        chat(self.chat_id, "Transfer 10000 from Bank to Cash")
-        reply = chat(self.chat_id, "No")
+        with FakeLLM(tool("transfer_funds", from_account="Bank", to_account="Cash", amount=10000)):
+            chat(self.chat_id, "Transfer 10000 from Bank to Cash")
+        with FakeLLM("cancel"):
+            reply = chat(self.chat_id, "No")
         self.assertIn("Cancelled", reply)
         self.assertEqual(self.balances()["Bank"], 50000)
-        self.assertIsNone(agent.session_store.get_pending(self.chat_id))
+        self.assertFalse(run(agent.has_pending(self.chat_id)))
 
-    def test_yes_with_ai_key_skips_ai_and_executes(self):
-        self.add_key()
-        transfer = tool_response(
-            "transfer_funds", {"amount": 10000, "from_account": "Bank", "to_account": "Cash"}
-        )
-        with patch.object(litellm, "acompletion", AsyncMock(return_value=transfer)) as mock:
+    def test_yes_reply_does_not_replan(self):
+        """A yes/no reply is answered by the classifier + resume, not a fresh planner round."""
+        with FakeLLM(
+            tool("transfer_funds", from_account="Bank", to_account="Cash", amount=10000)
+        ) as llm:
             reply = chat(self.chat_id, "move ten thousand from bank to cash")
             self.assertIn("Tap Yes", reply)
-            self.assertEqual(mock.await_count, 1)
+            self.assertEqual(len(llm.calls), 1)
+        with FakeLLM("confirm") as llm:
             reply = chat(self.chat_id, "Yes!")
-            self.assertEqual(mock.await_count, 1, "a yes/no reply must not call the AI")
+            # Exactly one call: the decision classifier. The transfer is NOT re-planned.
+            self.assertEqual(len(llm.calls), 1)
         self.assertIn("Bank → Cash", reply)
         self.assertEqual(self.balances()["Bank"], 40000)
 
     def test_unrelated_message_cancels_pending(self):
-        chat(self.chat_id, "Transfer 10000 from Bank to Cash")
-        chat(self.chat_id, "what is my balance")
-        self.assertIsNone(agent.session_store.get_pending(self.chat_id))
-        reply = chat(self.chat_id, "yes")
-        self.assertNotIn("Bank → Cash", reply)
+        with FakeLLM(tool("transfer_funds", from_account="Bank", to_account="Cash", amount=10000)):
+            chat(self.chat_id, "Transfer 10000 from Bank to Cash")
+        # "what is my balance" classifies as 'new', so the pending transfer is dropped.
+        with FakeLLM("new", tool("get_pipe_balances")):
+            chat(self.chat_id, "what is my balance")
+        self.assertFalse(run(agent.has_pending(self.chat_id)))
         self.assertEqual(self.balances()["Bank"], 50000)
 
     def test_expired_confirmation_is_ignored(self):
-        chat(self.chat_id, "Transfer 10000 from Bank to Cash")
-        pending = agent.session_store.get_session(self.chat_id).pending_action
-        pending["created_at"] = (datetime.utcnow() - timedelta(minutes=6)).isoformat()
-        reply = chat(self.chat_id, "yes")
-        self.assertNotIn("Bank → Cash", reply)
+        with FakeLLM(tool("transfer_funds", from_account="Bank", to_account="Cash", amount=10000)):
+            chat(self.chat_id, "Transfer 10000 from Bank to Cash")
+        # resume_pending refuses an answer older than PENDING_ACTION_TTL.
+        from datetime import timedelta
+
+        real_now = agent._utc_now()
+        with patch.object(agent, "_utc_now", lambda: real_now + timedelta(minutes=6)):
+            outcome = run(agent.resume_pending(self.chat_id, True))
+        self.assertIsNone(outcome)
         self.assertEqual(self.balances()["Bank"], 50000)
+        self.assertFalse(run(agent.has_pending(self.chat_id)))
 
     def test_small_transfer_runs_immediately(self):
-        reply = chat(self.chat_id, "Transfer 500 from Bank to Cash")
+        with FakeLLM(tool("transfer_funds", from_account="Bank", to_account="Cash", amount=500)):
+            reply = chat(self.chat_id, "Transfer 500 from Bank to Cash")
         self.assertIn("Bank → Cash", reply)
+        self.assertFalse(run(agent.has_pending(self.chat_id)))
+        self.assertEqual(self.balances()["Cash"], 500)
 
-    def test_classify_reply(self):
-        self.assertEqual(agent.classify_reply(" OK. "), "confirmed")
-        self.assertEqual(agent.classify_reply("go ahead"), "confirmed")
-        self.assertEqual(agent.classify_reply("nope"), "cancelled")
-        self.assertIsNone(agent.classify_reply("yes but only 5000"))
+    def test_classify_decision_reads_yes_no_and_other(self):
+        with FakeLLM("confirm"):
+            self.assertEqual(
+                run(agent.classify_decision(self.chat_id, "go ahead", "do X")), "confirm"
+            )
+        with FakeLLM("cancel"):
+            self.assertEqual(run(agent.classify_decision(self.chat_id, "nope", "do X")), "cancel")
+        with FakeLLM("new"):
+            self.assertEqual(
+                run(agent.classify_decision(self.chat_id, "what's my balance", "do X")), "new"
+            )
 
 
 class TestApiKeysInChat(AgentTestCase):
-    """Fix 2: AQ./AIza keys pasted in chat are stored encrypted and never sent to an AI."""
+    """AQ./AIza keys pasted in chat are stored encrypted and never sent to an AI."""
 
     def test_aq_key_saved_masked_and_encrypted(self):
         with (
-            patch.object(litellm, "acompletion", AsyncMock()) as mock,
+            FakeLLM() as llm,
             patch.object(gw, "validate_api_key", AsyncMock(return_value=gw.KeyCheck("valid"))),
         ):
             reply = chat(self.chat_id, f"my gemini key is {AQ_KEY}")
-        mock.assert_not_awaited()
-        self.assertIn("works. Saved", reply)
+            # A pasted key short-circuits in ingress: the planner LLM is never called.
+            self.assertEqual(len(llm.calls), 0)
+        self.assertIn("Saved", reply)
         self.assertIn(gw.mask_key(AQ_KEY), reply)
         self.assertNotIn(AQ_KEY, reply)
         self.assertEqual(gw.get_user_api_keys(self.chat_id), [("gemini", AQ_KEY)])
@@ -183,94 +199,81 @@ class TestApiKeysInChat(AgentTestCase):
             db.close()
 
     def test_multiple_keys_and_no_expense_logged(self):
-        with patch.object(gw, "validate_api_key", AsyncMock(return_value=gw.KeyCheck("valid"))):
+        with (
+            FakeLLM(),
+            patch.object(gw, "validate_api_key", AsyncMock(return_value=gw.KeyCheck("valid"))),
+        ):
             reply = chat(self.chat_id, f"keys: {AQ_KEY}, {AQ_KEY_2}")
-        self.assertEqual(reply.count("works. Saved"), 2)
+        self.assertEqual(reply.count("Saved"), 2)
         self.assertEqual(len(gw.get_user_api_keys(self.chat_id)), 2)
         self.assertEqual(self.balances()["Bank"], 50000)
 
-    def test_next_message_uses_ai(self):
-        with patch.object(gw, "validate_api_key", AsyncMock(return_value=gw.KeyCheck("valid"))):
+    def test_next_message_uses_the_saved_key(self):
+        with (
+            FakeLLM(),
+            patch.object(gw, "validate_api_key", AsyncMock(return_value=gw.KeyCheck("valid"))),
+        ):
             chat(self.chat_id, AQ_KEY)
-        with patch.object(
-            litellm, "acompletion", AsyncMock(return_value=text_response("Hi from AI"))
-        ) as mock:
+        # With a key saved, a free-text message reaches the planner and is answered.
+        with FakeLLM("Hi from AI") as llm:
             reply = chat(self.chat_id, "hello there")
-        self.assertEqual(mock.call_args.kwargs["api_key"], AQ_KEY)
+            self.assertEqual(len(llm.calls), 1)
         self.assertIn("Hi from AI", reply)
 
 
 class TestPersonas(AgentTestCase):
-    """Fix 3: advice/report tool results are written by the matching prompts.py persona."""
+    """Advice/report personas are triggered by /coach|/budgeter|/summary and render the LLM's words."""
 
     def test_summary_request_uses_summary_persona(self):
         self.add_key()
-        responses = [
-            tool_response("get_spending_breakdown", {"period": "month"}),
-            text_response("• 💸 Spent ₹0 this month"),
-        ]
-        with patch.object(litellm, "acompletion", AsyncMock(side_effect=responses)) as mock:
-            reply = chat(self.chat_id, "Give me a quick summary of my spending")
-        self.assertIn("Quick Summary", reply)
+        with FakeLLM() as llm:
+            llm.add(tool("get_financial_snapshot", days=30))
+            llm.add("• 💸 Spent ₹0 this month")
+            reply = chat(self.chat_id, "/summary")
         self.assertIn("Spent ₹0", reply)
-        system = mock.call_args_list[1].kwargs["messages"][0]["content"]
-        self.assertIn("Quick Summary", system)
-        self.assertIn("total_expenses", system, "tool data must be passed as context")
+        self.assertIn("🧠", reply)  # the persona header heads the planner's own words
+        # The second (text) call received the tool result as context in the conversation.
+        tool_msgs = [m for m in llm.calls[1] if m.get("role") == "tool"]
+        self.assertEqual(len(tool_msgs), 1)
+        self.assertNotIn("error", tool_msgs[0]["content"])
+        self.assertIn("spent", tool_msgs[0]["content"])
 
-    def test_budgeter_command(self):
+    def test_budgeter_command_skips_to_the_persona(self):
         self.add_key()
-        with patch.object(
-            litellm, "acompletion", AsyncMock(return_value=text_response("1. Cut Swiggy"))
-        ) as mock:
+        with FakeLLM("1. Cut Swiggy") as llm:
             reply = chat(self.chat_id, "/budgeter I overspent")
-        self.assertEqual(mock.await_count, 1, "/budgeter skips intent detection")
-        self.assertIn("Ruthless Budgeter", reply)
+            self.assertEqual(len(llm.calls), 1, "/budgeter goes straight to one LLM call")
         self.assertIn("1. Cut Swiggy", reply)
+        # The persona name heads the reply.
+        self.assertIn("🧠", reply)
 
-    def test_no_key_falls_back_to_template(self):
-        reply = chat(self.chat_id, "How can I save money?")
-        self.assertIn("Reduce Money Mode", reply)
-
-    def test_persona_failure_falls_back_to_template(self):
-        self.add_key()
-        responses = [tool_response("financial_advice_bundle", {}), RuntimeError("boom")]
-        with (
-            patch.object(litellm, "acompletion", AsyncMock(side_effect=responses)),
-            self.assertLogs("app.bot.agent", level="WARNING"),
-        ):
-            reply = chat(self.chat_id, "give me financial advice")
-        self.assertIn("Reduce Money Mode", reply)
-
-    def test_ledger_confirmations_stay_templates(self):
-        execute_tool("log_income", user_id=self.chat_id, amount=10000, source_account="Cash")
-        self.add_key()
-        expense = tool_response("log_expense", {"amount": 200, "category": "Food"})
-        with patch.object(litellm, "acompletion", AsyncMock(return_value=expense)) as mock:
-            # Step 1: expense without explicit account — NLU intercepts, no AI call
-            reply1 = chat(self.chat_id, "spent 200 on food")
-        self.assertEqual(mock.await_count, 0)  # clear messages are handled by rules: no AI call
-        # no question: it goes to the default account straight away
-        self.assertNotIn("which account", reply1.lower())
-        reply = reply1
-        self.assertIn("−₹200", reply)
-        self.assertIn("Food", reply)
+    def test_no_key_gives_the_setkey_hint(self):
+        with FakeLLM(no_key=True):
+            reply = chat(self.chat_id, "How can I save money?")
+        self.assertIn("/setkey", reply)
 
 
-class TestHistoryAndOfflineMode(AgentTestCase):
-    """Fix 4: no duplicate message, bounded history, honest offline mode."""
+class TestHistoryAndNoKey(AgentTestCase):
+    """No duplicate message, bounded history, and an honest no-key hint."""
 
     def test_ai_is_called_with_message_once(self):
         self.add_key()
-        with patch.object(
-            litellm, "acompletion", AsyncMock(return_value=text_response("ok"))
-        ) as mock:
+        with FakeLLM("ok", "ok") as llm:
             chat(self.chat_id, "first message")
             chat(self.chat_id, "second message")
-        self.assertEqual(mock.await_count, 2, "agent must call the AI when a key exists")
-        contents = [m["content"] for m in mock.call_args.kwargs["messages"]]
+        self.assertEqual(len(llm.calls), 2, "the planner is called once per free-text message")
+        last = llm.calls[-1]
+        contents = [m.get("content") for m in last if isinstance(m.get("content"), str)]
         self.assertEqual(contents.count("second message"), 1)
         self.assertEqual(contents[-1], "second message")
-        self.assertIn("first message", contents)
+        self.assertTrue(any("first message" in c for c in contents))
+
+    def test_ai_failure_records_nothing_and_says_so(self):
+        self.add_key()
+        with FakeLLM(RuntimeError("provider down")), self.assertLogs("app.bot.agent", "WARNING"):
+            reply = chat(self.chat_id, "spent 200 on chai")
+        self.assertEqual(reply, agent.AI_BUSY_TEXT)
+        self.assertEqual(self.balances()["Bank"], 50000)
 
     def test_history_is_limited(self):
         for i in range(30):
@@ -279,155 +282,108 @@ class TestHistoryAndOfflineMode(AgentTestCase):
         self.assertEqual(len(history), agent.HISTORY_LIMIT)
         self.assertEqual(history[-1].content, "old message 29")
 
-    def test_ai_failure_reports_offline_mode(self):
+    def test_no_key_free_text_is_not_logged(self):
+        with FakeLLM(no_key=True):
+            reply = chat(self.chat_id, "spent 200 on chai")
+        self.assertIn("/setkey", reply)
+        self.assertEqual(self.balances()["Bank"], 50000)  # nothing recorded without a key
+
+
+class TestLedgerActionsFromLLM(AgentTestCase):
+    """The ledger outcome of what the LLM decides: expenses, income, multi-tool messages."""
+
+    def test_single_expense_to_default_account(self):
+        execute_tool("set_default_account", user_id=self.chat_id, account_name="Bank")
         self.add_key()
-        error = litellm.AuthenticationError("invalid key", llm_provider="gemini", model="g")
-        with (
-            patch.object(litellm, "acompletion", AsyncMock(side_effect=error)),
-            self.assertLogs("app.bot.agent", level="WARNING") as logs,
+        with FakeLLM(
+            tool("log_expense", amount=200, category="Food & Dining", account_name="Bank")
         ):
-            reply = chat(self.chat_id, "what is my balance")
-        self.assertIn("basic rules", reply)
-        self.assertIn("Total", reply)
-        self.assertTrue(any("AI unavailable" in line for line in logs.output))
+            reply = chat(self.chat_id, "spent 200 on food")
+        self.assertIn("−₹200", reply)
+        self.assertIn("Food", reply)
+        self.assertAlmostEqual(self.balances()["Bank"], 50000 - 200, delta=1)
 
-    def test_no_key_has_no_offline_note(self):
-        reply = chat(self.chat_id, "what is my balance")
-        self.assertNotIn("basic rules", reply)
-
-
-class TestMultiTransactionAndBatchIngestion(AgentTestCase):
-    """Test multi-item list parsing, mixed income+expenses, and multi-tool LLM execution."""
-
-    def test_multi_line_expense_list(self):
-        execute_tool("log_income", user_id=self.chat_id, amount=10000, source_account="Cash")
-        message = (
-            "190=poornima pizza Dosa\n"
-            "80=Neeraj Dosa\n"
-            "10=water bottle\n"
-            "115.62=petrol\n"
-            "15=dosa\n"
-            "100=family nasta\n"
-            "109=poornima biryani\n"
-            "80=roshani chocaltes\n"
-            "50=idly\n"
-            "300=poornima gift\n"
-            "100=haircut\n"
-            "340=team lunch"
-        )
-        # no account mentioned: all 12 entries are logged to the default account
-        reply = chat(self.chat_id, message)
-        self.assertNotIn("which account", reply.lower())
-        self.assertIn("12 entries", reply)
-        self.assertIn("1,489.62", reply)
-
-    def test_mixed_income_and_batch_expenses(self):
-        message = (
-            "i got stifend of 15000 from that i spend this 190=poornima pizza Dosa\n"
-            "80=Neeraj Dosa\n"
-            "10=water bottle\n"
-            "115.62=petrol\n"
-            "15=dosa\n"
-            "100=family nasta\n"
-            "109=poornima biryani\n"
-            "80=roshani chocaltes\n"
-            "50=idly\n"
-            "300=poornima gift\n"
-            "100=haircut\n"
-            "340=team lunch"
-        )
-        # all 13 entries (1 income + 12 expenses) are logged straight away
-        reply = chat(self.chat_id, message)
-        self.assertNotIn("which account", reply.lower())
-        self.assertIn("13 entries", reply)
-        self.assertIn("+₹15,000", reply)
-        self.assertIn("1,489.62", reply)
-
-    def test_natural_spending_query(self):
-        reply = chat(self.chat_id, "how much total i spend")
-        self.assertIn("Spending Breakdown", reply)
-
-    def test_multi_tool_calling_from_llm(self):
-        execute_tool("log_income", user_id=self.chat_id, amount=10000, source_account="Cash")
+    def test_multi_tool_batch_from_one_message(self):
         self.add_key()
-        calls = [
-            SimpleNamespace(
-                function=SimpleNamespace(
-                    name="log_income",
-                    arguments=json.dumps(
-                        {"amount": 15000, "category": "Stipend", "source_account": "Bank"}
+        with FakeLLM() as llm:
+            llm.add(
+                [
+                    tool("log_income", amount=15000, category="Stipend", source_account="Bank"),
+                    tool(
+                        "log_expense",
+                        amount=190,
+                        category="Food & Dining",
+                        merchant="Poornima",
+                        account_name="Bank",
                     ),
-                )
-            ),
-            SimpleNamespace(
-                function=SimpleNamespace(
-                    name="log_expense",
-                    arguments=json.dumps(
-                        {"amount": 190, "category": "Food", "merchant": "Poornima"}
+                    tool(
+                        "log_expense",
+                        amount=80,
+                        category="Food & Dining",
+                        merchant="Neeraj",
+                        account_name="Bank",
                     ),
-                )
-            ),
-            SimpleNamespace(
-                function=SimpleNamespace(
-                    name="log_expense",
-                    arguments=json.dumps({"amount": 80, "category": "Food", "merchant": "Neeraj"}),
-                )
-            ),
-        ]
-        msg = SimpleNamespace(content=None, tool_calls=calls)
-        ai_resp = SimpleNamespace(choices=[SimpleNamespace(message=msg)])
-
-        with patch.object(litellm, "acompletion", AsyncMock(return_value=ai_resp)) as mock:
+                ]
+            )
             reply = chat(self.chat_id, "stipend and snacks")
-            self.assertEqual(mock.await_count, 1)
+            self.assertEqual(len(llm.calls), 1)
         self.assertIn("3 entries", reply)
         self.assertIn("+₹15,000", reply)
-        self.assertIn("Poornima", reply)
+        self.assertAlmostEqual(self.balances()["Bank"], 50000 + 15000 - 190 - 80, delta=1)
+
+    def test_spending_query_renders_the_breakdown(self):
+        self.add_key()
+        with FakeLLM() as llm:
+            llm.add(tool("get_spending_breakdown", period="month"))
+            llm.add("You've spent ₹0 this month.")
+            reply = chat(self.chat_id, "how much total did i spend")
+        self.assertIn("spent", reply.lower())
 
 
 class TestAccountSelection(AgentTestCase):
-    """An expense that names no account goes to the user's default account: no question, no dead end."""
+    """The LLM picks the account; the ledger enforces the balance. No dead-end prompts."""
 
-    def test_no_account_uses_the_default_account(self):
-        from app.bot import onboarding
-
-        onboarding._set_default(self.chat_id, "Bank")
-        reply = chat(self.chat_id, "I spent 3k for rent")
+    def test_expense_to_named_default_account(self):
+        execute_tool("set_default_account", user_id=self.chat_id, account_name="Bank")
+        self.add_key()
+        with FakeLLM(tool("log_expense", amount=3000, category="Rent", account_name="Bank")):
+            reply = chat(self.chat_id, "I spent 3k for rent")
         self.assertNotIn("which account", reply.lower(), f"Should not ask: {reply}")
-        balances = self.balances()
-        self.assertAlmostEqual(balances.get("Bank", 0), 50000 - 3000, delta=1)
-        self.assertAlmostEqual(balances.get("Cash", 0), 0, delta=1)
-
-    def test_changing_the_default_moves_later_expenses(self):
-        from app.bot import onboarding
-
-        onboarding._set_default(self.chat_id, "Bank")
-        execute_tool(
-            "transfer_funds",
-            user_id=self.chat_id,
-            from_account="Bank",
-            to_account="Cash",
-            amount=1000,
-        )
-        onboarding._set_default(self.chat_id, "Cash")
-        chat(self.chat_id, "chai 20")
-        self.assertAlmostEqual(self.balances().get("Cash", 0), 1000 - 20, delta=1)
+        self.assertAlmostEqual(self.balances().get("Bank", 0), 50000 - 3000, delta=1)
 
     def test_explicit_account_runs_immediately(self):
-        """An expense that explicitly names the account should NOT trigger a prompt."""
-        reply = chat(self.chat_id, "spent 500 on food via bank")
-        # Should NOT ask for an account
+        self.add_key()
+        with FakeLLM(
+            tool("log_expense", amount=500, category="Food & Dining", account_name="Bank")
+        ):
+            reply = chat(self.chat_id, "spent 500 on food via bank")
         self.assertNotIn("which account", reply.lower(), f"Should not prompt: {reply}")
-        balances = self.balances()
-        self.assertAlmostEqual(
-            balances.get("Bank", 0),
-            50000 - 500,
-            delta=1,
-            msg=f"Expected Bank=49500, got {balances}",
-        )
+        self.assertAlmostEqual(self.balances().get("Bank", 0), 50000 - 500, delta=1)
 
-    def test_cash_expense_runs_immediately_when_explicit(self):
-        """'Spent 200 on chai from cash' must not prompt — cash is explicit."""
+    def test_cash_expense_blocked_when_cash_is_empty(self):
+        """Strict wallet: spending from a ₹0 Cash pipe is blocked, not silently logged."""
+        self.add_key()
+        with FakeLLM(
+            tool("log_expense", amount=200, category="Food & Dining", account_name="Cash")
+        ):
+            reply = chat(self.chat_id, "spent 200 on chai from cash")
+        # Cash was never funded, so the spend fails and says why; Bank is offered instead.
+        self.assertIn("not enough balance", reply.lower())
+        self.assertEqual(self.balances().get("Cash", 0.0), 0.0)
+        self.assertEqual(self.balances()["Bank"], 50000)
+
+    def test_blocked_spend_offers_another_account(self):
+        self.add_key()
+        with FakeLLM(
+            tool("log_expense", amount=200, category="Food & Dining", account_name="Cash")
+        ):
+            outcome = run(agent.process_user_interaction_ex(self.chat_id, "chai 200 from cash"))
+        self.assertIsNotNone(outcome.pay_alternative)
+        self.assertEqual(outcome.pay_alternative.get("account"), "Bank")
+        self.assertEqual(outcome.transaction_ids, [])
+
+    def test_changing_the_default_moves_later_expenses(self):
+        self.add_key()
         execute_tool(
             "transfer_funds",
             user_id=self.chat_id,
@@ -435,10 +391,14 @@ class TestAccountSelection(AgentTestCase):
             to_account="Cash",
             amount=1000,
         )
-        reply = chat(self.chat_id, "spent 200 on chai from cash")
-        self.assertNotIn("which account", reply.lower())
-        balances = self.balances()
-        self.assertAlmostEqual(balances.get("Cash", 0), 1000 - 200, delta=1)
+        with FakeLLM(tool("set_default_account", account_name="Cash")):
+            chat(self.chat_id, "use cash by default")
+        with SessionLocal() as db:
+            user = db.query(User).filter(User.telegram_chat_id == self.chat_id).one()
+            self.assertEqual(user.default_account, "Cash")
+        with FakeLLM(tool("log_expense", amount=20, category="Food & Dining", account_name="Cash")):
+            chat(self.chat_id, "chai 20")
+        self.assertAlmostEqual(self.balances()["Cash"], 1000 - 20, delta=1)
 
 
 if __name__ == "__main__":

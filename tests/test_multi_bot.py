@@ -34,6 +34,11 @@ from app.services import ledger  # noqa: E402
 from app.web import tokens  # noqa: E402
 from main import app  # noqa: E402
 
+try:
+    from tests.fake_llm import FakeLLM, tool  # noqa: E402
+except ImportError:  # discover -s tests (no -t .) puts tests/ on sys.path directly
+    from fake_llm import FakeLLM, tool  # noqa: E402
+
 init_db()
 
 ONE = "1111:AAA-first"
@@ -195,15 +200,22 @@ class SharedBackendTests(unittest.TestCase):
         with SessionLocal() as db:
             uid = ledger.get_or_create_user(db, chat).id
             ledger.record_transaction(db, uid, 1200, "Cash", "Seed", tx_type="income")
-        run(bot_main.handle_text(chat, "Spent 100 on chai via Cash"))  # "through bot 1"
+        with FakeLLM(
+            tool("log_expense", amount=100, category="Food & Dining", account_name="Cash")
+        ):
+            run(bot_main.handle_text(chat, "Spent 100 on chai via Cash"))  # "through bot 1"
         reply = run(bot_main.handle_text(chat, "/balance"))  # "through bot 2": same chat id
-        self.assertIn("100", reply)
+        self.assertIn("₹1,100", reply)
         with SessionLocal() as db:
             uid = ledger.get_or_create_user(db, chat).id
             self.assertEqual(ledger.recent_transactions(db, uid, 5)[1], 2)
 
     def test_different_people_stay_separate(self):
-        asyncio.run(bot_main.handle_text("777002", "Spent 55 on tea via Cash"))
+        with SessionLocal() as db:
+            uid = ledger.get_or_create_user(db, "777002").id
+            ledger.record_transaction(db, uid, 1000, "Cash", "Seed", tx_type="income")
+        with FakeLLM(tool("log_expense", amount=55, category="Food & Dining", account_name="Cash")):
+            asyncio.run(bot_main.handle_text("777002", "Spent 55 on tea via Cash"))
         reply = asyncio.run(bot_main.handle_text("777003", "/history"))
         self.assertNotIn("55", reply)
 

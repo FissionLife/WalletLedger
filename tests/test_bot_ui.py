@@ -37,6 +37,11 @@ from app.db import SessionLocal, init_db  # noqa: E402
 from app.services import ledger  # noqa: E402
 from app.web import tokens  # noqa: E402
 
+try:
+    from tests.fake_llm import FakeLLM, tool  # noqa: E402
+except ImportError:  # discover -s tests (no -t .) puts tests/ on sys.path directly
+    from fake_llm import FakeLLM, tool  # noqa: E402
+
 init_db()
 _ids = itertools.count(1)
 PNG = b"\x89PNG"
@@ -227,10 +232,14 @@ class MoneyScreensTests(Base):
 
 class UndoAndConfirmTests(Base):
     def test_logging_offers_undo_and_undo_restores_the_balance(self):
-        r = self.say("Received 1000 salary in Bank")
+        with FakeLLM(tool("log_income", amount=1000, source_account="Bank", category="Salary")):
+            r = self.say("Received 1000 salary in Bank")
         self.assertTrue(any(b.data.startswith("undo:") for b in self.buttons(r)))
         self.assertEqual(self.balance(), 1000.0)
-        r = self.say("Spent 300 on dinner via Bank")
+        with FakeLLM(
+            tool("log_expense", amount=300, category="Food & Dining", account_name="Bank")
+        ):
+            r = self.say("Spent 300 on dinner via Bank")
         undo = next(b.data for b in self.buttons(r) if b.data.startswith("undo:"))
         self.assertEqual(self.balance(), 700.0)
         done = self.tap(undo)
@@ -242,8 +251,12 @@ class UndoAndConfirmTests(Base):
         self.assertEqual(self.balance(), 1000.0)
 
     def test_undo_command_removes_the_latest(self):
-        self.say("Received 500 in Bank")
-        self.say("Spent 100 on coffee via Bank")
+        with FakeLLM(
+            tool("log_income", amount=500, source_account="Bank"),
+            tool("log_expense", amount=100, category="Food & Dining", account_name="Bank"),
+        ):
+            self.say("Received 500 in Bank")
+            self.say("Spent 100 on coffee via Bank")
         self.assertEqual(self.balance(), 400.0)
         self.assertIn("Undone", self.say("/undo").text)
         self.assertEqual(self.balance(), 500.0)
@@ -252,23 +265,27 @@ class UndoAndConfirmTests(Base):
         self.assertIn("Nothing to undo", self.say("/undo").text)
 
     def test_large_transfer_gets_confirm_buttons(self):
-        self.say("Received 200000 in Bank")
-        self.tap("ask:yes") if False else None
-        r = self.say("Transferred 100000 from Bank to Cash")
-        data = [b.data for b in self.buttons(r)]
-        if "ask:yes" not in data:  # the income itself may have asked first
-            self.skipTest("offline rules did not ask for confirmation in this wording")
+        with FakeLLM(
+            tool("log_income", amount=200000, source_account="Bank"),
+            tool("transfer_funds", from_account="Bank", to_account="Cash", amount=100000),
+        ):
+            self.say("Received 200000 in Bank")
+            r = self.say("Transferred 100000 from Bank to Cash")
+        yes = next(b.data for b in self.buttons(r) if b.data.startswith("ask:yes"))
         self.assertEqual(self.balance("Cash"), 0.0)
-        done = self.tap("ask:yes")
+        done = self.tap(yes)
         self.assertTrue(done.edit)
         self.assertEqual(self.balance("Cash"), 100000.0)
 
     def test_cancel_button(self):
-        self.say("Received 5 in Bank")
-        r = self.say("Transferred 150000 from Bank to Cash")
-        if "ask:yes" not in [b.data for b in self.buttons(r)]:
-            self.skipTest("no confirmation requested")
-        cancelled = self.tap("ask:no")
+        with FakeLLM(
+            tool("log_income", amount=200000, source_account="Bank"),
+            tool("transfer_funds", from_account="Bank", to_account="Cash", amount=150000),
+        ):
+            self.say("Received 200000 in Bank")
+            r = self.say("Transferred 150000 from Bank to Cash")
+        no = next(b.data for b in self.buttons(r) if b.data.startswith("ask:no"))
+        cancelled = self.tap(no)
         self.assertIn("ancel", cancelled.text)
         self.assertEqual(self.balance("Cash"), 0.0)
 

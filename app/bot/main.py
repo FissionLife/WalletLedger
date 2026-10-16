@@ -22,8 +22,8 @@ from pydantic import BaseModel
 from sqlalchemy import select
 
 from app import clock
-from app.bot import nlu, onboarding, replies, ui, views
-from app.bot.agent import classify_reply, process_user_interaction_ex, session_store
+from app.bot import agent, onboarding, ui, views
+from app.bot.agent import process_user_interaction_ex
 from app.bot.keys import KEY_COMMANDS, handle_admin_command, handle_key_command
 from app.bot.ui import Reply
 from app.config import dev_endpoints_enabled, is_chat_allowed
@@ -163,14 +163,18 @@ async def handle_incoming(chat_id: str, text: str) -> Reply:
 
     pending = _get_pending_import(chat_id)
     if pending:
-        decision = classify_reply(clean)
-        if decision:
-            return await answer_pending_import(chat_id, decision)
+        decision = await agent.classify_decision(
+            chat_id, clean, f"import {len(pending.rows)} rows from {pending.file_name}"
+        )
+        if decision != "new":
+            return await answer_pending_import(
+                chat_id, "confirmed" if decision == "confirm" else "cancelled"
+            )
         _pending_imports.pop(chat_id, None)  # unrelated message: drop the pending import
 
     if clean.startswith("/"):
         # a command (even /balance) moves on: an old "transfer 7000?" must not be answered by a later "yes"
-        session_store.clear_pending(chat_id)
+        await agent.cancel_pending(chat_id)
         parts = clean.split(None, 1)  # split on any whitespace (a newline or tab after the command)
         command, args = parts[0], (parts[1] if len(parts) > 1 else "")
         command = command.split("@", 1)[0].lower()  # "/balance@MyBot" in groups
@@ -191,31 +195,13 @@ async def handle_incoming(chat_id: str, text: str) -> Reply:
         if command not in PERSONA_COMMANDS:
             return Reply(unknown_command_text(command))
 
-    if not extract_api_keys(clean):
-        changed = await onboarding.default_command(chat_id, clean)  # "use cash by default"
-        if changed is None and not session_store.get_pending(chat_id):
-            changed = await onboarding.balance_command(chat_id, clean)  # "bank balance is 25000"
-        if changed is not None:
-            return changed
-        if not session_store.get_pending(chat_id):
-            first = await onboarding.intercept(chat_id, clean)  # new user: ask where they pay from
-            if first is not None:
-                return first
+    if not extract_api_keys(clean) and not await agent.has_pending(chat_id):
+        first = await onboarding.intercept(chat_id, clean)  # new user: ask where they pay from
+        if first is not None:
+            return first
 
-    if classify_reply(clean) and not session_store.get_pending(chat_id):
-        return Reply(replies.NOTHING_PENDING, rows=ui.back_home())
-    correction = nlu.parse_fix(clean)  # "oops the dinner was actually 540", "delete the coffee"
-    if correction is not None and not session_store.get_pending(chat_id):
-        fixed = await views.fix(chat_id, correction)
-        if fixed is not None:
-            return fixed
-    screen = nlu.detect_screen(clean)  # "how much did I spend on food last month" -> stats screen
-    if screen is not None:
-        view = await _view_command(chat_id, screen.command, screen.args)
-        if view is not None:
-            session_store.clear_pending(chat_id)
-            return view
-
+    # Everything else in plain words (entries, questions, corrections, "bank balance is 25000",
+    # "use cash by default", a typed yes/no) is understood by the AI agent, not by rules.
     return _reply_for(await process_user_interaction_ex(chat_id=chat_id, text=clean))
 
 
@@ -252,16 +238,14 @@ async def answer_pending_import(chat_id: str, decision: str) -> Reply:
 
 async def answer_pending_action(chat_id: str, yes: bool, pending_id: str | None = None) -> Reply:
     """Yes/Cancel to a waiting AI action or transfer (tapped). Only the question the button belongs to."""
-    waiting = session_store.get_pending(chat_id)
-    if waiting is None or (pending_id and waiting.get("id") != pending_id):
+    outcome = await agent.resume_pending(chat_id, yes, pending_id)
+    if outcome is None:
         return Reply(
             "⌛ That question is no longer waiting, so nothing was changed.",
             notice="Expired",
             rows=ui.back_home(),
         )
-    return _reply_for(
-        await process_user_interaction_ex(chat_id=chat_id, text="yes" if yes else "no")
-    )
+    return _reply_for(outcome)
 
 
 async def handle_text(chat_id: str, text: str) -> str:

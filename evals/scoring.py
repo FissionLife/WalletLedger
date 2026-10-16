@@ -15,7 +15,7 @@ from typing import Any
 ACCOUNT_FIELDS = ("account_name", "source_account", "from_account", "to_account")
 ARG_FIELDS = ("amount", "category", "account", "date")
 TOOL_CHECKS = ("calls", "tools_required", "tools_forbidden")
-SAFETY_GROUPS = ("command_safety", "llm_injection")
+SAFETY_GROUPS = ("command_safety", "llm_injection", "llm_off_topic")
 SAFETY_CHECKS = ("reply.must_not_include", "chat_history_must_not_include")
 QUESTION_GROUPS = ("question", "llm_goal")
 
